@@ -5,7 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Trash2, Search, ArrowLeft, Percent, CheckCircle, X } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
-import { QuoteItem, Product, Customer, Quote } from "@/types";
+import { Product, Customer, QuoteItem, Quote } from "@/types";
+import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { mockQuotes } from "@/lib/mockData";
 import { buildPDF } from "@/lib/pdfHelper";
@@ -17,6 +18,7 @@ interface QuoteItemWithManual extends QuoteItem {
 function NewQuoteForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { language } = useLanguage();
   const editQuoteNumber = searchParams.get("edit");
   const { user } = useAuth();
   
@@ -572,20 +574,35 @@ function NewQuoteForm() {
               {/* Product dropdown search suggestions */}
               {showProductDropdown && filteredProducts.length > 0 && (
                 <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-                  {filteredProducts.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handleAddProduct(p)}
-                      className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="font-semibold text-slate-800 text-sm">{p.name}</div>
-                        <div className="text-xs text-slate-400 font-medium">Unit: {p.unit}</div>
-                      </div>
-                      <span className="font-bold text-sm text-[#1B2A4A]">AED {p.price.toFixed(2)}</span>
-                    </button>
-                  ))}
+                  {filteredProducts.map((p) => {
+                    const isDisabled = p.isAvailable === false;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() => !isDisabled && handleAddProduct(p)}
+                        className={`w-full text-left px-4 py-3 transition-colors flex items-center justify-between ${
+                          isDisabled 
+                            ? "opacity-50 cursor-not-allowed bg-slate-50/70" 
+                            : "hover:bg-slate-50"
+                        }`}
+                      >
+                        <div>
+                          <div className="font-semibold text-slate-800 text-sm">{p.name}</div>
+                          <div className="text-xs text-slate-400 font-medium">Unit: {p.unit}</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {isDisabled && (
+                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded">
+                              {language === "en" ? "Out of Stock" : "غير متوفر"}
+                            </span>
+                          )}
+                          <span className="font-bold text-sm text-[#1B2A4A]">AED {p.price.toFixed(2)}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

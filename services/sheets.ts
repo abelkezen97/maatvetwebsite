@@ -60,6 +60,8 @@ export async function fetchProductsFromGoogleSheet(): Promise<Product[]> {
         const tenPc = parseFloat(row[3]) || perPc;
         const fiftyPc = parseFloat(row[4]) || tenPc;
         const hundredPc = parseFloat(row[5]) || fiftyPc;
+        const availability = row[6]?.trim().toUpperCase();
+        const isAvailable = availability !== "N"; // default to true unless explicitly 'N'
 
         products.push({
           id: `sheet-${idx}`,
@@ -72,6 +74,7 @@ export async function fetchProductsFromGoogleSheet(): Promise<Product[]> {
           price100: hundredPc,
           unit: "Item",
           description: `Synced from Google Sheet. Bulk prices - 10pcs: AED ${tenPc}, 50pcs: AED ${fiftyPc}, 100pcs: AED ${hundredPc}`,
+          isAvailable,
         });
       }
     });

@@ -7,8 +7,10 @@ import { SearchInput } from "@/components/SearchInput";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Product } from "@/types";
 import { Package, RefreshCw, Plus, X, CheckCircle2 } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function ProductsPage() {
+  const { t, language } = useLanguage();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -112,6 +114,23 @@ export default function ProductsPage() {
         </div>
       ),
       className: "w-44",
+    },
+    {
+      header: "Availability",
+      accessor: (row: Product) => (
+        <span
+          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+            row.isAvailable !== false
+              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              : "bg-rose-50 text-rose-700 border border-rose-200"
+          }`}
+        >
+          {row.isAvailable !== false
+            ? (language === "en" ? "Available" : "متوفر")
+            : (language === "en" ? "Out of Stock" : "غير متوفر")}
+        </span>
+      ),
+      className: "w-40",
     },
   ];
 

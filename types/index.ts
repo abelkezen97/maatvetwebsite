@@ -19,6 +19,7 @@ export interface Product {
   price100?: number;
   unit: string;
   description?: string;
+  isAvailable?: boolean;
 }
 
 export interface Customer {
