@@ -12,9 +12,11 @@ import { mockQuotes } from "@/lib/mockData";
 import { Quote, Customer } from "@/types";
 import jsPDF from "jspdf";
 import { buildPDF } from "@/lib/pdfHelper";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function QuotesPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -76,13 +78,21 @@ export default function QuotesPage() {
   };
 
   const filteredQuotes = useMemo(() => {
-    return quotes.filter(
+    let list = quotes;
+    if (user && user.role === "Salesman") {
+      list = quotes.filter((q) => q.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
+    }
+
+    if (!searchQuery) return list;
+    const query = searchQuery.toLowerCase();
+    return list.filter(
       (q) =>
-        q.quoteNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.companyName.toLowerCase().includes(searchQuery.toLowerCase())
+        q.quoteNumber.toLowerCase().includes(query) ||
+        q.customerName.toLowerCase().includes(query) ||
+        q.companyName.toLowerCase().includes(query) ||
+        q.salesmanName.toLowerCase().includes(query)
     );
-  }, [quotes, searchQuery]);
+  }, [quotes, searchQuery, user]);
 
   // Premium PDF Generation using jsPDF
   const generatePDF = (quote: Quote) => {

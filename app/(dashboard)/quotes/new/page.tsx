@@ -340,7 +340,7 @@ function NewQuoteForm() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to upload quote to Google Drive");
+        throw new Error("Failed to upload quote to cloud storage");
       }
 
       // Add or Update in quotesList and localStorage
@@ -352,10 +352,10 @@ function NewQuoteForm() {
         } else {
           updatedQuotes.unshift(newQuote);
         }
-        alert(`Quotation ${newQuoteNum} successfully updated in your Google Sheet & Drive!`);
+        alert(`Quotation ${newQuoteNum} successfully updated in cloud storage!`);
       } else {
         updatedQuotes.unshift(newQuote);
-        alert(`Quotation ${newQuoteNum} successfully generated and saved to Google Drive!`);
+        alert(`Quotation ${newQuoteNum} successfully generated and saved to cloud storage!`);
       }
 
       localStorage.setItem("maat_quotes", JSON.stringify(updatedQuotes));
@@ -371,7 +371,7 @@ function NewQuoteForm() {
       router.push("/quotes");
     } catch (err) {
       console.error("Save quote error:", err);
-      alert("Quotation saved locally, but failed to sync to Google Drive. Please check your network connection.");
+      alert("Quotation saved locally, but failed to sync to cloud storage. Please check your network connection.");
       
       // Still push in-memory / localStorage for fallback session continuity
       let updatedQuotes = [...quotesList];
@@ -716,7 +716,7 @@ function NewQuoteForm() {
               >
                 <CheckCircle className="w-5 h-5" />
                 {isSaving
-                  ? "Saving to Google Drive..."
+                  ? "Saving to cloud storage..."
                   : editQuoteNumber
                     ? "Update Quotation"
                     : "Submit Quotation"}
@@ -746,7 +746,7 @@ function NewQuoteForm() {
               <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
                 <CheckCircle className="w-12 h-12 text-emerald-500 animate-bounce" />
                 <h4 className="text-lg font-bold text-slate-900">Customer Added Successfully</h4>
-                <p className="text-sm text-slate-400">Syncing with Google Sheets database...</p>
+                <p className="text-sm text-slate-400">Syncing with database...</p>
               </div>
             ) : (
               <>

@@ -18,11 +18,14 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { mockQuotes, mockActivity } from "@/lib/mockData";
 import { Quote, Product, Customer } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function DashboardPage() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,8 +38,17 @@ export default function DashboardPage() {
         const custRes = await fetch("/api/customers");
         const custData = await custRes.json();
         setCustomers(custData.customers || []);
+
+        const quotesRes = await fetch("/api/quotes");
+        const quotesData = await quotesRes.json();
+        if (Array.isArray(quotesData)) {
+          setQuotes(quotesData);
+        } else {
+          setQuotes(mockQuotes);
+        }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
+        setQuotes(mockQuotes);
       } finally {
         setLoading(false);
       }
@@ -44,15 +56,23 @@ export default function DashboardPage() {
     loadDashboardData();
   }, []);
 
+  // Segment quotes by Salesman role restrictions
+  const visibleQuotes = useMemo(() => {
+    if (user && user.role === "Salesman") {
+      return quotes.filter((q) => q.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
+    }
+    return quotes;
+  }, [quotes, user]);
+
   // Compute metrics
   const metrics = useMemo(() => {
     const totalProducts = products.length;
     const totalClients = customers.length;
-    const totalQuotesCount = mockQuotes.length;
+    const totalQuotesCount = visibleQuotes.length;
     
-    // Quotes count from today (or the latest mock date: 2026-07-06)
-    const todayStr = "2026-07-06";
-    const todaysQuotes = mockQuotes.filter(q => q.date === todayStr).length;
+    // Quotes count from today
+    const todayStr = new Date().toISOString().split("T")[0];
+    const todaysQuotes = visibleQuotes.filter(q => q.date === todayStr).length;
 
     return {
       totalProducts,
@@ -60,12 +80,12 @@ export default function DashboardPage() {
       totalQuotesCount,
       todaysQuotes
     };
-  }, [products, customers]);
+  }, [products, customers, visibleQuotes]);
 
   // Recent 3 quotes
   const recentQuotes = useMemo(() => {
-    return [...mockQuotes].sort((a, b) => b.quoteNumber.localeCompare(a.quoteNumber)).slice(0, 3);
-  }, []);
+    return [...visibleQuotes].sort((a, b) => b.quoteNumber.localeCompare(a.quoteNumber)).slice(0, 3);
+  }, [visibleQuotes]);
 
   // Columns for recent quotes table
   const quoteColumns = [
@@ -161,7 +181,7 @@ export default function DashboardPage() {
         <DataTable
           data={recentQuotes}
           columns={quoteColumns}
-          keyExtractor={(row) => row.id}
+          keyExtractor={(row, idx) => row.id || row.quoteNumber || `q-${idx}`}
         />
       </div>
     </div>
