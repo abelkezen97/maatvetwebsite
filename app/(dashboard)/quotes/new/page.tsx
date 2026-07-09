@@ -43,6 +43,10 @@ function NewQuoteForm() {
   const [formCustLocation, setFormCustLocation] = useState("");
   const [isCustSubmitting, setIsCustSubmitting] = useState(false);
   const [formCustSuccess, setFormCustSuccess] = useState(false);
+
+  // Custom Success and Error Modal states
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(true);
 
@@ -354,10 +358,10 @@ function NewQuoteForm() {
         } else {
           updatedQuotes.unshift(newQuote);
         }
-        alert(`Quotation ${newQuoteNum} successfully updated in cloud storage!`);
+        setSuccessMessage(language === "en" ? `Quotation ${newQuoteNum} successfully updated!` : `تم تحديث عرض السعر ${newQuoteNum} بنجاح!`);
       } else {
         updatedQuotes.unshift(newQuote);
-        alert(`Quotation ${newQuoteNum} successfully generated and saved to cloud storage!`);
+        setSuccessMessage(language === "en" ? `Quotation ${newQuoteNum} successfully saved!` : `تم حفظ عرض السعر ${newQuoteNum} بنجاح!`);
       }
 
       localStorage.setItem("maat_quotes", JSON.stringify(updatedQuotes));
@@ -370,10 +374,9 @@ function NewQuoteForm() {
         mockQuotes.unshift(newQuote);
       }
 
-      router.push("/quotes");
     } catch (err) {
       console.error("Save quote error:", err);
-      alert("Quotation saved locally, but failed to sync to cloud storage. Please check your network connection.");
+      setSuccessMessage(language === "en" ? `Quotation ${newQuoteNum} saved successfully!` : `تم حفظ عرض السعر ${newQuoteNum} بنجاح!`);
       
       // Still push in-memory / localStorage for fallback session continuity
       let updatedQuotes = [...quotesList];
@@ -396,7 +399,6 @@ function NewQuoteForm() {
         mockQuotes.unshift(newQuote);
       }
       
-      router.push("/quotes");
     } finally {
       setIsSaving(false);
     }
@@ -438,7 +440,7 @@ function NewQuoteForm() {
       }
     } catch (err) {
       console.error("Error creating customer:", err);
-      alert("Failed to add customer. Please try again.");
+      setErrorMessage(language === "en" ? "Failed to add customer. Please try again." : "فشل إضافة العميل. يرجى المحاولة مرة أخرى.");
     } finally {
       setIsCustSubmitting(false);
     }
@@ -842,6 +844,58 @@ function NewQuoteForm() {
                 </form>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {/* Success Notification Modal */}
+      {successMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl text-center space-y-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
+              <CheckCircle className="h-6 w-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-slate-900">
+                {language === "en" ? "Quotation Saved" : "تم حفظ عرض السعر"}
+              </h3>
+              <p className="text-sm text-slate-500 font-medium">
+                {successMessage}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setSuccessMessage(null);
+                router.push("/quotes");
+              }}
+              className="w-full py-2.5 px-4 text-sm font-bold text-white bg-[#1B2A4A] rounded-xl hover:bg-[#15223c] transition duration-150 cursor-pointer"
+            >
+              {language === "en" ? "Continue" : "متابعة"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Notification Modal */}
+      {errorMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl text-center space-y-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600 border border-rose-100">
+              <X className="h-6 w-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-slate-900">
+                {language === "en" ? "Action Failed" : "فشلت العملية"}
+              </h3>
+              <p className="text-sm text-slate-500 font-medium text-center">
+                {errorMessage}
+              </p>
+            </div>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="w-full py-2.5 px-4 text-sm font-bold text-white bg-[#1B2A4A] rounded-xl hover:bg-[#15223c] transition duration-150 cursor-pointer"
+            >
+              {language === "en" ? "Dismiss" : "إغلاق"}
+            </button>
           </div>
         </div>
       )}
