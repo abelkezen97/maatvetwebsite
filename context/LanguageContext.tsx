@@ -40,6 +40,14 @@ export const translations: Record<Language, Record<string, string>> = {
     viewAllQuotes: "View All Quotes",
     manageInventory: "Manage Inventory",
     createQuote: "Create Quote",
+    activeClients: "ACTIVE CLIENTS",
+    totalQuotes: "TOTAL QUOTES",
+    cataloguedMedicines: "catalogued medicines",
+    veterinaryClinicsFarms: "veterinary clinics & farms",
+    quotationsIssuedTotal: "quotations issued total",
+    quotationsCreatedToday: "quotations created today",
+    bdmRole: "Business Development Manager (UAE)",
+    adminRole: "Admin",
     
     // Products
     productsTitle: "Products Catalog",
@@ -148,6 +156,14 @@ export const translations: Record<Language, Record<string, string>> = {
     viewAllQuotes: "عرض جميع العروض",
     manageInventory: "إدارة المخزون",
     createQuote: "إنشاء عرض سعر",
+    activeClients: "العملاء النشطون",
+    totalQuotes: "إجمالي العروض",
+    cataloguedMedicines: "الأدوية المسجلة بالكتالوج",
+    veterinaryClinicsFarms: "العيادات والمزارع البيطرية",
+    quotationsIssuedTotal: "إجمالي العروض الصادرة",
+    quotationsCreatedToday: "العروض التي تم إنشاؤها اليوم",
+    bdmRole: "مدير تطوير الأعمال (الإمارات)",
+    adminRole: "المسؤول",
     
     // Products
     productsTitle: "كتالوج المنتجات",

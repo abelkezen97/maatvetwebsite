@@ -133,28 +133,28 @@ export default function DashboardPage() {
         <DashboardCard
           title={t("totalProducts").toUpperCase()}
           value={loading ? "..." : metrics.totalProducts}
-          description="catalogued medicines"
+          description={t("cataloguedMedicines")}
           icon={Package}
           trend={{ value: "12%", isPositive: true }}
         />
         <DashboardCard
-          title="ACTIVE CLIENTS"
+          title={t("activeClients").toUpperCase()}
           value={metrics.totalClients}
-          description="veterinary clinics & farms"
+          description={t("veterinaryClinicsFarms")}
           icon={Users}
           trend={{ value: "8%", isPositive: true }}
         />
         <DashboardCard
-          title="TOTAL QUOTES"
+          title={t("totalQuotes").toUpperCase()}
           value={metrics.totalQuotesCount}
-          description="quotations issued total"
+          description={t("quotationsIssuedTotal")}
           icon={Award}
           trend={{ value: "14%", isPositive: true }}
         />
         <DashboardCard
           title={t("todaysQuotes").toUpperCase()}
           value={metrics.todaysQuotes}
-          description="quotations created today"
+          description={t("quotationsCreatedToday")}
           icon={FileText}
           trend={{ value: "25%", isPositive: true }}
         />

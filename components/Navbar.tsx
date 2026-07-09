@@ -11,7 +11,7 @@ interface NavbarProps {
 }
 
 export function Navbar({ user, onMenuToggle }: NavbarProps) {
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   return (
     <header className="sticky top-0 z-40 flex h-16 w-full items-center justify-between border-b border-slate-200 bg-white/80 px-6 backdrop-blur-md">
       <div className="flex items-center gap-4">
@@ -31,10 +31,10 @@ export function Navbar({ user, onMenuToggle }: NavbarProps) {
           </div>
           <div>
             <span className="font-extrabold text-slate-800 tracking-tight text-base md:text-lg block leading-none">
-              MAAT
+              {t("maatGroup")}
             </span>
             <span className="text-[10px] uppercase font-bold tracking-widest text-accent block mt-0.5">
-              Sales Portal
+              {t("salesPortal")}
             </span>
           </div>
         </div>
@@ -68,7 +68,7 @@ export function Navbar({ user, onMenuToggle }: NavbarProps) {
               </span>
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-accent uppercase tracking-wider">
                 <ShieldCheck className="w-3 h-3" />
-                {user.role === "Salesman" ? "Business Development Manager (UAE)" : user.role}
+                {user.role === "Salesman" ? t("bdmRole") : t("adminRole")}
               </span>
             </div>
             {user.avatarUrl ? (
