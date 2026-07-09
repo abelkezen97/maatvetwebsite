@@ -275,9 +275,7 @@ function NewQuoteForm() {
         grandTotal: grandTotal,
         fileName: `MAAT-QUOTE-${newQuoteNum}.pdf`,
         pdfBase64: pdfBase64,
-        itemsJson: JSON.stringify(quoteItems),
-        customerId: selectedCustomerId,
-        notes: notes,
+        quoteJson: JSON.stringify(newQuote),
       };
 
       const response = await fetch("/api/quotes", {
