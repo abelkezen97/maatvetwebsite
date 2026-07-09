@@ -735,7 +735,9 @@ function NewQuoteForm() {
               >
                 <CheckCircle className="w-5 h-5" />
                 {isSaving
-                  ? "Saving to cloud storage..."
+                  ? editQuoteNumber
+                    ? "Updating Quotation..."
+                    : "Creating Quotation..."
                   : editQuoteNumber
                     ? "Update Quotation"
                     : "Submit Quotation"}
