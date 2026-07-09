@@ -27,6 +27,8 @@ function NewQuoteForm() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotesList, setQuotesList] = useState<Quote[]>([]);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   
   // Search state for product selector modal/dropdown
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,8 +98,10 @@ function NewQuoteForm() {
 
         if (matchedCust) {
           setSelectedCustomerId(matchedCust.id);
+          setCustomerSearchQuery(`${matchedCust.company} ${matchedCust.name ? `(${matchedCust.name})` : ""}`);
         } else {
           setSelectedCustomerId(existingQuote.customerId || "");
+          setCustomerSearchQuery(existingQuote.companyName || "");
         }
 
         setNotes(existingQuote.notes || "");
@@ -121,6 +125,22 @@ function NewQuoteForm() {
   const selectedCustomer = useMemo(() => {
     return customers.find((c) => c.id === selectedCustomerId);
   }, [selectedCustomerId, customers]);
+
+  // Filter customers by search query
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchQuery) return customers;
+    // If it matches the currently selected customer, return all
+    const selected = customers.find(c => c.id === selectedCustomerId);
+    const selectedLabel = selected ? `${selected.company} ${selected.name ? `(${selected.name})` : ""}` : "";
+    if (customerSearchQuery === selectedLabel) return customers;
+
+    const query = customerSearchQuery.toLowerCase();
+    return customers.filter(
+      (c) =>
+        c.company.toLowerCase().includes(query) ||
+        (c.name && c.name.toLowerCase().includes(query))
+    );
+  }, [customerSearchQuery, customers, selectedCustomerId]);
 
   // Filter products by search query
   const filteredProducts = useMemo(() => {
@@ -404,6 +424,7 @@ function NewQuoteForm() {
         const added = resData.customer;
         setCustomers((prev) => [added, ...prev]);
         setSelectedCustomerId(added.id);
+        setCustomerSearchQuery(`${added.company} ${added.name ? `(${added.name})` : ""}`);
         setFormCustSuccess(true);
         setTimeout(() => {
           setIsCustModalOpen(false);
@@ -459,7 +480,7 @@ function NewQuoteForm() {
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                1. Select Account / Stable / Doctor
+                1. Select Customer
               </h3>
               <button
                 type="button"
@@ -470,19 +491,56 @@ function NewQuoteForm() {
               </button>
             </div>
 
-            <div>
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
-              >
-                <option value="">-- Choose Client --</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.company} {c.name ? `(${c.name})` : ""}
-                  </option>
-                ))}
-              </select>
+            <div className="relative">
+              <div className="relative flex items-center">
+                <Search className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none animate-none" />
+                <input
+                  type="text"
+                  placeholder="Search customer name, company, or clinic..."
+                  value={customerSearchQuery}
+                  onChange={(e) => {
+                    setCustomerSearchQuery(e.target.value);
+                    setShowCustomerDropdown(true);
+                  }}
+                  onFocus={() => setShowCustomerDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
+                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
+                />
+              </div>
+
+              {/* Customer dropdown search suggestions */}
+              {showCustomerDropdown && (
+                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
+                  {filteredCustomers.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-slate-400 text-center font-medium">
+                      No customers found
+                    </div>
+                  ) : (
+                    filteredCustomers.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCustomerId(c.id);
+                          setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
+                          setShowCustomerDropdown(false);
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-800 text-sm">{c.company}</div>
+                          {c.name && <div className="text-xs text-slate-400 font-medium">Doctor: {c.name}</div>}
+                        </div>
+                        {c.address && (
+                          <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {c.address}
+                          </span>
+                        )}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -506,6 +564,7 @@ function NewQuoteForm() {
                     setShowProductDropdown(true);
                   }}
                   onFocus={() => setShowProductDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
                   className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
                 />
               </div>
