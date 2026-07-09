@@ -213,7 +213,7 @@ export default function QuotesPage() {
         <DataTable
           data={filteredQuotes}
           columns={columns}
-          keyExtractor={(row) => row.id}
+          keyExtractor={(row, idx) => row.id || row.quoteNumber || `q-${idx}`}
           onRowClick={(row) => setSelectedQuote(row)}
           emptyTitle="No quotations found"
           emptyDescription="Try searching for a different customer name or quotation number."

@@ -9,7 +9,7 @@ interface Column<T> {
 interface DataTableProps<T> {
   data: T[];
   columns: Column<T>[];
-  keyExtractor: (row: T) => string;
+  keyExtractor: (row: T, index?: number) => string;
   emptyTitle?: string;
   emptyDescription?: string;
   onRowClick?: (row: T) => void;
@@ -49,9 +49,9 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {data.map((row) => (
+            {data.map((row, idx) => (
               <tr
-                key={keyExtractor(row)}
+                key={keyExtractor(row, idx)}
                 onClick={() => onRowClick && onRowClick(row)}
                 className={`transition-colors duration-150 ${
                   onRowClick ? "cursor-pointer hover:bg-slate-50/70" : "hover:bg-slate-50/30"
