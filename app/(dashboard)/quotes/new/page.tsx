@@ -616,7 +616,7 @@ function NewQuoteForm() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="border border-slate-100 rounded-xl overflow-hidden">
+                <div className="border border-slate-100 rounded-xl overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
