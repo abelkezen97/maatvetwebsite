@@ -88,7 +88,7 @@ function NewQuoteForm() {
 
   // Filter products by search query
   const filteredProducts = useMemo(() => {
-    if (!searchQuery) return products;
+    if (!searchQuery) return [];
     return products.filter((p) =>
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchQuery.toLowerCase())
@@ -97,102 +97,116 @@ function NewQuoteForm() {
 
   // Calculate pricing summary details
   const subtotal = useMemo(() => {
-    return quoteItems.reduce((acc, item) => acc + item.quantity * item.price, 0);
+    return quoteItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+  }, [quoteItems]);
+
+  const grandTotal = useMemo(() => {
+    return quoteItems.reduce((acc, item) => acc + item.discount * item.quantity, 0);
   }, [quoteItems]);
 
   const discountTotal = useMemo(() => {
-    return quoteItems.reduce((acc, item) => acc + item.quantity * (item.price - item.discount), 0);
-  }, [quoteItems]);
+    return subtotal - grandTotal;
+  }, [subtotal, grandTotal]);
 
   const taxTotal = 0.00; // Removed VAT calculation as per policy
 
-  const grandTotal = useMemo(() => {
-    return subtotal - discountTotal + taxTotal;
-  }, [subtotal, discountTotal, taxTotal]);
-
   // Handlers
-  const handleAddItem = (prod: Product) => {
-    // Check if product already exists in item list
-    const existingIdx = quoteItems.findIndex((item) => item.productId === prod.id);
-    if (existingIdx > -1) {
-      // Just increment qty by 1
+  const handleAddProduct = (product: Product) => {
+    // Check if product is already in quote
+    const existingIndex = quoteItems.findIndex((item) => item.productId === product.id);
+
+    if (existingIndex > -1) {
       const updated = [...quoteItems];
-      updated[existingIdx].quantity += 1;
+      const newQty = updated[existingIndex].quantity + 1;
       
-      // Reevaluate price tier discount
-      const qty = updated[existingIdx].quantity;
-      let tierPrice = prod.price;
-      if (qty >= 100) tierPrice = prod.price100 ?? tierPrice;
-      else if (qty >= 50) tierPrice = prod.price50 ?? tierPrice;
-      else if (qty >= 10) tierPrice = prod.price10 ?? tierPrice;
-      
-      // If manual discount is not set, update base discount
-      if (updated[existingIdx].manualDiscount === undefined) {
-        updated[existingIdx].discount = tierPrice;
+      // Determine applicable tier price
+      let tierPrice = product.price;
+      if (newQty >= 100) {
+        tierPrice = product.price100 ?? tierPrice;
+      } else if (newQty >= 50) {
+        tierPrice = product.price50 ?? tierPrice;
+      } else if (newQty >= 10) {
+        tierPrice = product.price10 ?? tierPrice;
       }
-      
-      const finalUnit = updated[existingIdx].manualDiscount !== undefined
-        ? updated[existingIdx].manualDiscount
+
+      // Final price: Use manual override if set, otherwise the active tier price
+      const finalPrice = updated[existingIndex].manualDiscount !== undefined 
+        ? (updated[existingIndex].manualDiscount ?? tierPrice)
         : tierPrice;
-        
-      updated[existingIdx].total = qty * finalUnit;
+
+      updated[existingIndex].quantity = newQty;
+      updated[existingIndex].price = product.price; // Keep base price visible
+      updated[existingIndex].discount = finalPrice; // Discount stores active unit price
+      updated[existingIndex].total = newQty * finalPrice;
       setQuoteItems(updated);
     } else {
-      // Add as new item
-      const newItem: QuoteItemWithManual = {
-        productId: prod.id,
-        productName: prod.name,
-        quantity: 1,
-        price: prod.price,
-        discount: prod.price,
-        total: prod.price,
-      };
-      setQuoteItems([...quoteItems, newItem]);
+      setQuoteItems([
+        ...quoteItems,
+        {
+          productId: product.id,
+          productName: product.name,
+          quantity: 1,
+          price: product.price,
+          discount: product.price, // Initial price is original base price
+          manualDiscount: undefined,
+          total: product.price,
+        },
+      ]);
     }
+    setSearchQuery("");
     setShowProductDropdown(false);
   };
 
-  const handleQtyChange = (index: number, qtyVal: string) => {
-    const qty = parseInt(qtyVal) || 1;
+  const handleUpdateQuantity = (index: number, val: number) => {
+    if (val < 1) return;
     const updated = [...quoteItems];
-    updated[index].quantity = qty;
-
-    // Retrieve active product to evaluate default price tiers
     const item = updated[index];
-    const prod = products.find((p) => p.id === item.productId);
-    if (prod) {
-      let tierPrice = prod.price;
-      if (qty >= 100) tierPrice = prod.price100 ?? tierPrice;
-      else if (qty >= 50) tierPrice = prod.price50 ?? tierPrice;
-      else if (qty >= 10) tierPrice = prod.price10 ?? tierPrice;
-
-      // If no custom price set, apply tier price
-      if (item.manualDiscount === undefined) {
-        updated[index].discount = tierPrice;
+    
+    // Find original product to retrieve pricing tiers
+    const product = products.find((p) => p.id === item.productId);
+    const basePrice = product ? product.price : item.price;
+    let tierPrice = basePrice;
+    
+    if (product) {
+      if (val >= 100) {
+        tierPrice = product.price100 ?? tierPrice;
+      } else if (val >= 50) {
+        tierPrice = product.price50 ?? tierPrice;
+      } else if (val >= 10) {
+        tierPrice = product.price10 ?? tierPrice;
       }
     }
 
-    const finalUnit = item.manualDiscount !== undefined ? item.manualDiscount : item.discount;
-    updated[index].total = qty * finalUnit;
+    // Use manual override if set, otherwise the active tier price
+    const finalPrice = item.manualDiscount !== undefined 
+      ? (item.manualDiscount ?? tierPrice)
+      : tierPrice;
+
+    updated[index].quantity = val;
+    updated[index].price = basePrice;
+    updated[index].discount = finalPrice;
+    updated[index].total = val * finalPrice;
     setQuoteItems(updated);
   };
 
-  const handleDiscountChange = (index: number, discVal: string) => {
-    const val = parseFloat(discVal);
+  const handleUpdateDiscount = (index: number, val: number | undefined) => {
     const updated = [...quoteItems];
     const item = updated[index];
+    const product = products.find((p) => p.id === item.productId);
+    const basePrice = product ? product.price : item.price;
+    
+    // Calculate tier price for the current quantity
+    let tierPrice = basePrice;
+    if (product) {
+      const qty = item.quantity;
+      if (qty >= 100) tierPrice = product.price100 ?? tierPrice;
+      else if (qty >= 50) tierPrice = product.price50 ?? tierPrice;
+      else if (qty >= 10) tierPrice = product.price10 ?? tierPrice;
+    }
 
-    if (isNaN(val) || val <= 0) {
-      // Revert to sheet default tier price
-      delete updated[index].manualDiscount;
-      const prod = products.find((p) => p.id === item.productId);
-      let tierPrice = item.price;
-      if (prod) {
-        const qty = item.quantity;
-        if (qty >= 100) tierPrice = prod.price100 ?? tierPrice;
-        else if (qty >= 50) tierPrice = prod.price50 ?? tierPrice;
-        else if (qty >= 10) tierPrice = prod.price10 ?? tierPrice;
-      }
+    if (val === undefined || isNaN(val)) {
+      // Revert to tier price
+      updated[index].manualDiscount = undefined;
       updated[index].discount = tierPrice;
       updated[index].total = item.quantity * tierPrice;
     } else {
@@ -366,154 +380,137 @@ function NewQuoteForm() {
         
         {/* Left Side: Builder Details (2/3 width) */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-            
-            {/* Step 1: Client details */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                  1. Select Account / Stable / Doctor
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsCustModalOpen(true)}
-                  className="text-xs font-bold text-[#61989B] hover:text-[#4e7d80] transition flex items-center gap-1 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Add New Customer
-                </button>
-              </div>
-
-              <div>
-                <select
-                  value={selectedCustomerId}
-                  onChange={(e) => setSelectedCustomerId(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
-                >
-                  <option value="">-- Choose Client --</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.company} {c.name ? `(${c.name})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          {/* Step 1: Client details */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
+                1. Select Account / Stable / Doctor
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsCustModalOpen(true)}
+                className="text-xs font-bold text-[#61989B] hover:text-[#4e7d80] transition flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add New Customer
+              </button>
             </div>
 
-            <hr className="border-slate-100" />
+            <div>
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
+              >
+                <option value="">-- Choose Client --</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.company} {c.name ? `(${c.name})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-            {/* Step 2: Product items table */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center relative">
-                <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                  2. Added Quotation Items
-                </h3>
-
-                {/* Search / Add input dropdown */}
-                <div className="relative w-72">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search inventory..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setShowProductDropdown(true);
-                      }}
-                      onFocus={() => setShowProductDropdown(true)}
-                      className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-accent/15 transition"
-                    />
-                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery("")}
-                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {showProductDropdown && (
-                    <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-slate-200 rounded-xl shadow-xl z-20 max-h-64 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-150">
-                      {filteredProducts.length === 0 ? (
-                        <div className="p-4 text-center text-xs font-semibold text-slate-400">
-                          No items match your search
-                        </div>
-                      ) : (
-                        filteredProducts.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => handleAddItem(p)}
-                            className="w-full px-4 py-3 text-left hover:bg-slate-50 transition flex justify-between items-center gap-2"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <span className="block text-xs font-bold text-slate-800 truncate">{p.name}</span>
-                              <span className="block text-[10px] font-semibold text-slate-400 truncate">{p.category}</span>
-                            </div>
-                            <span className="text-xs font-bold text-[#61989B] shrink-0">
-                              AED {p.price.toFixed(2)}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
+          {/* Product Items Selector */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <h3 className="text-base font-bold text-slate-800">2. Items Configuration</h3>
+            
+            {/* Live Search bar */}
+            <div className="relative">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Search Products to Add
+              </label>
+              <div className="relative flex items-center">
+                <Search className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Type product name, SKU, or active ingredients..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setShowProductDropdown(true);
+                  }}
+                  onFocus={() => setShowProductDropdown(true)}
+                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+                />
               </div>
 
-              {/* Items Table */}
-              {quoteItems.length === 0 ? (
-                <div className="border border-dashed border-slate-200 rounded-2xl p-10 text-center space-y-2">
-                  <div className="text-sm font-bold text-slate-500">No items added to builder</div>
-                  <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-                    Search the product inventory catalog above to add pharmaceutical care items and supplements.
-                  </p>
+              {/* Product dropdown search suggestions */}
+              {showProductDropdown && filteredProducts.length > 0 && (
+                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
+                  {filteredProducts.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleAddProduct(p)}
+                      className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-semibold text-slate-800 text-sm">{p.name}</div>
+                        <div className="text-xs text-slate-400 font-medium">Unit: {p.unit}</div>
+                      </div>
+                      <span className="font-bold text-sm text-[#1B2A4A]">AED {p.price.toFixed(2)}</span>
+                    </button>
+                  ))}
                 </div>
-              ) : (
-                <div className="border border-slate-100 rounded-2xl overflow-hidden font-sans">
-                  <table className="w-full border-collapse text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-100">
+              )}
+            </div>
+
+            {/* Configured Item List Table */}
+            {quoteItems.length === 0 ? (
+              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                <p className="text-sm font-semibold text-slate-400">Search and add items to list to build quote</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="border border-slate-100 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        <th className="px-4 py-3 text-xs font-extrabold text-slate-400 uppercase tracking-wider">Item Details</th>
-                        <th className="px-4 py-3 text-xs font-extrabold text-slate-400 uppercase tracking-wider w-20 text-center">Qty</th>
-                        <th className="px-4 py-3 text-xs font-extrabold text-slate-400 uppercase tracking-wider w-28 text-right">Base (AED)</th>
-                        <th className="px-4 py-3 text-xs font-extrabold text-slate-400 uppercase tracking-wider w-36 text-right">Disc. Price (AED)</th>
-                        <th className="px-4 py-3 text-xs font-extrabold text-slate-400 uppercase tracking-wider w-28 text-right">Total</th>
-                        <th className="px-3 py-3 w-10"></th>
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase">Product Name</th>
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Unit Price</th>
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-24">Qty</th>
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-36">Discount Price</th>
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Subtotal</th>
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-14"></th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {quoteItems.map((item, idx) => (
-                        <tr key={`${item.productId}-${idx}`} className="hover:bg-slate-50/50 transition">
-                          <td className="px-4 py-3.5">
-                            <span className="block font-bold text-slate-800">{item.productName}</span>
+                        <tr key={item.productId} className="align-middle">
+                          <td className="px-4 py-4 font-bold text-slate-700">
+                            {item.productName}
                           </td>
-                          <td className="px-4 py-3.5">
+                          <td className="px-4 py-4 text-right font-semibold text-slate-700">
+                            AED {item.price.toFixed(2)}
+                          </td>
+                          <td className="px-2 py-4">
                             <input
                               type="number"
-                              min={1}
+                              min="1"
                               value={item.quantity}
-                              onChange={(e) => handleQtyChange(idx, e.target.value)}
-                              className="w-16 px-2 py-1 text-center bg-white border border-slate-200 rounded-lg text-slate-800 font-bold focus:outline-none focus:border-[#61989B] text-xs animate-none"
+                              onChange={(e) => handleUpdateQuantity(idx, parseInt(e.target.value) || 1)}
+                              className="w-16 mx-auto px-2 py-1.5 border border-slate-200 rounded-lg text-center font-bold focus:outline-none focus:border-accent"
                             />
                           </td>
-                          <td className="px-4 py-3.5 text-right font-bold text-slate-500">
-                            {item.price.toFixed(2)}
+                          <td className="px-2 py-4">
+                            <div className="relative flex items-center w-28 mx-auto">
+                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">AED</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={item.discount !== undefined ? item.discount : ""}
+                                onChange={(e) => {
+                                  const v = e.target.value === "" ? undefined : parseFloat(e.target.value);
+                                  handleUpdateDiscount(idx, v);
+                                }}
+                                className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm focus:outline-none focus:border-accent text-slate-800 animate-none"
+                              />
+                            </div>
                           </td>
-                          <td className="px-4 py-3.5 text-right">
-                            <input
-                              type="number"
-                              step="0.01"
-                              placeholder={item.price.toFixed(2)}
-                              value={item.manualDiscount !== undefined ? item.manualDiscount : ""}
-                              onChange={(e) => handleDiscountChange(idx, e.target.value)}
-                              className="w-28 px-2 py-1 text-right bg-white border border-slate-200 rounded-lg text-slate-800 font-bold focus:outline-none focus:border-[#61989B] text-xs"
-                            />
-                          </td>
-                          <td className="px-4 py-3.5 text-right font-bold text-[#1B2A4A]">
-                            {item.total.toFixed(2)}
+                          <td className="px-4 py-4 text-right font-bold text-slate-800">
+                            AED {item.total.toFixed(2)}
                           </td>
                           <td className="px-4 py-4 text-center">
                             <button
@@ -529,8 +526,8 @@ function NewQuoteForm() {
                     </tbody>
                   </table>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
