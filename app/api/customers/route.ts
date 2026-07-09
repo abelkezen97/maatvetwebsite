@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
-import { fetchCustomersFromGoogleSheet } from "@/services/sheets";
+import { fetchCustomersFromGoogleSheet, clearCustomersCache } from "@/services/sheets";
 import { Customer } from "@/types";
 
 export async function GET() {
@@ -63,6 +63,7 @@ export async function POST(request: Request) {
       }
     }
 
+    clearCustomersCache();
     return NextResponse.json({ success: true, customer: newCustomer });
   } catch (error) {
     console.error("Error creating customer:", error);

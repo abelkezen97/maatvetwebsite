@@ -1,6 +1,24 @@
 import { Product, Customer } from "@/types";
 
+let cachedProducts: Product[] | null = null;
+let lastProductsFetchTime = 0;
+
+let cachedCustomers: Customer[] | null = null;
+let lastCustomersFetchTime = 0;
+
+const CACHE_TTL = 2 * 60 * 1000; // 2 minutes cache TTL
+
+export function clearCustomersCache() {
+  cachedCustomers = null;
+  lastCustomersFetchTime = 0;
+}
+
 export async function fetchProductsFromGoogleSheet(): Promise<Product[]> {
+  const now = Date.now();
+  if (cachedProducts && (now - lastProductsFetchTime < CACHE_TTL)) {
+    return cachedProducts;
+  }
+
   const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
   
   if (!spreadsheetId) {
@@ -79,6 +97,8 @@ export async function fetchProductsFromGoogleSheet(): Promise<Product[]> {
       }
     });
 
+    cachedProducts = products;
+    lastProductsFetchTime = now;
     return products;
   } catch (error) {
     console.error("Failed to fetch products from Google Sheet:", error);
@@ -87,6 +107,11 @@ export async function fetchProductsFromGoogleSheet(): Promise<Product[]> {
 }
 
 export async function fetchCustomersFromGoogleSheet(): Promise<Customer[]> {
+  const now = Date.now();
+  if (cachedCustomers && (now - lastCustomersFetchTime < CACHE_TTL)) {
+    return cachedCustomers;
+  }
+
   const spreadsheetId = process.env.NEXT_PUBLIC_CUSTOMERS_SPREADSHEET_ID;
   
   if (!spreadsheetId) {
@@ -147,6 +172,8 @@ export async function fetchCustomersFromGoogleSheet(): Promise<Customer[]> {
       }
     });
 
+    cachedCustomers = customers;
+    lastCustomersFetchTime = now;
     return customers;
   } catch (error) {
     console.error("Failed to fetch customers from Google Sheet:", error);
