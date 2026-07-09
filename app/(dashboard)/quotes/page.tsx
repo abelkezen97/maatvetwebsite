@@ -6,13 +6,44 @@ import { useRouter } from "next/navigation";
 import { FileText, Plus, Search, Eye, Download, X, MessageCircle, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
-import { StatusBadge } from "@/components/StatusBadge";
 import { SearchInput } from "@/components/SearchInput";
-import { mockQuotes } from "@/lib/mockData";
 import { Quote, Customer } from "@/types";
 import jsPDF from "jspdf";
 import { buildPDF } from "@/lib/pdfHelper";
+import { mockQuotes } from "@/lib/mockData";
 import { useAuth } from "@/hooks/useAuth";
+
+function formatDisplayDate(dateStr: string): string {
+  if (!dateStr) return "";
+  try {
+    const parts = dateStr.trim().split(/\s+/);
+    const datePart = parts[0];
+    const timePart = parts[1];
+
+    const d = new Date(datePart.replace(/-/g, "/"));
+    if (isNaN(d.getTime())) return dateStr;
+
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    const formattedDate = `${day} ${month} ${year}`;
+
+    if (timePart) {
+      const timeSubparts = timePart.split(":");
+      let hours = parseInt(timeSubparts[0]) || 0;
+      const minutes = String(parseInt(timeSubparts[1]) || 0).padStart(2, "0");
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const formattedHours = String(hours).padStart(2, "0");
+      return `${formattedDate} ${formattedHours}:${minutes} ${ampm}`;
+    }
+    return formattedDate;
+  } catch (e) {
+    return dateStr;
+  }
+}
 
 export default function QuotesPage() {
   const router = useRouter();
@@ -119,8 +150,8 @@ export default function QuotesPage() {
     },
     {
       header: "Date",
-      accessor: "date" as keyof Quote,
-      className: "w-32",
+      accessor: (row: Quote) => formatDisplayDate(row.date),
+      className: "w-48",
     },
     {
       header: "Grand Total",
@@ -129,11 +160,7 @@ export default function QuotesPage() {
       ),
       className: "w-40",
     },
-    {
-      header: "Status",
-      accessor: (row: Quote) => <StatusBadge status={row.status} />,
-      className: "w-36",
-    },
+
     {
       header: "Actions",
       accessor: (row: Quote) => (
@@ -259,7 +286,7 @@ export default function QuotesPage() {
                 </div>
                 <div>
                   <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Date & Agent</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{selectedQuote.date}</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{formatDisplayDate(selectedQuote.date)}</span>
                   <span className="block text-slate-500 text-xs mt-0.5">{selectedQuote.salesmanName}</span>
                 </div>
               </div>
@@ -327,11 +354,7 @@ export default function QuotesPage() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-6">
-              <span className="inline-flex items-center">
-                <span className="text-xs font-bold text-slate-400 mr-2">STATUS:</span>
-                <StatusBadge status={selectedQuote.status} />
-              </span>
+            <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6">
               <div className="flex gap-3">
                 <button
                   onClick={() => setSelectedQuote(null)}

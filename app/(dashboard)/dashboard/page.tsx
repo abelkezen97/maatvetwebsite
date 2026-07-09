@@ -14,7 +14,6 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { DashboardCard } from "@/components/DashboardCard";
 import { DataTable } from "@/components/DataTable";
-import { StatusBadge } from "@/components/StatusBadge";
 import { mockQuotes, mockActivity } from "@/lib/mockData";
 import { Quote, Product, Customer } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
@@ -110,10 +109,7 @@ export default function DashboardPage() {
         <span className="font-bold text-slate-900">AED {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
       ),
     },
-    {
-      header: t("statusCol"),
-      accessor: (row: Quote) => <StatusBadge status={row.status} />,
-    },
+
   ];
 
   return (

@@ -3,7 +3,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
-import { StatusBadge } from "@/components/StatusBadge";
 import { SearchInput } from "@/components/SearchInput";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Product } from "@/types";
