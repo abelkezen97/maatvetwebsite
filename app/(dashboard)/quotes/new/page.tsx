@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { QuoteItem, Product, Customer } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { mockQuotes } from "@/lib/mockData";
+import { buildPDF } from "@/lib/pdfHelper";
 
 interface QuoteItemWithManual extends QuoteItem {
   manualDiscount?: number;
@@ -35,6 +36,7 @@ export default function NewQuotePage() {
   const [formCustLocation, setFormCustLocation] = useState("");
   const [isCustSubmitting, setIsCustSubmitting] = useState(false);
   const [formCustSuccess, setFormCustSuccess] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -239,15 +241,15 @@ export default function NewQuotePage() {
     setQuoteItems(updated);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCustomerId || quoteItems.length === 0) return;
+    if (!selectedCustomerId || quoteItems.length === 0 || isSaving) return;
 
-    // Simulate saving the quote by creating a temporary object
+    setIsSaving(true);
     const newQuoteNum = `QT-2026-0${mockQuotes.length + 1}`;
-    
-    // Add to mockQuotes array just for current memory context
-    mockQuotes.unshift({
+    const dateStr = new Date().toISOString().split("T")[0];
+
+    const newQuote = {
       id: `q-mock-${Date.now()}`,
       quoteNumber: newQuoteNum,
       customerId: selectedCustomerId,
@@ -255,19 +257,62 @@ export default function NewQuotePage() {
       companyName: selectedCustomer?.company || "",
       salesmanId: user?.id || "user-salesman",
       salesmanName: user?.name || "Dr. Kaleemullah M.",
-      date: new Date().toISOString().split("T")[0],
+      date: dateStr,
       items: quoteItems,
       subtotal,
       discountTotal,
       taxTotal,
       grandTotal,
-      status: "Pending",
+      status: "Pending" as const,
       notes,
-    });
+    };
 
-    // Alert or confirmation dialogue
-    alert(`Quotation ${newQuoteNum} successfully generated for ${selectedCustomer?.company}!`);
-    router.push("/quotes");
+    try {
+      // 1. Generate PDF and get Base64 string
+      const doc = buildPDF(newQuote);
+      const pdfBase64 = doc.output("datauristring").split(",")[1];
+
+      // 2. Upload to Google Drive & log to sheet via our secure API
+      const payload = {
+        quoteNumber: newQuoteNum,
+        customerName: selectedCustomer?.name || "",
+        companyName: selectedCustomer?.company || "",
+        salesmanName: user?.name || "Dr. Kaleemullah M.",
+        date: dateStr,
+        grandTotal: grandTotal,
+        fileName: `MAAT-QUOTE-${newQuoteNum}.pdf`,
+        pdfBase64: pdfBase64,
+      };
+
+      const response = await fetch("/api/quotes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to upload quote to Google Drive");
+      }
+
+      const result = await response.json();
+      
+      // Add to mockQuotes array for in-memory display
+      mockQuotes.unshift(newQuote);
+
+      alert(`Quotation ${newQuoteNum} successfully generated and saved to Google Drive!`);
+      router.push("/quotes");
+    } catch (err) {
+      console.error("Save quote error:", err);
+      alert("Quotation created locally, but failed to save to Google Drive. Please check your network connection.");
+      
+      // Still push in-memory for fallback session continuity
+      mockQuotes.unshift(newQuote);
+      router.push("/quotes");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -505,11 +550,11 @@ export default function NewQuotePage() {
             <div className="space-y-3 pt-2">
               <button
                 type="submit"
-                disabled={!selectedCustomerId || quoteItems.length === 0}
+                disabled={isSaving || !selectedCustomerId || quoteItems.length === 0}
                 className="flex w-full justify-center items-center gap-2 py-3.5 px-4 text-base font-bold text-white bg-primary rounded-xl hover:bg-[#15223c] focus:outline-none disabled:opacity-50 transition duration-150 cursor-pointer shadow-md shadow-primary/10"
               >
                 <CheckCircle className="w-5 h-5" />
-                Submit Quotation
+                {isSaving ? "Saving to Google Drive..." : "Submit Quotation"}
               </button>
               <Link
                 href="/quotes"
