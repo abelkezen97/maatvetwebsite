@@ -69,10 +69,32 @@ function NewQuoteForm() {
 
   // Prepopulate form if in EDIT mode
   useEffect(() => {
-    if (editQuoteNumber && quotesList.length > 0) {
+    if (editQuoteNumber && quotesList.length > 0 && customers.length > 0) {
       const existingQuote = quotesList.find((q) => q.quoteNumber === editQuoteNumber);
       if (existingQuote) {
-        setSelectedCustomerId(existingQuote.customerId);
+        // Try matching by ID first
+        let matchedCust = customers.find((c) => c.id === existingQuote.customerId);
+        
+        // Fallback: match by company name
+        if (!matchedCust && existingQuote.companyName) {
+          matchedCust = customers.find(
+            (c) => c.company.toLowerCase() === existingQuote.companyName.toLowerCase()
+          );
+        }
+        
+        // Fallback: match by contact person name
+        if (!matchedCust && existingQuote.customerName) {
+          matchedCust = customers.find(
+            (c) => c.name.toLowerCase() === existingQuote.customerName.toLowerCase()
+          );
+        }
+
+        if (matchedCust) {
+          setSelectedCustomerId(matchedCust.id);
+        } else {
+          setSelectedCustomerId(existingQuote.customerId || "");
+        }
+
         setNotes(existingQuote.notes || "");
         
         // Map QuoteItems to QuoteItemWithManual
@@ -88,7 +110,7 @@ function NewQuoteForm() {
         setQuoteItems(mappedItems);
       }
     }
-  }, [editQuoteNumber, quotesList]);
+  }, [editQuoteNumber, quotesList, customers]);
 
   // Selected customer object
   const selectedCustomer = useMemo(() => {
