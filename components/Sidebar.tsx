@@ -92,7 +92,9 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       {/* Navigation items */}
       <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
         {menuItems.map((item) => {
-          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+          const isActive = 
+            pathname === item.href || 
+            (item.href !== "/dashboard" && pathname.startsWith(item.href) && !(item.href === "/quotes" && pathname.startsWith("/quotes/new")));
           const Icon = item.icon;
 
           return (
