@@ -23,21 +23,6 @@ export function Navbar({ user, onMenuToggle }: NavbarProps) {
         >
           <Menu className="h-6 h-6" />
         </button>
-
-        {/* Company Branding */}
-        <div className="flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-white font-bold text-lg tracking-tight shadow-md">
-            M
-          </div>
-          <div>
-            <span className="font-extrabold text-slate-800 tracking-tight text-base md:text-lg block leading-none">
-              {t("maatGroup")}
-            </span>
-            <span className="text-[10px] uppercase font-bold tracking-widest text-accent block mt-0.5">
-              {t("salesPortal")}
-            </span>
-          </div>
-        </div>
       </div>
 
       {/* Right side items */}
