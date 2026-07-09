@@ -102,36 +102,38 @@ export default function SettingsPage() {
 
         {/* Right Side: Sync status log (1/3 width) */}
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <h3 className="text-base font-bold text-slate-800 flex items-center justify-between">
-              Database Sync
-              <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />
-            </h3>
+          {user?.role === "Admin" && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <h3 className="text-base font-bold text-slate-800 flex items-center justify-between">
+                Database Sync
+                <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />
+              </h3>
 
-            <div className="space-y-3.5">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                Next.js App router: Connected
+              <div className="space-y-3.5">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  Next.js App router: Connected
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  Session middleware: Guard Active
+                </div>
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  PDF Compiler: Compiled
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                Session middleware: Guard Active
-              </div>
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wide">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                PDF Compiler: Compiled
+
+              <div className="pt-4 border-t border-slate-100">
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Last Local Compilation
+                </span>
+                <span className="block text-xs font-bold text-slate-600 mt-1">
+                  July 6, 2026 - 12:07 PM
+                </span>
               </div>
             </div>
-
-            <div className="pt-4 border-t border-slate-100">
-              <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Last Local Compilation
-              </span>
-              <span className="block text-xs font-bold text-slate-600 mt-1">
-                July 6, 2026 - 12:07 PM
-              </span>
-            </div>
-          </div>
+          )}
         </div>
 
       </div>
