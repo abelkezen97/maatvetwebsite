@@ -207,7 +207,7 @@ export default function QuotesPage() {
       {isLoading ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-4" />
-          <p className="text-sm font-semibold text-slate-500">Loading quotations from Google Sheets...</p>
+          <p className="text-sm font-semibold text-slate-500">Loading quotations...</p>
         </div>
       ) : (
         <DataTable
