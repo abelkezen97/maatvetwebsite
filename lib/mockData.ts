@@ -13,7 +13,7 @@ export const demoUsers: User[] = [
     email: "kaleem@maatvet.com",
     name: "Dr. Kaleemullah M.",
     role: "Salesman",
-    avatarUrl: "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=150&q=80"
+    avatarUrl: "/kaleem.png"
   }
 ];
 
