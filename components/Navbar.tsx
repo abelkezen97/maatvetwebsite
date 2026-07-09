@@ -23,6 +23,11 @@ export function Navbar({ user, onMenuToggle }: NavbarProps) {
         >
           <Menu className="h-6 h-6" />
         </button>
+        {user && (
+          <span className="text-sm font-bold text-[#1B2A4A] tracking-tight bg-slate-50 border border-slate-200/60 px-3 py-1.5 rounded-xl">
+            {language === "en" ? `Welcome, ${user.name}` : `مرحباً بك، ${user.name}`}
+          </span>
+        )}
       </div>
 
       {/* Right side items */}
