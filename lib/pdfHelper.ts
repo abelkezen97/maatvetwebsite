@@ -91,12 +91,23 @@ export const buildPDF = (quote: Quote): jsPDF => {
   doc.text(`${quote.grandTotal.toFixed(2)}`, 195, yPos, { align: "right" });
 
   // Footer signature / disclaimer
-  yPos += 20;
+  yPos += 15;
   doc.setTextColor(100, 100, 100);
-  doc.setFont("helvetica", "italic");
   doc.setFontSize(8.5);
-  doc.text("Notes / Remarks:", 15, yPos);
-  doc.text(`${quote.notes || "This is a computer generated quote. Pricing valid for 30 days."}`, 15, yPos + 5);
+
+  if (quote.notes && quote.notes.trim() !== "") {
+    doc.setFont("helvetica", "bold");
+    doc.text("Special Remarks / Delivery Notes:", 15, yPos);
+    
+    doc.setFont("helvetica", "italic");
+    const splitNotes = doc.splitTextToSize(quote.notes.trim(), 180);
+    doc.text(splitNotes, 15, yPos + 5);
+    
+    yPos += 8 + (splitNotes.length * 4);
+  }
+
+  doc.setFont("helvetica", "normal");
+  doc.text("This is a computer generated quote. Pricing valid for 30 days.", 15, yPos);
 
   return doc;
 };
