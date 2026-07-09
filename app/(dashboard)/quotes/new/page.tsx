@@ -287,6 +287,11 @@ function NewQuoteForm() {
       const doc = buildPDF(newQuote);
       const pdfBase64 = doc.output("datauristring").split(",")[1];
 
+      // Convert items to human-readable string summary
+      const productsSummary = quoteItems
+        .map((item) => `${item.quantity} x ${item.productName} (@ AED ${item.discount.toFixed(2)})`)
+        .join(", ");
+
       // 2. Upload to Google Drive & log to sheet via our secure API
       const payload = {
         quoteNumber: newQuoteNum,
@@ -297,6 +302,7 @@ function NewQuoteForm() {
         grandTotal: grandTotal,
         fileName: `MAAT-QUOTE-${newQuoteNum}.pdf`,
         pdfBase64: pdfBase64,
+        productsListText: productsSummary,
         quoteJson: JSON.stringify(newQuote),
       };
 
