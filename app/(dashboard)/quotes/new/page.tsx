@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Trash2, Search, ArrowLeft, Percent, CheckCircle, X } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
-import { QuoteItem, Product, Customer } from "@/types";
+import { QuoteItem, Product, Customer, Quote } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { mockQuotes } from "@/lib/mockData";
 import { buildPDF } from "@/lib/pdfHelper";
@@ -26,6 +26,7 @@ function NewQuoteForm() {
   const [notes, setNotes] = useState("");
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [quotesList, setQuotesList] = useState<Quote[]>([]);
   
   // Search state for product selector modal/dropdown
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,12 +57,20 @@ function NewQuoteForm() {
       }
     }
     loadData();
+
+    // Load quotes from localStorage or fallback
+    const local = localStorage.getItem("maat_quotes");
+    if (local) {
+      setQuotesList(JSON.parse(local));
+    } else {
+      setQuotesList(mockQuotes);
+    }
   }, []);
 
   // Prepopulate form if in EDIT mode
   useEffect(() => {
-    if (editQuoteNumber && mockQuotes.length > 0) {
-      const existingQuote = mockQuotes.find((q) => q.quoteNumber === editQuoteNumber);
+    if (editQuoteNumber && quotesList.length > 0) {
+      const existingQuote = quotesList.find((q) => q.quoteNumber === editQuoteNumber);
       if (existingQuote) {
         setSelectedCustomerId(existingQuote.customerId);
         setNotes(existingQuote.notes || "");
@@ -79,7 +88,7 @@ function NewQuoteForm() {
         setQuoteItems(mappedItems);
       }
     }
-  }, [editQuoteNumber]);
+  }, [editQuoteNumber, quotesList]);
 
   // Selected customer object
   const selectedCustomer = useMemo(() => {
@@ -228,12 +237,12 @@ function NewQuoteForm() {
     if (!selectedCustomerId || quoteItems.length === 0 || isSaving) return;
 
     setIsSaving(true);
-    const newQuoteNum = editQuoteNumber || `QT-2026-0${mockQuotes.length + 1}`;
+    const newQuoteNum = editQuoteNumber || `QT-2026-0${quotesList.length + 1}`;
     const dateStr = new Date().toISOString().split("T")[0];
 
     const newQuote = {
       id: editQuoteNumber
-        ? (mockQuotes.find((q) => q.quoteNumber === editQuoteNumber)?.id || `q-mock-${Date.now()}`)
+        ? (quotesList.find((q) => q.quoteNumber === editQuoteNumber)?.id || `q-mock-${Date.now()}`)
         : `q-mock-${Date.now()}`,
       quoteNumber: newQuoteNum,
       customerId: selectedCustomerId,
@@ -280,18 +289,29 @@ function NewQuoteForm() {
         throw new Error("Failed to upload quote to Google Drive");
       }
 
-      // Add or Update in mockQuotes array
+      // Add or Update in quotesList and localStorage
+      let updatedQuotes = [...quotesList];
       if (editQuoteNumber) {
-        const existingIdx = mockQuotes.findIndex((q) => q.quoteNumber === editQuoteNumber);
+        const existingIdx = updatedQuotes.findIndex((q) => q.quoteNumber === editQuoteNumber);
         if (existingIdx > -1) {
-          mockQuotes[existingIdx] = newQuote;
+          updatedQuotes[existingIdx] = newQuote;
         } else {
-          mockQuotes.unshift(newQuote);
+          updatedQuotes.unshift(newQuote);
         }
         alert(`Quotation ${newQuoteNum} successfully updated in your Google Sheet & Drive!`);
       } else {
-        mockQuotes.unshift(newQuote);
+        updatedQuotes.unshift(newQuote);
         alert(`Quotation ${newQuoteNum} successfully generated and saved to Google Drive!`);
+      }
+
+      localStorage.setItem("maat_quotes", JSON.stringify(updatedQuotes));
+
+      // Also update in-memory fallback array
+      const fallbackIdx = mockQuotes.findIndex((q) => q.quoteNumber === newQuoteNum);
+      if (fallbackIdx > -1) {
+        mockQuotes[fallbackIdx] = newQuote;
+      } else {
+        mockQuotes.unshift(newQuote);
       }
 
       router.push("/quotes");
@@ -299,17 +319,27 @@ function NewQuoteForm() {
       console.error("Save quote error:", err);
       alert("Quotation saved locally, but failed to sync to Google Drive. Please check your network connection.");
       
-      // Still push in-memory for fallback session continuity
+      // Still push in-memory / localStorage for fallback session continuity
+      let updatedQuotes = [...quotesList];
       if (editQuoteNumber) {
-        const existingIdx = mockQuotes.findIndex((q) => q.quoteNumber === editQuoteNumber);
+        const existingIdx = updatedQuotes.findIndex((q) => q.quoteNumber === editQuoteNumber);
         if (existingIdx > -1) {
-          mockQuotes[existingIdx] = newQuote;
+          updatedQuotes[existingIdx] = newQuote;
         } else {
-          mockQuotes.unshift(newQuote);
+          updatedQuotes.unshift(newQuote);
         }
+      } else {
+        updatedQuotes.unshift(newQuote);
+      }
+      localStorage.setItem("maat_quotes", JSON.stringify(updatedQuotes));
+
+      const fallbackIdx = mockQuotes.findIndex((q) => q.quoteNumber === newQuoteNum);
+      if (fallbackIdx > -1) {
+        mockQuotes[fallbackIdx] = newQuote;
       } else {
         mockQuotes.unshift(newQuote);
       }
+      
       router.push("/quotes");
     } finally {
       setIsSaving(false);

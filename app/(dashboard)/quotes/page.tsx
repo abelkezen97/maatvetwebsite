@@ -18,12 +18,22 @@ export default function QuotesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
 
   useEffect(() => {
     fetch("/api/customers")
       .then((res) => res.json())
       .then((data) => setCustomers(data))
       .catch((err) => console.error("Failed to load customers:", err));
+
+    // Load quotes from localStorage or fallback to mockData
+    const local = localStorage.getItem("maat_quotes");
+    if (local) {
+      setQuotes(JSON.parse(local));
+    } else {
+      setQuotes(mockQuotes);
+      localStorage.setItem("maat_quotes", JSON.stringify(mockQuotes));
+    }
   }, []);
 
   const shareToWhatsApp = async (quote: Quote) => {
@@ -57,13 +67,13 @@ export default function QuotesPage() {
   };
 
   const filteredQuotes = useMemo(() => {
-    return mockQuotes.filter(
+    return quotes.filter(
       (q) =>
         q.quoteNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         q.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         q.companyName.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [searchQuery]);
+  }, [quotes, searchQuery]);
 
   // Premium PDF Generation using jsPDF
   const generatePDF = (quote: Quote) => {
