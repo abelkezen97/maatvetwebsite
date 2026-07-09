@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { FileText, Plus, Search, Eye, Download, X, MessageCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { FileText, Plus, Search, Eye, Download, X, MessageCircle, Pencil } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -13,6 +14,7 @@ import jsPDF from "jspdf";
 import { buildPDF } from "@/lib/pdfHelper";
 
 export default function QuotesPage() {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -136,6 +138,16 @@ export default function QuotesPage() {
             title="Share via WhatsApp"
           >
             <MessageCircle className="w-4 h-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/quotes/new?edit=${row.quoteNumber}`);
+            }}
+            className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 hover:text-amber-700 transition"
+            title="Edit Quote"
+          >
+            <Pencil className="w-4 h-4" />
           </button>
         </div>
       ),
