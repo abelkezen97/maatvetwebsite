@@ -24,7 +24,7 @@ export function Navbar({ user, onMenuToggle }: NavbarProps) {
           <Menu className="h-6 h-6" />
         </button>
         {user && (
-          <span className="text-sm font-bold text-slate-800 tracking-tight">
+          <span className="text-base md:text-lg font-extrabold text-slate-800 tracking-tight">
             {language === "en" ? `Welcome, ${user.name}` : `مرحباً بك، ${user.name}`}
           </span>
         )}
