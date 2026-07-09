@@ -425,11 +425,7 @@ function NewQuoteForm() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3 text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#61989B] mb-2" />
-        <h3 className="text-base font-bold text-slate-800">Loading Quote Builder...</h3>
-        <p className="text-sm text-slate-500 font-semibold max-w-sm">
-          Fetching live inventory catalog and client directory
-        </p>
-        <p className="text-xs font-bold text-slate-400 animate-pulse mt-2">
+        <p className="text-sm font-semibold text-slate-500 animate-pulse">
           Loading, Please Wait
         </p>
       </div>
