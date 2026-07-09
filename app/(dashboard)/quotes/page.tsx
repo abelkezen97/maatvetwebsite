@@ -16,11 +16,13 @@ import { useAuth } from "@/hooks/useAuth";
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return "";
   try {
-    const parts = dateStr.trim().split(/\s+/);
-    const datePart = parts[0];
-    const timePart = parts[1];
-
-    const d = new Date(datePart.replace(/-/g, "/"));
+    const cleanStr = dateStr.trim();
+    
+    // Check if the original string has a time component
+    const hasTime = cleanStr.includes("T") || /\s+\d+/.test(cleanStr);
+    
+    // Standard Date parsing works for ISO 8601 and other formats
+    const d = new Date(cleanStr);
     if (isNaN(d.getTime())) return dateStr;
 
     const day = String(d.getDate()).padStart(2, "0");
@@ -29,16 +31,16 @@ function formatDisplayDate(dateStr: string): string {
     const year = d.getFullYear();
     const formattedDate = `${day} ${month} ${year}`;
 
-    if (timePart) {
-      const timeSubparts = timePart.split(":");
-      let hours = parseInt(timeSubparts[0]) || 0;
-      const minutes = String(parseInt(timeSubparts[1]) || 0).padStart(2, "0");
+    if (hasTime) {
+      let hours = d.getHours();
+      const minutes = String(d.getMinutes()).padStart(2, "0");
       const ampm = hours >= 12 ? "PM" : "AM";
       hours = hours % 12;
       hours = hours ? hours : 12;
       const formattedHours = String(hours).padStart(2, "0");
       return `${formattedDate} ${formattedHours}:${minutes} ${ampm}`;
     }
+    
     return formattedDate;
   } catch (e) {
     return dateStr;
