@@ -472,7 +472,7 @@ function NewQuoteForm() {
                   </p>
                 </div>
               ) : (
-                <div className="border border-slate-100 rounded-2xl overflow-hidden">
+                <div className="border border-slate-100 rounded-2xl overflow-hidden font-sans">
                   <table className="w-full border-collapse text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-100">
                       <tr>
@@ -496,7 +496,7 @@ function NewQuoteForm() {
                               min={1}
                               value={item.quantity}
                               onChange={(e) => handleQtyChange(idx, e.target.value)}
-                              className="w-16 px-2 py-1 text-center bg-white border border-slate-200 rounded-lg text-slate-800 font-bold focus:outline-none focus:border-[#61989B] text-xs"
+                              className="w-16 px-2 py-1 text-center bg-white border border-slate-200 rounded-lg text-slate-800 font-bold focus:outline-none focus:border-[#61989B] text-xs animate-none"
                             />
                           </td>
                           <td className="px-4 py-3.5 text-right font-bold text-slate-500">
@@ -515,13 +515,13 @@ function NewQuoteForm() {
                           <td className="px-4 py-3.5 text-right font-bold text-[#1B2A4A]">
                             {item.total.toFixed(2)}
                           </td>
-                          <td className="px-3 py-3.5 text-center">
+                          <td className="px-4 py-4 text-center">
                             <button
                               type="button"
                               onClick={() => handleRemoveItem(idx)}
-                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 transition"
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-4.5 h-4.5" />
                             </button>
                           </td>
                         </tr>
@@ -534,27 +534,29 @@ function NewQuoteForm() {
           </div>
         </div>
 
-        {/* Right Side: Pricing / Summary panel */}
+        {/* Right Side: Summary Card (1/3 width) */}
         <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-            <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-              Quotation Summary
-            </h3>
-
-            {/* Calculations */}
-            <div className="space-y-3.5 text-sm">
-              <div className="flex justify-between font-semibold text-slate-500">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 sticky top-20">
+            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3">Quotation Summary</h3>
+            
+            {/* Calculation summary stack */}
+            <div className="space-y-3.5 text-sm font-semibold">
+              <div className="flex justify-between text-slate-500">
+                <span>Items Count:</span>
+                <span>{quoteItems.reduce((acc, curr) => acc + curr.quantity, 0)} items</span>
+              </div>
+              <div className="flex justify-between text-slate-500">
                 <span>Subtotal:</span>
                 <span>AED {subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between font-semibold text-rose-500">
-                <span>Discount Total:</span>
-                <span>-AED {discountTotal.toFixed(2)}</span>
-              </div>
-              
-              <hr className="border-slate-100" />
-              
-              <div className="flex justify-between font-extrabold text-[#1B2A4A] text-lg">
+              {discountTotal > 0 && (
+                <div className="flex justify-between text-slate-500">
+                  <span>Discount Total:</span>
+                  <span className="text-emerald-600">-{discountTotal.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-lg font-bold text-slate-900 border-t border-slate-100 pt-4 mt-2">
                 <span>Grand Total:</span>
                 <span>AED {grandTotal.toFixed(2)}</span>
               </div>
@@ -605,40 +607,39 @@ function NewQuoteForm() {
         <div className="fixed inset-0 z-10" onClick={() => setShowProductDropdown(false)} />
       )}
 
-      {/* Add New Customer Inline Modal */}
+      {/* Add Customer Modal */}
       {isCustModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl relative text-left">
             {formCustSuccess ? (
-              <div className="text-center py-8 space-y-3">
-                <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <CheckCircle className="w-6 h-6 animate-bounce" />
-                </div>
-                <h4 className="text-base font-bold text-slate-800">Customer Added Successfully</h4>
-                <p className="text-xs text-slate-400">Syncing with Google Sheets database...</p>
+              <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
+                <CheckCircle className="w-12 h-12 text-emerald-500 animate-bounce" />
+                <h4 className="text-lg font-bold text-slate-900">Customer Added Successfully</h4>
+                <p className="text-sm text-slate-400">Syncing with Google Sheets database...</p>
               </div>
             ) : (
               <>
-                <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-5">
-                  <h3 className="font-bold text-slate-900 text-base">Register New Customer</h3>
+                <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+                  <h3 className="text-lg font-bold text-slate-900">Add New Customer</h3>
                   <button
+                    type="button"
                     onClick={() => setIsCustModalOpen(false)}
-                    className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600"
+                    className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
                   >
-                    <X className="w-4.5 h-4.5" />
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
 
                 <form onSubmit={handleAddNewCustomer} className="space-y-4">
-                  {/* Company/Stable Name */}
+                  {/* Company/Clinic Name */}
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Clinic / Stable / Farm Name <span className="text-rose-500">*</span>
+                      Clinic / Farm Company Name
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Nicosia International Stable"
                       required
+                      placeholder="e.g. Al Saad Vet Pharmacy"
                       value={formCustCompany}
                       onChange={(e) => setFormCustCompany(e.target.value)}
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
