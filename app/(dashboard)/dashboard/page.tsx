@@ -1,6 +1,10 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
+import { Quote, Product, Customer } from "@/types";
+import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/hooks/useAuth";
+import { useRouter } from "next/navigation";
 import { 
   Package, 
   Users, 
@@ -8,24 +12,59 @@ import {
   Activity,
   ArrowRight,
   TrendingUp,
-  Award
+  Award,
+  Eye,
+  Download,
+  MessageCircle,
+  Pencil,
+  X,
+  CheckCircle
 } from "lucide-react";
+import { buildPDF } from "@/lib/pdfHelper";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { DashboardCard } from "@/components/DashboardCard";
 import { DataTable } from "@/components/DataTable";
-import { mockQuotes, mockActivity } from "@/lib/mockData";
-import { Quote, Product, Customer } from "@/types";
-import { useLanguage } from "@/context/LanguageContext";
-import { useAuth } from "@/hooks/useAuth";
+import { mockQuotes } from "@/lib/mockData";
+
+function formatDisplayDate(dateStr: string): string {
+  if (!dateStr) return "";
+  try {
+    const cleanStr = dateStr.trim();
+    const hasTime = cleanStr.includes("T") || /\s+\d+/.test(cleanStr);
+    const d = new Date(cleanStr);
+    if (isNaN(d.getTime())) return dateStr;
+
+    const day = String(d.getDate()).padStart(2, "0");
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    const formattedDate = `${day} ${month} ${year}`;
+
+    if (hasTime) {
+      let hours = d.getHours();
+      const minutes = String(d.getMinutes()).padStart(2, "0");
+      const ampm = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12;
+      hours = hours ? hours : 12;
+      const formattedHours = String(hours).padStart(2, "0");
+      return `${formattedDate} ${formattedHours}:${minutes} ${ampm}`;
+    }
+    return formattedDate;
+  } catch (e) {
+    return dateStr;
+  }
+}
 
 export default function DashboardPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -86,6 +125,37 @@ export default function DashboardPage() {
     return [...visibleQuotes].sort((a, b) => b.quoteNumber.localeCompare(a.quoteNumber)).slice(0, 3);
   }, [visibleQuotes]);
 
+  const shareToWhatsApp = async (quote: Quote) => {
+    const doc = buildPDF(quote);
+    const pdfBlob = doc.output("blob");
+    const fileName = `MAAT-QUOTE-${quote.quoteNumber}.pdf`;
+    const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
+
+    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      try {
+        await navigator.share({
+          files: [pdfFile],
+          title: `Quotation ${quote.quoteNumber}`,
+          text: `Please find attached our quotation Ref: ${quote.quoteNumber} for ${quote.companyName || quote.customerName}.`,
+        });
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          console.error("Error sharing PDF via native share:", err);
+        }
+      }
+    } else {
+      doc.save(fileName);
+      const message = `Please find attached our quotation Ref: ${quote.quoteNumber} for ${quote.companyName || quote.customerName}.`;
+      const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, "_blank");
+    }
+  };
+
+  const generatePDF = (quote: Quote) => {
+    const doc = buildPDF(quote);
+    doc.save(`MAAT-QUOTE-${quote.quoteNumber}.pdf`);
+  };
+
   // Columns for recent quotes table
   const quoteColumns = [
     {
@@ -104,12 +174,63 @@ export default function DashboardPage() {
       ),
     },
     {
+      header: "Date",
+      accessor: (row: Quote) => formatDisplayDate(row.date),
+      className: "w-44",
+    },
+    {
       header: t("grandTotalCol"),
       accessor: (row: Quote) => (
         <span className="font-bold text-slate-900">AED {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
       ),
     },
-
+    {
+      header: "Actions",
+      accessor: (row: Quote) => (
+        <div className="flex gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedQuote(row);
+            }}
+            title="View Details"
+            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              generatePDF(row);
+            }}
+            title="Download PDF"
+            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              shareToWhatsApp(row);
+            }}
+            title="Share via WhatsApp"
+            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
+          >
+            <MessageCircle className="w-4 h-4" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              router.push(`/quotes/new?edit=${row.quoteNumber}`);
+            }}
+            title="Edit Quote"
+            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-[#61989B] transition cursor-pointer"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -178,8 +299,134 @@ export default function DashboardPage() {
           data={recentQuotes}
           columns={quoteColumns}
           keyExtractor={(row, idx) => row.id || row.quoteNumber || `q-${idx}`}
+          onRowClick={(row) => setSelectedQuote(row)}
         />
       </div>
+
+      {/* Quote Detail Modal */}
+      {selectedQuote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Quotation Details</h3>
+                <span className="text-xs font-semibold text-slate-400">Ref: {selectedQuote.quoteNumber}</span>
+              </div>
+              <button
+                onClick={() => setSelectedQuote(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="space-y-6">
+              {/* Top metadata grid */}
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm border border-slate-100">
+                <div>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Customer</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{selectedQuote.customerName}</span>
+                  <span className="block text-slate-500 text-xs mt-0.5">{selectedQuote.companyName}</span>
+                </div>
+                <div>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Date & Agent</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{formatDisplayDate(selectedQuote.date)}</span>
+                  <span className="block text-slate-500 text-xs mt-0.5">{selectedQuote.salesmanName}</span>
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div className="space-y-2">
+                <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Quote Items</span>
+                <div className="border border-slate-100 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase">Product</th>
+                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-center">Qty</th>
+                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Price</th>
+                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                       {selectedQuote.items.map((item, idx) => (
+                        <tr key={idx}>
+                          <td className="px-4 py-3 font-semibold text-slate-700">
+                            {item.productName}
+                            {item.discount < item.price && (
+                              <span className="ml-2 text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
+                                (Base: AED {(item.price ?? 0).toFixed(2)})
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 text-center font-medium">{item.quantity}</td>
+                          <td className="px-4 py-3 text-slate-500 text-right font-medium">AED {(item.discount ?? 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-slate-800 text-right font-bold">AED {(item.total ?? 0).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Cost Calculation summary */}
+              <div className="flex flex-col items-end gap-1.5 border-t border-slate-100 pt-4 text-sm font-semibold">
+                <div className="flex w-64 justify-between text-slate-500">
+                  <span>Subtotal:</span>
+                  <span>AED {(selectedQuote.subtotal ?? 0).toFixed(2)}</span>
+                </div>
+                {(selectedQuote.discountTotal ?? 0) > 0 && (
+                  <div className="flex w-64 justify-between text-slate-500">
+                    <span>Discount Total:</span>
+                    <span className="text-emerald-600">-AED {(selectedQuote.discountTotal ?? 0).toFixed(2)}</span>
+                  </div>
+                )}
+
+                <div className="flex w-64 justify-between text-base font-bold text-slate-900 border-t border-slate-100 pt-2 mt-1">
+                  <span>Grand Total:</span>
+                  <span>AED {(selectedQuote.grandTotal ?? 0).toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {selectedQuote.notes && (
+                <div className="border-l-4 border-accent bg-[#61989B]/5 p-3.5 rounded-r-xl">
+                  <span className="block text-xs font-bold text-[#61989B] uppercase tracking-wider mb-1">Remarks / Remarks</span>
+                  <p className="text-sm text-slate-600 italic font-medium">"{selectedQuote.notes}"</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setSelectedQuote(null)}
+                  className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => shareToWhatsApp(selectedQuote)}
+                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-md shadow-emerald-600/10 cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Share via WhatsApp
+                </button>
+                <button
+                  onClick={() => generatePDF(selectedQuote)}
+                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-primary hover:bg-[#15223c] rounded-xl transition shadow-md shadow-primary/10"
+                >
+                  <Download className="w-4 h-4" />
+                  Download PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
