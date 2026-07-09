@@ -274,13 +274,13 @@ export default function QuotesPage() {
                             {item.productName}
                             {item.discount < item.price && (
                               <span className="ml-2 text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
-                                (Base: AED {item.price.toFixed(2)})
+                                (Base: AED {(item.price ?? 0).toFixed(2)})
                               </span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-slate-500 text-center font-medium">{item.quantity}</td>
-                          <td className="px-4 py-3 text-slate-500 text-right font-medium">AED {item.discount.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-slate-800 text-right font-bold">AED {item.total.toFixed(2)}</td>
+                          <td className="px-4 py-3 text-slate-500 text-right font-medium">AED {(item.discount ?? 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-slate-800 text-right font-bold">AED {(item.total ?? 0).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -292,18 +292,18 @@ export default function QuotesPage() {
               <div className="flex flex-col items-end gap-1.5 border-t border-slate-100 pt-4 text-sm font-semibold">
                 <div className="flex w-64 justify-between text-slate-500">
                   <span>Subtotal:</span>
-                  <span>AED {selectedQuote.subtotal.toFixed(2)}</span>
+                  <span>AED {(selectedQuote.subtotal ?? 0).toFixed(2)}</span>
                 </div>
-                {selectedQuote.discountTotal > 0 && (
+                {(selectedQuote.discountTotal ?? 0) > 0 && (
                   <div className="flex w-64 justify-between text-slate-500">
                     <span>Discount Total:</span>
-                    <span className="text-emerald-600">-{selectedQuote.discountTotal.toFixed(2)}</span>
+                    <span className="text-emerald-600">-AED {(selectedQuote.discountTotal ?? 0).toFixed(2)}</span>
                   </div>
                 )}
 
                 <div className="flex w-64 justify-between text-base font-bold text-slate-900 border-t border-slate-100 pt-2 mt-1">
                   <span>Grand Total:</span>
-                  <span>AED {selectedQuote.grandTotal.toFixed(2)}</span>
+                  <span>AED {(selectedQuote.grandTotal ?? 0).toFixed(2)}</span>
                 </div>
               </div>
 
