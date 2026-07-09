@@ -1,0 +1,27 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getClientSession } from "@/lib/auth";
+
+export default function RootPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const session = getClientSession();
+    if (session) {
+      router.replace("/dashboard");
+    } else {
+      router.replace("/login");
+    }
+  }, [router]);
+
+  return (
+    <div className="flex h-screen w-screen items-center justify-center bg-[#F8FAFC]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1B2A4A] border-t-transparent" />
+        <span className="text-sm font-semibold text-slate-500">Redirecting to MAAT Portal...</span>
+      </div>
+    </div>
+  );
+}
