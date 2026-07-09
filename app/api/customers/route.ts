@@ -41,9 +41,9 @@ export async function POST(request: Request) {
     };
 
     // Submit to Google Apps Script Web App
-    const scriptUrl = process.env.GOOGLE_CUSTOMERS_SCRIPT_URL;
-
+    let scriptUrl = process.env.GOOGLE_CUSTOMERS_SCRIPT_URL;
     if (scriptUrl) {
+      scriptUrl = scriptUrl.replace(/^"|"$/g, "");
       try {
         const params = new URLSearchParams();
         params.append("company", company);
@@ -52,9 +52,12 @@ export async function POST(request: Request) {
 
         const targetUrl = scriptUrl + (scriptUrl.includes("?") ? "&" : "?") + params.toString();
 
-        await fetch(targetUrl, {
+        const response = await fetch(targetUrl, {
           method: "GET",
+          cache: "no-store"
         });
+        const resText = await response.text();
+        console.log("Customer Apps Script Response:", response.status, resText);
       } catch (scriptError) {
         console.error("Google Apps Script customer post failed:", scriptError);
       }
