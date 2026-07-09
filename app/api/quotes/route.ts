@@ -1,10 +1,31 @@
 import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
+export async function GET() {
+  try {
+    const scriptUrl = process.env.GOOGLE_QUOTES_SCRIPT_URL;
+
+    if (!scriptUrl) {
+      console.warn("GOOGLE_QUOTES_SCRIPT_URL is not configured.");
+      return NextResponse.json([]);
+    }
+
+    const response = await fetch(scriptUrl, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Google Apps Script responded with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Failed to load quotes from Google Sheet:", error);
+    return NextResponse.json([]);
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
-
     const scriptUrl = process.env.GOOGLE_QUOTES_SCRIPT_URL;
 
     if (!scriptUrl) {

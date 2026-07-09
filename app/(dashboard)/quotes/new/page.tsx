@@ -41,7 +41,7 @@ function NewQuoteForm() {
   const [formCustSuccess, setFormCustSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load products and customers on mount
+  // Load products, customers, and quotes on mount
   useEffect(() => {
     async function loadData() {
       try {
@@ -52,19 +52,19 @@ function NewQuoteForm() {
         const custRes = await fetch("/api/customers");
         const custData = await custRes.json();
         setCustomers(custData.customers || []);
+
+        const quotesRes = await fetch("/api/quotes");
+        const quotesData = await quotesRes.json();
+        if (Array.isArray(quotesData) && quotesData.length > 0) {
+          setQuotesList(quotesData);
+        } else {
+          setQuotesList(mockQuotes);
+        }
       } catch (err) {
         console.error("Failed to load inventory/customer data:", err);
       }
     }
     loadData();
-
-    // Load quotes from localStorage or fallback
-    const local = localStorage.getItem("maat_quotes");
-    if (local) {
-      setQuotesList(JSON.parse(local));
-    } else {
-      setQuotesList(mockQuotes);
-    }
   }, []);
 
   // Prepopulate form if in EDIT mode
@@ -275,6 +275,9 @@ function NewQuoteForm() {
         grandTotal: grandTotal,
         fileName: `MAAT-QUOTE-${newQuoteNum}.pdf`,
         pdfBase64: pdfBase64,
+        itemsJson: JSON.stringify(quoteItems),
+        customerId: selectedCustomerId,
+        notes: notes,
       };
 
       const response = await fetch("/api/quotes", {

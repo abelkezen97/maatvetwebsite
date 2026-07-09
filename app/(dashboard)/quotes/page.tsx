@@ -19,6 +19,7 @@ export default function QuotesPage() {
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/customers")
@@ -26,14 +27,22 @@ export default function QuotesPage() {
       .then((data) => setCustomers(data))
       .catch((err) => console.error("Failed to load customers:", err));
 
-    // Load quotes from localStorage or fallback to mockData
-    const local = localStorage.getItem("maat_quotes");
-    if (local) {
-      setQuotes(JSON.parse(local));
-    } else {
-      setQuotes(mockQuotes);
-      localStorage.setItem("maat_quotes", JSON.stringify(mockQuotes));
-    }
+    // Load quotes from Google Sheets API
+    setIsLoading(true);
+    fetch("/api/quotes")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setQuotes(data);
+        } else {
+          setQuotes(mockQuotes);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load quotes:", err);
+        setQuotes(mockQuotes);
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   const shareToWhatsApp = async (quote: Quote) => {
@@ -195,14 +204,21 @@ export default function QuotesPage() {
       </div>
 
       {/* Quotes Table */}
-      <DataTable
-        data={filteredQuotes}
-        columns={columns}
-        keyExtractor={(row) => row.id}
-        onRowClick={(row) => setSelectedQuote(row)}
-        emptyTitle="No quotations found"
-        emptyDescription="Try searching for a different customer name or quotation number."
-      />
+      {isLoading ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-4" />
+          <p className="text-sm font-semibold text-slate-500">Loading quotations from Google Sheets...</p>
+        </div>
+      ) : (
+        <DataTable
+          data={filteredQuotes}
+          columns={columns}
+          keyExtractor={(row) => row.id}
+          onRowClick={(row) => setSelectedQuote(row)}
+          emptyTitle="No quotations found"
+          emptyDescription="Try searching for a different customer name or quotation number."
+        />
+      )}
 
       {/* Quote Detail Modal */}
       {selectedQuote && (
