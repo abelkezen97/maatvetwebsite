@@ -40,6 +40,7 @@ function NewQuoteForm() {
   const [isCustSubmitting, setIsCustSubmitting] = useState(false);
   const [formCustSuccess, setFormCustSuccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPageLoading, setIsPageLoading] = useState(true);
 
   // Load products, customers, and quotes on mount
   useEffect(() => {
@@ -62,10 +63,22 @@ function NewQuoteForm() {
         }
       } catch (err) {
         console.error("Failed to load inventory/customer data:", err);
+      } finally {
+        setIsPageLoading(false);
       }
     }
     loadData();
   }, []);
+
+  if (isPageLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#61989B]" />
+        <h3 className="text-base font-bold text-slate-800">Loading Quote Builder...</h3>
+        <p className="text-xs text-slate-400 font-semibold">Fetching live inventory catalog and client directory</p>
+      </div>
+    );
+  }
 
   // Prepopulate form if in EDIT mode
   useEffect(() => {
