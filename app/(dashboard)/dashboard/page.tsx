@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect } from "react";
-import { Quote, Product, Customer } from "@/types";
+import { Quote, Product, Customer, Invoice } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
@@ -18,14 +18,16 @@ import {
   MessageCircle,
   Pencil,
   X,
-  CheckCircle
+  CheckCircle,
+  DollarSign,
+  CreditCard
 } from "lucide-react";
 import { buildPDF } from "@/lib/pdfHelper";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { DashboardCard } from "@/components/DashboardCard";
 import { DataTable } from "@/components/DataTable";
-import { mockQuotes } from "@/lib/mockData";
+import { mockQuotes, mockInvoices } from "@/lib/mockData";
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -63,6 +65,7 @@ export default function DashboardPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
 
@@ -73,7 +76,7 @@ export default function DashboardPage() {
         const data = await res.json();
         setProducts(data.products || []);
 
-        const custRes = await fetch("/api/customers");
+        const custRes = await fetch("/api/customers?refresh=true");
         const custData = await custRes.json();
         setCustomers(custData.customers || []);
 
@@ -84,9 +87,44 @@ export default function DashboardPage() {
         } else {
           setQuotes(mockQuotes);
         }
+
+        const invRes = await fetch("/api/invoices");
+        const invData = await invRes.json();
+        if (Array.isArray(invData)) {
+          const parsedInvoices = invData.map((item: any) => {
+            if (item && Array.isArray(item.items)) {
+              return item;
+            }
+            if (item.invoiceJson) {
+              try {
+                return JSON.parse(item.invoiceJson);
+              } catch (e) {}
+            }
+            return {
+              id: item.invoiceNumber || `inv-${Date.now()}`,
+              invoiceNumber: item.invoiceNumber || "",
+              customerName: item.customerName || "",
+              companyName: item.companyName || "",
+              salesmanName: item.salesmanName || "",
+              date: item.date || "",
+              grandTotal: parseFloat(item.grandTotal) || 0,
+              status: item.status || "Unpaid",
+              items: [],
+              subtotal: parseFloat(item.grandTotal) || 0,
+              discountTotal: 0,
+              taxTotal: 0,
+            };
+          });
+          setInvoices(parsedInvoices);
+        } else {
+          const localInvs = localStorage.getItem("maat_invoices");
+          setInvoices(localInvs ? JSON.parse(localInvs) : mockInvoices);
+        }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
         setQuotes(mockQuotes);
+        const localInvs = localStorage.getItem("maat_invoices");
+        setInvoices(localInvs ? JSON.parse(localInvs) : mockInvoices);
       } finally {
         setLoading(false);
       }
@@ -94,7 +132,7 @@ export default function DashboardPage() {
     loadDashboardData();
   }, []);
 
-  // Segment quotes by Salesman role restrictions
+  // Segment quotes & invoices by Salesman role restrictions
   const visibleQuotes = useMemo(() => {
     if (user && user.role === "Salesman") {
       return quotes.filter((q) => q.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
@@ -102,23 +140,42 @@ export default function DashboardPage() {
     return quotes;
   }, [quotes, user]);
 
+  const visibleInvoices = useMemo(() => {
+    if (user && user.role === "Salesman") {
+      return invoices.filter((i) => i.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
+    }
+    return invoices;
+  }, [invoices, user]);
+
   // Compute metrics
   const metrics = useMemo(() => {
     const totalProducts = products.length;
     const totalClients = customers.length;
-    const totalQuotesCount = visibleQuotes.length;
-    
-    // Quotes count from today
-    const todayStr = new Date().toISOString().split("T")[0];
-    const todaysQuotes = visibleQuotes.filter(q => q.date === todayStr).length;
+
+    // 1. Calculate running month total invoice sales
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-indexed
+
+    const thisMonthInvoices = visibleInvoices.filter((inv) => {
+      if (!inv.date) return false;
+      const invDate = new Date(inv.date);
+      if (isNaN(invDate.getTime())) return false;
+      return invDate.getFullYear() === currentYear && invDate.getMonth() === currentMonth;
+    });
+
+    const thisMonthSales = thisMonthInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+
+    // 2. Calculate Pending Billwise Amount total from Customers
+    const pendingCreditAmount = customers.reduce((sum, c) => sum + (c.pendingBillwiseAmount || 0), 0);
 
     return {
       totalProducts,
       totalClients,
-      totalQuotesCount,
-      todaysQuotes
+      thisMonthSales,
+      pendingCreditAmount,
     };
-  }, [products, customers, visibleQuotes]);
+  }, [products, customers, visibleInvoices]);
 
   // Recent 3 quotes
   const recentQuotes = useMemo(() => {
@@ -260,26 +317,27 @@ export default function DashboardPage() {
         />
         <DashboardCard
           title={t("activeClients").toUpperCase()}
-          value={metrics.totalClients}
+          value={loading ? "..." : metrics.totalClients}
           description={t("veterinaryClinicsFarms")}
           icon={Users}
           trend={{ value: "8%", isPositive: true }}
         />
         <DashboardCard
-          title={t("totalQuotes").toUpperCase()}
-          value={metrics.totalQuotesCount}
-          description={t("quotationsIssuedTotal")}
-          icon={Award}
-          trend={{ value: "14%", isPositive: true }}
+          title={(t("thisMonthSales") || "THIS MONTH SALES").toUpperCase()}
+          value={loading ? "..." : `AED ${metrics.thisMonthSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          description={t("currentMonthSalesDesc") || "total invoice sales for running month"}
+          icon={TrendingUp}
+          trend={{ value: "18%", isPositive: true }}
         />
         <DashboardCard
-          title={t("todaysQuotes").toUpperCase()}
-          value={metrics.todaysQuotes}
-          description={t("quotationsCreatedToday")}
-          icon={FileText}
-          trend={{ value: "25%", isPositive: true }}
+          title={(t("pendingCreditAmount") || "PENDING CREDIT AMOUNT").toUpperCase()}
+          value={loading ? "..." : `AED ${metrics.pendingCreditAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          description={t("totalPendingBalanceDesc") || "total customer credit outstanding"}
+          icon={CreditCard}
+          trend={{ value: "5%", isPositive: false }}
         />
       </div>
+
 
       {/* Recent Quotes Section (Full Width) */}
       <div className="space-y-4 w-full mt-8">

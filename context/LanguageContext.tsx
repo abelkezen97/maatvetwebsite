@@ -32,7 +32,12 @@ export const translations: Record<Language, Record<string, string>> = {
     // Dashboard KPIs & Sections
     dashboardTitle: "Sales Dashboard",
     dashboardDesc: "Real-time veterinary inventory levels, client quotes, and salesmen stats.",
+    thisMonthSales: "THIS MONTH SALES",
+    pendingCreditAmount: "PENDING CREDIT AMOUNT",
+    currentMonthSalesDesc: "total invoice sales for running month",
+    totalPendingBalanceDesc: "total customer credit outstanding",
     totalProducts: "TOTAL PRODUCTS",
+
     totalStockValue: "TOTAL STOCK VALUE",
     lowStockWarnings: "LOW STOCK WARNINGS",
     todaysQuotes: "TODAY'S QUOTES",
@@ -150,7 +155,12 @@ export const translations: Record<Language, Record<string, string>> = {
     // Dashboard KPIs & Sections
     dashboardTitle: "لوحة تحكم المبيعات",
     dashboardDesc: "مستويات المخزون البيطري الفعلي، عروض أسعار العملاء، وإحصائيات المبيعات.",
+    thisMonthSales: "مبيعات هذا الشهر",
+    pendingCreditAmount: "إجمالي الائتمان المعلق",
+    currentMonthSalesDesc: "إجمالي مبيعات الفواتير للشهر الحالي",
+    totalPendingBalanceDesc: "إجمالي المبالغ الآجلة المستحقة على العملاء",
     totalProducts: "إجمالي المنتجات",
+
     totalStockValue: "إجمالي قيمة المخزون",
     lowStockWarnings: "تحذيرات نقص المخزون",
     todaysQuotes: "عروض اليوم",
