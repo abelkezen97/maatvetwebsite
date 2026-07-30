@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, Search, Eye, Download, X, MessageCircle, Pencil, ArrowRightLeft } from "lucide-react";
+import { FileText, Plus, Search, Eye, Download, X, MessageCircle, Pencil, ArrowRightLeft, RefreshCw } from "lucide-react";
+
 
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
@@ -57,29 +58,36 @@ export default function QuotesPage() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const loadQuotes = () => {
+    setIsLoading(true);
+    fetch(`/api/quotes?t=${Date.now()}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setQuotes(data);
+          localStorage.setItem("maat_quotes", JSON.stringify(data));
+        } else {
+          const localQuotes = localStorage.getItem("maat_quotes");
+          setQuotes(localQuotes ? JSON.parse(localQuotes) : mockQuotes);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load quotes:", err);
+        const localQuotes = localStorage.getItem("maat_quotes");
+        setQuotes(localQuotes ? JSON.parse(localQuotes) : mockQuotes);
+      })
+      .finally(() => setIsLoading(false));
+  };
+
   useEffect(() => {
     fetch("/api/customers")
       .then((res) => res.json())
       .then((data) => setCustomers(data))
       .catch((err) => console.error("Failed to load customers:", err));
 
-    // Load quotes from Google Sheets API
-    setIsLoading(true);
-    fetch("/api/quotes")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          setQuotes(data);
-        } else {
-          setQuotes(mockQuotes);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to load quotes:", err);
-        setQuotes(mockQuotes);
-      })
-      .finally(() => setIsLoading(false));
+    loadQuotes();
   }, []);
+
 
   const shareToWhatsApp = async (quote: Quote) => {
     const doc = buildPDF(quote);
@@ -233,15 +241,26 @@ export default function QuotesPage() {
         title="Quotations Manager"
         description="Review quotation lists, search clients, or export print-ready PDF catalogs."
         action={
-          <Link
-            href="/quotes/new"
-            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15"
-          >
-            <Plus className="w-4.5 h-4.5" />
-            New Quote
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={loadQuotes}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm transition focus:outline-none focus:ring-2 focus:ring-accent/15 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+              Sync Quotations
+            </button>
+            <Link
+              href="/quotes/new"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15"
+            >
+              <Plus className="w-4.5 h-4.5" />
+              New Quote
+            </Link>
+          </div>
         }
       />
+
 
       {/* Filter and Actions Bar */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
