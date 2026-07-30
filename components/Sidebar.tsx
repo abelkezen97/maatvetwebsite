@@ -36,6 +36,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
     { name: t("products"), href: "/products", icon: Package },
     { name: t("newQuote"), href: "/quotes/new", icon: FilePlus2 },
     { name: t("quotes"), href: "/quotes", icon: FileText },
+    { name: t("invoices"), href: "/invoices", icon: FileText },
     { name: t("customers"), href: "/customers", icon: Users },
     { name: t("settings"), href: "/settings", icon: Settings },
   ];
@@ -94,7 +95,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
         {menuItems.map((item) => {
           const isActive = 
             pathname === item.href || 
-            (item.href !== "/dashboard" && pathname.startsWith(item.href) && !(item.href === "/quotes" && pathname.startsWith("/quotes/new")));
+            (item.href !== "/dashboard" && pathname.startsWith(item.href) && !(item.href === "/quotes" && pathname.startsWith("/quotes/new")) && !(item.href === "/invoices" && pathname.startsWith("/invoices/new")));
           const Icon = item.icon;
 
           return (

@@ -33,10 +33,11 @@ To allow the Sales Portal to read and add new customers dynamically:
 
 ### Step 1: Create your Customer Google Sheet
 1. Create a brand new Google Sheet.
-2. Setup three columns in the first row (headers):
+2. Setup four columns in the first row (headers):
    * **Company** (Column A)
    * **Contact Name** (Column B)
    * **Location** (Column C)
+   * **Pending Billwise Amount** (Column D)
 
 ### Step 2: Add Apps Script for Writing Customers
 To allow the portal to add new customers from the web:
@@ -48,15 +49,35 @@ function doGet(e) {
   try {
     var activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = activeSpreadsheet.getSheets()[0];
-    
+    var action = e.parameter.action;
+
+    // ACTION 1: Update Pending Balance for an existing customer
+    if (action === "updatePending") {
+      var targetCompany = (e.parameter.company || "").toLowerCase().trim();
+      var amountToAdd = parseFloat(e.parameter.amountToAdd) || 0;
+      var data = sheet.getDataRange().getValues();
+
+      for (var i = 1; i < data.length; i++) {
+        var sheetCompany = (data[i][0] || "").toString().toLowerCase().trim();
+        if (sheetCompany === targetCompany) {
+          var currentVal = parseFloat(data[i][3]) || 0;
+          var newVal = currentVal + amountToAdd;
+          sheet.getRange(i + 1, 4).setValue(newVal); // Update Column D
+          return ContentService.createTextOutput("Updated: " + newVal)
+            .setMimeType(ContentService.MimeType.TEXT);
+        }
+      }
+      return ContentService.createTextOutput("Customer not found").setMimeType(ContentService.MimeType.TEXT);
+    }
+
+    // ACTION 2: Append New Customer Row
     var company = e.parameter.company;
     var name = e.parameter.name;
     var location = e.parameter.location;
-    
+    var pendingAmount = e.parameter.pendingAmount || "0";
+
     if (company) {
-      // Append new customer row matching Column A, B, C structure
-      sheet.appendRow([company, name, location]);
-      
+      sheet.appendRow([company, name, location, pendingAmount]);
       return ContentService.createTextOutput("Success")
         .setMimeType(ContentService.MimeType.TEXT);
     } else {
@@ -69,6 +90,8 @@ function doGet(e) {
   }
 }
 ```
+
+
 3. Click the **Save** icon.
 4. Click **Deploy** > **New Deployment**.
 5. Select **Web app** as the type.

@@ -29,7 +29,9 @@ export interface Customer {
   email: string;
   phone: string;
   address?: string;
+  pendingBillwiseAmount?: number;
 }
+
 
 export interface QuoteItem {
   productId: string;
@@ -57,3 +59,25 @@ export interface Quote {
   status: "Pending" | "Approved" | "Rejected";
   notes?: string;
 }
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  quoteNumber?: string;
+  customerId: string;
+  customerName: string;
+  companyName: string;
+  salesmanId: string;
+  salesmanName: string;
+  date: string;
+  items: QuoteItem[];
+  subtotal: number;
+  discountTotal: number;
+  taxTotal: number;
+  grandTotal: number;
+  status: "Paid" | "Credit";
+  creditDays?: number;
+  notes?: string;
+}
+
+

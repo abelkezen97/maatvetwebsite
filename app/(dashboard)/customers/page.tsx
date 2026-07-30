@@ -20,13 +20,14 @@ export default function CustomersPage() {
   const [formCompany, setFormCompany] = useState("");
   const [formName, setFormName] = useState("");
   const [formLocation, setFormLocation] = useState("");
+  const [formPendingAmount, setFormPendingAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formSuccess, setFormSuccess] = useState(false);
 
   const loadCustomers = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/customers?t=${Date.now()}`);
+      const res = await fetch(`/api/customers?refresh=true&t=${Date.now()}`);
       const data = await res.json();
       setCustomers(data.customers || []);
     } catch (err) {
@@ -35,6 +36,7 @@ export default function CustomersPage() {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     loadCustomers();
@@ -58,6 +60,7 @@ export default function CustomersPage() {
     formData.append("company", formCompany);
     formData.append("name", formName);
     formData.append("location", formLocation);
+    formData.append("pendingAmount", formPendingAmount || "0");
 
     try {
       const res = await fetch("/api/customers", {
@@ -72,6 +75,7 @@ export default function CustomersPage() {
           setFormCompany("");
           setFormName("");
           setFormLocation("");
+          setFormPendingAmount("");
           setFormSuccess(false);
           loadCustomers();
         }, 1500);
@@ -103,15 +107,28 @@ export default function CustomersPage() {
       className: "w-48",
     },
     {
+      header: "Pending Billwise Amount",
+      accessor: (row: Customer) => {
+        const amt = row.pendingBillwiseAmount || 0;
+        return (
+          <span className={`font-extrabold ${amt > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+            AED {amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+        );
+      },
+      className: "w-48 text-right",
+    },
+    {
       header: t("phoneHeader") || "Phone Number",
       accessor: (row: Customer) => (
         <span className="font-bold text-slate-850">
           {row.phone || "—"}
         </span>
       ),
-      className: "w-44",
+      className: "w-36",
     },
   ];
+
 
   return (
     <div className="space-y-6">
@@ -229,6 +246,22 @@ export default function CustomersPage() {
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
                     />
                   </div>
+
+                  {/* Pending Billwise Amount */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Pending Billwise Amount (AED)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={formPendingAmount}
+                      onChange={(e) => setFormPendingAmount(e.target.value)}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+                    />
+                  </div>
+
 
                   {/* Modal Action buttons */}
                   <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">

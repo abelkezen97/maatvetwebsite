@@ -159,6 +159,8 @@ export async function fetchCustomersFromGoogleSheet(): Promise<Customer[]> {
       const company = row[0]?.trim() || "";
       const contactPerson = row[1]?.trim() || "";
       const location = row[2]?.trim() || "";
+      const pendingAmountRaw = row[3]?.trim() || "0";
+      const pendingBillwiseAmount = parseFloat(pendingAmountRaw.replace(/[^0-9.-]+/g, "")) || 0;
 
       if (company) {
         customers.push({
@@ -168,8 +170,10 @@ export async function fetchCustomersFromGoogleSheet(): Promise<Customer[]> {
           address: location.replace(/^"|"$/g, ""),
           phone: "", // phone number keep blank
           email: "",
+          pendingBillwiseAmount,
         });
       }
+
     });
 
     cachedCustomers = customers;

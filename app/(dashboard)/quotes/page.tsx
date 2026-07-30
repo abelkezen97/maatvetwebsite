@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, Plus, Search, Eye, Download, X, MessageCircle, Pencil } from "lucide-react";
+import { FileText, Plus, Search, Eye, Download, X, MessageCircle, Pencil, Receipt } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { SearchInput } from "@/components/SearchInput";
@@ -200,6 +200,15 @@ export default function QuotesPage() {
           <button
             onClick={(e) => {
               e.stopPropagation();
+              router.push(`/invoices/new?fromQuote=${row.quoteNumber}`);
+            }}
+            className="px-2.5 py-1 text-xs font-extrabold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-700 transition border border-indigo-100 cursor-pointer"
+          >
+            Convert to Invoice
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
               router.push(`/quotes/new?edit=${row.quoteNumber}`);
             }}
             className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 hover:text-amber-700 transition"
@@ -209,7 +218,7 @@ export default function QuotesPage() {
           </button>
         </div>
       ),
-      className: "w-28 text-center",
+      className: "w-64 text-center",
     },
   ];
 
@@ -370,6 +379,13 @@ export default function QuotesPage() {
                 >
                   <MessageCircle className="w-4 h-4" />
                   Share via WhatsApp
+                </button>
+                <button
+                  onClick={() => router.push(`/invoices/new?fromQuote=${selectedQuote.quoteNumber}`)}
+                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-[#61989B] hover:bg-[#4e7d80] rounded-xl transition shadow-md shadow-[#61989B]/10 cursor-pointer"
+                >
+                  <Receipt className="w-4 h-4" />
+                  Convert to Invoice
                 </button>
                 <button
                   onClick={() => generatePDF(selectedQuote)}

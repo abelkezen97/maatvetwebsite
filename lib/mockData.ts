@@ -1,4 +1,4 @@
-import { Product, Customer, Quote, User } from "../types";
+import { Product, Customer, Quote, User, Invoice } from "../types";
 
 export const demoUsers: User[] = [
   {
@@ -120,4 +120,7 @@ export const mockCustomers: Customer[] = [
 
 export const mockQuotes: Quote[] = [];
 
+export const mockInvoices: Invoice[] = [];
+
 export const mockActivity: { id: string; user: string; action: string; target: string; time: string; }[] = [];
+
