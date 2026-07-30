@@ -202,10 +202,12 @@ export default function QuotesPage() {
               e.stopPropagation();
               router.push(`/invoices/new?fromQuote=${row.quoteNumber}`);
             }}
-            className="px-2.5 py-1 text-xs font-extrabold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-700 transition border border-indigo-100 cursor-pointer"
+            className="px-2.5 py-1 text-xs font-extrabold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-700 transition border border-indigo-100 cursor-pointer whitespace-nowrap"
+            title="Convert Quote to Invoice"
           >
-            Convert to Invoice
+            Invoice
           </button>
+
           <button
             onClick={(e) => {
               e.stopPropagation();
