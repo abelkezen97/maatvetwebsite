@@ -132,6 +132,8 @@ function NewQuoteForm() {
     return customers.find((c) => c.id === selectedCustomerId);
   }, [selectedCustomerId, customers]);
 
+
+
   // Filter customers by search query
   const filteredCustomers = useMemo(() => {
     if (!customerSearchQuery) return customers;
@@ -535,18 +537,43 @@ function NewQuoteForm() {
                           <div className="font-bold text-slate-800 text-sm">{c.company}</div>
                           {c.name && <div className="text-xs text-slate-400 font-medium">Doctor: {c.name}</div>}
                         </div>
-                        {c.address && (
-                          <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                            {c.address}
-                          </span>
-                        )}
+                        <div className="flex flex-col items-end gap-1">
+                          {c.address && (
+                            <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              {c.address}
+                            </span>
+                          )}
+                          {(c.pendingBillwiseAmount || 0) > 0 && (
+                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
+                              Pending: AED {(c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </div>
                       </button>
                     ))
                   )}
                 </div>
               )}
             </div>
+
+            {/* Selected Customer Pending Billwise Details Box */}
+            {selectedCustomer && (
+              <div className="mt-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Selected Account</span>
+                  <span className="font-extrabold text-slate-800 text-sm">{selectedCustomer.company}</span>
+                  {selectedCustomer.name && <span className="text-xs font-semibold text-slate-500 ml-2">({selectedCustomer.name})</span>}
+                </div>
+                <div className="text-right">
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Pending Billwise Amount</span>
+                  <span className={`text-sm font-extrabold ${(selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    AED {(selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
+
 
           {/* Product Items Selector */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
