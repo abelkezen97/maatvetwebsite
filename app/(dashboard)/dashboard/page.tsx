@@ -297,14 +297,23 @@ export default function DashboardPage() {
         title={t("dashboardTitle")} 
         description={t("dashboardDesc")}
         action={
-          <Link
-            href="/quotes/new"
-            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15"
-          >
-            {t("createQuote")}
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/invoices/new"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-white font-bold hover:bg-[#15223c] transition shadow-md shadow-primary/15"
+            >
+              {t("createInvoice") || "Create Invoice"}
+            </Link>
+            <Link
+              href="/quotes/new"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15"
+            >
+              {t("createQuote")}
+            </Link>
+          </div>
         }
       />
+
 
       {/* Metric Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

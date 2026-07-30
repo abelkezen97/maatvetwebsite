@@ -47,6 +47,8 @@ export const translations: Record<Language, Record<string, string>> = {
     viewAllQuotes: "View All Quotes",
     manageInventory: "Manage Inventory",
     createQuote: "Create Quote",
+    createInvoice: "Create Invoice",
+
     activeClients: "ACTIVE CLIENTS",
     totalQuotes: "TOTAL QUOTES",
     cataloguedMedicines: "catalogued medicines",
@@ -170,6 +172,8 @@ export const translations: Record<Language, Record<string, string>> = {
     viewAllQuotes: "عرض جميع العروض",
     manageInventory: "إدارة المخزون",
     createQuote: "إنشاء عرض سعر",
+    createInvoice: "إنشاء فاتورة",
+
     activeClients: "العملاء النشطون",
     totalQuotes: "إجمالي العروض",
     cataloguedMedicines: "الأدوية المسجلة بالكتالوج",
