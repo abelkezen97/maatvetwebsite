@@ -72,26 +72,25 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const res = await fetch("/api/products");
-        const data = await res.json();
-        setProducts(data.products || []);
+        // Parallelize all API calls for instant loading
+        const [prodRes, custRes, quotesRes, invRes] = await Promise.all([
+          fetch("/api/products").then((r) => r.json()).catch(() => ({ products: [] })),
+          fetch("/api/customers").then((r) => r.json()).catch(() => ({ customers: [] })),
+          fetch("/api/quotes").then((r) => r.json()).catch(() => []),
+          fetch("/api/invoices").then((r) => r.json()).catch(() => []),
+        ]);
 
-        const custRes = await fetch("/api/customers?refresh=true");
-        const custData = await custRes.json();
-        setCustomers(custData.customers || []);
+        setProducts(prodRes.products || []);
+        setCustomers(custRes.customers || []);
 
-        const quotesRes = await fetch("/api/quotes");
-        const quotesData = await quotesRes.json();
-        if (Array.isArray(quotesData)) {
-          setQuotes(quotesData);
+        if (Array.isArray(quotesRes)) {
+          setQuotes(quotesRes);
         } else {
           setQuotes(mockQuotes);
         }
 
-        const invRes = await fetch("/api/invoices");
-        const invData = await invRes.json();
-        if (Array.isArray(invData)) {
-          const parsedInvoices = invData.map((item: any) => {
+        if (Array.isArray(invRes)) {
+          const parsedInvoices = invRes.map((item: any) => {
             if (item && Array.isArray(item.items)) {
               return item;
             }
@@ -131,6 +130,7 @@ export default function DashboardPage() {
     }
     loadDashboardData();
   }, []);
+
 
   // Segment quotes & invoices by Salesman role restrictions
   const visibleQuotes = useMemo(() => {
