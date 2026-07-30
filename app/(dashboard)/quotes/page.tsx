@@ -63,21 +63,22 @@ export default function QuotesPage() {
     fetch(`/api/quotes?t=${Date.now()}`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setQuotes(data);
           localStorage.setItem("maat_quotes", JSON.stringify(data));
         } else {
           const localQuotes = localStorage.getItem("maat_quotes");
-          setQuotes(localQuotes ? JSON.parse(localQuotes) : mockQuotes);
+          setQuotes(localQuotes ? JSON.parse(localQuotes) : []);
         }
       })
       .catch((err) => {
         console.error("Failed to load quotes:", err);
         const localQuotes = localStorage.getItem("maat_quotes");
-        setQuotes(localQuotes ? JSON.parse(localQuotes) : mockQuotes);
+        setQuotes(localQuotes ? JSON.parse(localQuotes) : []);
       })
       .finally(() => setIsLoading(false));
   };
+
 
   useEffect(() => {
     fetch("/api/customers")

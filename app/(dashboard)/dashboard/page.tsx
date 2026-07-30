@@ -87,7 +87,7 @@ export default function DashboardPage() {
         if (Array.isArray(quotesRes)) {
           setQuotes(quotesRes);
         } else {
-          setQuotes(mockQuotes);
+          setQuotes([]);
         }
 
         if (Array.isArray(invRes)) {
@@ -118,17 +118,18 @@ export default function DashboardPage() {
           setInvoices(parsedInvoices);
         } else {
           const localInvs = localStorage.getItem("maat_invoices");
-          setInvoices(localInvs ? JSON.parse(localInvs) : mockInvoices);
+          setInvoices(localInvs ? JSON.parse(localInvs) : []);
         }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
-        setQuotes(mockQuotes);
+        setQuotes([]);
         const localInvs = localStorage.getItem("maat_invoices");
-        setInvoices(localInvs ? JSON.parse(localInvs) : mockInvoices);
+        setInvoices(localInvs ? JSON.parse(localInvs) : []);
       } finally {
         setLoading(false);
       }
     }
+
     loadDashboardData();
   }, []);
 
