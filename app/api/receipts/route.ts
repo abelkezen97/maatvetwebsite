@@ -1,31 +1,53 @@
 import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+let cachedReceipts: any[] | null = null;
+let lastReceiptsFetchTime = 0;
+const CACHE_TTL = 3 * 60 * 1000; // 3 minutes in-memory cache
+
+export function clearReceiptsCache() {
+  cachedReceipts = null;
+  lastReceiptsFetchTime = 0;
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const forceRefresh = searchParams.get("refresh") === "true";
+  const now = Date.now();
+
+  if (!forceRefresh && cachedReceipts && now - lastReceiptsFetchTime < CACHE_TTL) {
+    return NextResponse.json(cachedReceipts);
+  }
+
   try {
     let scriptUrl = process.env.GOOGLE_RECEIPTS_SCRIPT_URL;
 
     if (!scriptUrl) {
       console.warn("GOOGLE_RECEIPTS_SCRIPT_URL is not configured.");
-      return NextResponse.json([]);
+      return NextResponse.json(cachedReceipts || []);
     }
 
     scriptUrl = scriptUrl.replace(/^"|"$/g, "").trim();
 
-    const response = await fetch(scriptUrl, { cache: "no-store", signal: AbortSignal.timeout(25000) });
+    const response = await fetch(scriptUrl, { cache: "no-store", signal: AbortSignal.timeout(10000) });
     if (!response.ok) {
       throw new Error(`Google Apps Script responded with status ${response.status}`);
     }
 
     const data = await response.json();
+    if (Array.isArray(data)) {
+      cachedReceipts = data;
+      lastReceiptsFetchTime = now;
+    }
     return NextResponse.json(data);
   } catch (error) {
     console.error("Failed to load receipts from Google Sheet:", error);
-    return NextResponse.json([]);
+    return NextResponse.json(cachedReceipts || []);
   }
 }
 
 export async function POST(request: Request) {
+  clearReceiptsCache();
   try {
     const payload = await request.json();
     const { searchParams } = new URL(request.url);

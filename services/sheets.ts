@@ -29,7 +29,7 @@ export async function fetchProductsFromGoogleSheet(): Promise<Product[]> {
   try {
     // Export standard sheet as CSV (avoids needing authentication keys/Google Console config)
     const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
-    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(25000) }); // cache list for 15s
+    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
 
     if (!response.ok) {
       throw new Error(`Google Sheets responded with status ${response.status}`);
@@ -125,7 +125,7 @@ export async function fetchCustomersFromGoogleSheet(): Promise<Customer[]> {
       : spreadsheetId.startsWith("2PACX-")
         ? `https://docs.google.com/spreadsheets/d/e/${spreadsheetId}/pub?output=csv`
         : `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
-    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(25000) });
+    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(8000) });
 
     if (!response.ok) {
       throw new Error(`Google Sheets responded with status ${response.status}`);
