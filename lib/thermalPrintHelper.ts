@@ -82,7 +82,16 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
         <div class="row"><span>Date:</span><span>${formatDisplayDate(invoice.date)}</span></div>
         ${invoice.customerName ? `<div class="row"><span>Customer:</span><span class="bold">${invoice.customerName}</span></div>` : ""}
         ${invoice.companyName ? `<div class="row"><span>Company:</span><span>${invoice.companyName}</span></div>` : ""}
-        <div class="row"><span>Status:</span><span class="bold">${invoice.status || "Unpaid"}</span></div>
+        ${
+          invoice.status === "Credit" && invoice.creditDays
+            ? `<div class="row"><span>Status:</span><span class="bold">Credit (${invoice.creditDays} Days)</span></div>`
+            : `<div class="row"><span>Status:</span><span class="bold">${invoice.status || "Unpaid"}</span></div>`
+        }
+        ${
+          invoice.creditDays && invoice.status !== "Credit"
+            ? `<div class="row"><span>Credit Days:</span><span class="bold">${invoice.creditDays} Days</span></div>`
+            : ""
+        }
 
         <div class="divider"></div>
 
