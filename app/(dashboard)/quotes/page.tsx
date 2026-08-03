@@ -60,21 +60,31 @@ export default function QuotesPage() {
 
   const loadQuotes = () => {
     setIsLoading(true);
+    let localQuotes: Quote[] = [];
+    try {
+      const localData = localStorage.getItem("maat_quotes");
+      localQuotes = localData ? JSON.parse(localData) : mockQuotes;
+      if (localQuotes.length > 0) {
+        setQuotes(localQuotes);
+      }
+    } catch (e) {}
+
     fetch(`/api/quotes?t=${Date.now()}`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) {
-          setQuotes(data);
-          localStorage.setItem("maat_quotes", JSON.stringify(data));
-        } else {
-          const localQuotes = localStorage.getItem("maat_quotes");
-          setQuotes(localQuotes ? JSON.parse(localQuotes) : []);
+        if (Array.isArray(data) && data.length > 0) {
+          const merged = [...data];
+          localQuotes.forEach((lq) => {
+            if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
+              merged.unshift(lq);
+            }
+          });
+          setQuotes(merged);
+          localStorage.setItem("maat_quotes", JSON.stringify(merged));
         }
       })
       .catch((err) => {
         console.error("Failed to load quotes:", err);
-        const localQuotes = localStorage.getItem("maat_quotes");
-        setQuotes(localQuotes ? JSON.parse(localQuotes) : []);
       })
       .finally(() => setIsLoading(false));
   };

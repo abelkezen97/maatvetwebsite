@@ -71,9 +71,21 @@ export default function DashboardPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
+    // 1. Instant local load
+    let localQuotes: Quote[] = [];
+    let localInvoices: Invoice[] = [];
+    try {
+      const qStr = localStorage.getItem("maat_quotes");
+      localQuotes = qStr ? JSON.parse(qStr) : mockQuotes;
+      if (localQuotes.length > 0) setQuotes(localQuotes);
+
+      const iStr = localStorage.getItem("maat_invoices");
+      localInvoices = iStr ? JSON.parse(iStr) : mockInvoices;
+      if (localInvoices.length > 0) setInvoices(localInvoices);
+    } catch (e) {}
+
     async function loadDashboardData() {
       try {
-        // Parallelize all API calls for instant loading
         const [prodRes, custRes, quotesRes, invRes] = await Promise.all([
           fetch("/api/products").then((r) => r.json()).catch(() => ({ products: [] })),
           fetch("/api/customers").then((r) => r.json()).catch(() => ({ customers: [] })),
@@ -81,24 +93,28 @@ export default function DashboardPage() {
           fetch("/api/invoices").then((r) => r.json()).catch(() => []),
         ]);
 
-        setProducts(prodRes.products || []);
-        setCustomers(custRes.customers || []);
+        if (prodRes.products) setProducts(prodRes.products);
+        if (custRes.customers) setCustomers(custRes.customers);
 
-        if (Array.isArray(quotesRes)) {
-          setQuotes(quotesRes);
-        } else {
-          setQuotes([]);
-        }
-
-        if (Array.isArray(invRes)) {
-          const parsedInvoices = invRes.map((item: any) => {
-            if (item && Array.isArray(item.items)) {
-              return item;
+        let finalQuotes = [...localQuotes];
+        if (Array.isArray(quotesRes) && quotesRes.length > 0) {
+          const merged = [...quotesRes];
+          localQuotes.forEach((lq) => {
+            if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
+              merged.unshift(lq);
             }
+          });
+          finalQuotes = merged;
+        }
+        setQuotes(finalQuotes);
+        localStorage.setItem("maat_quotes", JSON.stringify(finalQuotes));
+
+        let finalInvoices = [...localInvoices];
+        if (Array.isArray(invRes) && invRes.length > 0) {
+          const parsedInvoices = invRes.map((item: any) => {
+            if (item && Array.isArray(item.items)) return item;
             if (item.invoiceJson) {
-              try {
-                return JSON.parse(item.invoiceJson);
-              } catch (e) {}
+              try { return JSON.parse(item.invoiceJson); } catch (e) {}
             }
             return {
               id: item.invoiceNumber || `inv-${Date.now()}`,
@@ -115,16 +131,19 @@ export default function DashboardPage() {
               taxTotal: 0,
             };
           });
-          setInvoices(parsedInvoices);
-        } else {
-          const localInvs = localStorage.getItem("maat_invoices");
-          setInvoices(localInvs ? JSON.parse(localInvs) : []);
+
+          const mergedInvs = [...parsedInvoices];
+          localInvoices.forEach((li) => {
+            if (li.invoiceNumber && !mergedInvs.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
+              mergedInvs.unshift(li);
+            }
+          });
+          finalInvoices = mergedInvs;
         }
+        setInvoices(finalInvoices);
+        localStorage.setItem("maat_invoices", JSON.stringify(finalInvoices));
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
-        setQuotes([]);
-        const localInvs = localStorage.getItem("maat_invoices");
-        setInvoices(localInvs ? JSON.parse(localInvs) : []);
       } finally {
         setLoading(false);
       }

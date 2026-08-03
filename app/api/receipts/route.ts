@@ -12,7 +12,7 @@ export async function GET() {
 
     scriptUrl = scriptUrl.replace(/^"|"$/g, "").trim();
 
-    const response = await fetch(scriptUrl, { cache: "no-store" });
+    const response = await fetch(scriptUrl, { cache: "no-store", signal: AbortSignal.timeout(5000) });
     if (!response.ok) {
       throw new Error(`Google Apps Script responded with status ${response.status}`);
     }

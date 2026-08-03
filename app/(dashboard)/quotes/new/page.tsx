@@ -52,6 +52,13 @@ function NewQuoteForm() {
 
   // Load products, customers, and quotes on mount
   useEffect(() => {
+    let localQuotes: Quote[] = [];
+    try {
+      const qStr = localStorage.getItem("maat_quotes");
+      localQuotes = qStr ? JSON.parse(qStr) : mockQuotes;
+      if (localQuotes.length > 0) setQuotesList(localQuotes);
+    } catch (e) {}
+
     async function loadData() {
       try {
         const prodRes = await fetch("/api/products");
@@ -65,9 +72,14 @@ function NewQuoteForm() {
         const quotesRes = await fetch("/api/quotes");
         const quotesData = await quotesRes.json();
         if (Array.isArray(quotesData) && quotesData.length > 0) {
-          setQuotesList(quotesData);
-        } else {
-          setQuotesList(mockQuotes);
+          const merged = [...quotesData];
+          localQuotes.forEach((lq) => {
+            if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
+              merged.unshift(lq);
+            }
+          });
+          setQuotesList(merged);
+          localStorage.setItem("maat_quotes", JSON.stringify(merged));
         }
       } catch (err) {
         console.error("Failed to load inventory/customer data:", err);

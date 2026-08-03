@@ -51,21 +51,27 @@ export default function InvoicesPage() {
 
   const loadInvoices = () => {
     setIsLoading(true);
+    let localInvoices: Invoice[] = [];
+    try {
+      const localData = localStorage.getItem("maat_invoices");
+      localInvoices = localData ? JSON.parse(localData) : mockInvoices;
+      if (localInvoices.length > 0) {
+        setInvoices(localInvoices);
+      }
+    } catch (e) {}
+
     fetch("/api/invoices")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           const parsedInvoices = data.map((item: any) => {
-            // If it is already parsed and contains items array, return it directly
             if (item && Array.isArray(item.items)) {
               return item;
             }
             if (item.invoiceJson) {
               try {
                 return JSON.parse(item.invoiceJson);
-              } catch (e) {
-                // fallback
-              }
+              } catch (e) {}
             }
             return {
               id: item.invoiceNumber || `inv-${Date.now()}`,
@@ -82,17 +88,20 @@ export default function InvoicesPage() {
               taxTotal: 0,
             };
           });
-          setInvoices(parsedInvoices);
-          localStorage.setItem("maat_invoices", JSON.stringify(parsedInvoices));
-        } else {
-          const localData = localStorage.getItem("maat_invoices");
-          setInvoices(localData ? JSON.parse(localData) : mockInvoices);
+
+          const merged = [...parsedInvoices];
+          localInvoices.forEach((li) => {
+            if (li.invoiceNumber && !merged.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
+              merged.unshift(li);
+            }
+          });
+
+          setInvoices(merged);
+          localStorage.setItem("maat_invoices", JSON.stringify(merged));
         }
       })
       .catch((err) => {
         console.error("Failed to load invoices from API:", err);
-        const localData = localStorage.getItem("maat_invoices");
-        setInvoices(localData ? JSON.parse(localData) : mockInvoices);
       })
       .finally(() => setIsLoading(false));
   };

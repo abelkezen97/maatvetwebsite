@@ -103,14 +103,32 @@ function NewInvoiceForm() {
         }
 
         if (Array.isArray(quotesData) && quotesData.length > 0) {
-          setQuotesList(quotesData);
-          localStorage.setItem("maat_quotes", JSON.stringify(quotesData));
+          let localQ: Quote[] = [];
+          try {
+            const qStr = localStorage.getItem("maat_quotes");
+            if (qStr) localQ = JSON.parse(qStr);
+          } catch (e) {}
+
+          const mergedQ = [...quotesData];
+          localQ.forEach((lq) => {
+            if (lq.quoteNumber && !mergedQ.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
+              mergedQ.unshift(lq);
+            }
+          });
+          setQuotesList(mergedQ);
+          localStorage.setItem("maat_quotes", JSON.stringify(mergedQ));
         }
 
         try {
           const invsRes = await fetch("/api/invoices");
           const invsData = await invsRes.json();
-          if (Array.isArray(invsData)) {
+          if (Array.isArray(invsData) && invsData.length > 0) {
+            let localI: Invoice[] = [];
+            try {
+              const iStr = localStorage.getItem("maat_invoices");
+              if (iStr) localI = JSON.parse(iStr);
+            } catch (e) {}
+
             const parsedInvoices = invsData.map((item: any) => {
               if (item && Array.isArray(item.items)) {
                 return item;
@@ -135,8 +153,16 @@ function NewInvoiceForm() {
                 taxTotal: 0,
               };
             });
-            setInvoicesList(parsedInvoices);
-            localStorage.setItem("maat_invoices", JSON.stringify(parsedInvoices));
+
+            const mergedI = [...parsedInvoices];
+            localI.forEach((li) => {
+              if (li.invoiceNumber && !mergedI.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
+                mergedI.unshift(li);
+              }
+            });
+
+            setInvoicesList(mergedI);
+            localStorage.setItem("maat_invoices", JSON.stringify(mergedI));
           }
         } catch (e) {}
       } catch (err) {
