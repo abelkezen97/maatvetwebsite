@@ -226,9 +226,12 @@ export default function ProductsPage() {
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
+                      inputMode="decimal"
                       placeholder="e.g. 45.00"
                       value={formPrice}
                       onChange={(e) => setFormPrice(e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
                     />
                   </div>

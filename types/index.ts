@@ -81,3 +81,17 @@ export interface Invoice {
 }
 
 
+export interface Receipt {
+  id: string;
+  receiptNumber: string;
+  customerId: string;
+  customerName?: string;
+  companyName: string;
+  amountPaid: number;
+  remainingPendingAmount?: number;
+  paymentDate: string;
+  paymentMethod: "Cash" | "Bank Transfer" | "Cheque" | "Other";
+  referenceNo?: string;
+  notes?: string;
+  createdBy?: string;
+}

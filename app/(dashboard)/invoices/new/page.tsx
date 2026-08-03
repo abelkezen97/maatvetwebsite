@@ -5,11 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Trash2, Search, ArrowLeft, CheckCircle, X } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
-import { Product, Customer, QuoteItem, Quote, Invoice } from "@/types";
+import { Product, Customer, QuoteItem, Quote, Invoice, Receipt } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { mockQuotes, mockInvoices } from "@/lib/mockData";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
+import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 
 interface InvoiceItemWithManual extends QuoteItem {
   manualDiscount?: number;
@@ -29,7 +30,7 @@ function NewInvoiceForm() {
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItemWithManual[]>([]);
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<"Paid" | "Credit">("Paid");
-  const [creditDays, setCreditDays] = useState<number>(30);
+  const [creditDays, setCreditDays] = useState<number | string>(30);
   
   // Data loading states
   const [products, setProducts] = useState<Product[]>([]);
@@ -59,30 +60,53 @@ function NewInvoiceForm() {
 
   // Load products, customers, quotes and existing invoices on mount
   useEffect(() => {
+    // 1. Instant sync load from local storage to eliminate delay
+    try {
+      const localCusts = localStorage.getItem("maat_customers");
+      if (localCusts) setCustomers(JSON.parse(localCusts));
+
+      const localProds = localStorage.getItem("maat_products");
+      if (localProds) setProducts(JSON.parse(localProds));
+
+      const localQuotes = localStorage.getItem("maat_quotes");
+      if (localQuotes) setQuotesList(JSON.parse(localQuotes));
+
+      const localInvs = localStorage.getItem("maat_invoices");
+      if (localInvs) setInvoicesList(JSON.parse(localInvs));
+
+      if (localCusts && localProds) {
+        setIsPageLoading(false);
+      }
+    } catch (e) {}
+
+    // 2. Background fresh revalidation
     async function loadData() {
       try {
-        // Load products
-        const prodRes = await fetch("/api/products");
+        const [prodRes, custRes, quotesRes] = await Promise.all([
+          fetch("/api/products"),
+          fetch("/api/customers"),
+          fetch("/api/quotes"),
+        ]);
+
         const prodData = await prodRes.json();
-        setProducts(prodData.products || []);
-
-        // Load customers
-        const custRes = await fetch("/api/customers");
         const custData = await custRes.json();
-        setCustomers(custData.customers || []);
-
-        // Load quotes
-        const quotesRes = await fetch("/api/quotes");
         const quotesData = await quotesRes.json();
-        if (Array.isArray(quotesData) && quotesData.length > 0) {
-          setQuotesList(quotesData);
-        } else {
-          // Read local storage quotes if any, fallback to mockQuotes
-          const localQuotes = localStorage.getItem("maat_quotes");
-          setQuotesList(localQuotes ? JSON.parse(localQuotes) : mockQuotes);
+
+        if (prodData.products) {
+          setProducts(prodData.products);
+          localStorage.setItem("maat_products", JSON.stringify(prodData.products));
         }
 
-        // Load invoices list from API
+        if (custData.customers) {
+          setCustomers(custData.customers);
+          localStorage.setItem("maat_customers", JSON.stringify(custData.customers));
+        }
+
+        if (Array.isArray(quotesData) && quotesData.length > 0) {
+          setQuotesList(quotesData);
+          localStorage.setItem("maat_quotes", JSON.stringify(quotesData));
+        }
+
         try {
           const invsRes = await fetch("/api/invoices");
           const invsData = await invsRes.json();
@@ -94,9 +118,7 @@ function NewInvoiceForm() {
               if (item.invoiceJson) {
                 try {
                   return JSON.parse(item.invoiceJson);
-                } catch (e) {
-                  // fallback
-                }
+                } catch (e) {}
               }
               return {
                 id: item.invoiceNumber || `inv-${Date.now()}`,
@@ -115,15 +137,8 @@ function NewInvoiceForm() {
             });
             setInvoicesList(parsedInvoices);
             localStorage.setItem("maat_invoices", JSON.stringify(parsedInvoices));
-          } else {
-            const localInvs = localStorage.getItem("maat_invoices");
-            setInvoicesList(localInvs ? JSON.parse(localInvs) : mockInvoices);
           }
-        } catch (e) {
-          console.error("Failed to load invoices from API:", e);
-          const localInvs = localStorage.getItem("maat_invoices");
-          setInvoicesList(localInvs ? JSON.parse(localInvs) : mockInvoices);
-        }
+        } catch (e) {}
       } catch (err) {
         console.error("Failed to load setup data:", err);
       } finally {
@@ -292,7 +307,7 @@ function NewInvoiceForm() {
   };
 
   const handleUpdateQuantity = (index: number, val: number) => {
-    if (val < 1) return;
+    if (val < 0 || isNaN(val)) return;
     const updated = [...invoiceItems];
     const item = updated[index];
     
@@ -394,82 +409,11 @@ function NewInvoiceForm() {
       taxTotal,
       grandTotal,
       status,
-      creditDays: status === "Credit" ? creditDays : undefined,
+      creditDays: status === "Credit" ? (typeof creditDays === "number" ? creditDays : (parseInt(creditDays as string, 10) || 0)) : undefined,
       notes,
     };
 
-    try {
-      // 1. Generate PDF and get Base64 string
-      const doc = buildInvoicePDF(newInvoice);
-      const pdfBase64 = doc.output("datauristring").split(",")[1];
-
-      // Convert items to human-readable string summary
-      const productsSummary = invoiceItems
-        .map((item) => `${item.quantity} x ${item.productName} (@ AED ${item.discount.toFixed(2)})`)
-        .join(", ");
-
-      // 2. Upload to Google Drive & log to sheet via our secure API
-      const payload = {
-        invoiceNumber: newInvoice.invoiceNumber,
-        customerName: newInvoice.customerName,
-        companyName: newInvoice.companyName,
-        salesmanName: newInvoice.salesmanName,
-        date: newInvoice.date,
-        grandTotal: newInvoice.grandTotal,
-        status: newInvoice.status === "Credit" ? `Credit (${creditDays} Days)` : newInvoice.status,
-        fileName: `MAAT-INVOICE-${newInvoice.invoiceNumber}.pdf`,
-        pdfBase64: pdfBase64,
-        productsListText: productsSummary,
-        invoiceJson: JSON.stringify(newInvoice),
-      };
-
-      const response = await fetch("/api/invoices", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to upload invoice to cloud storage");
-      }
-    } catch (err) {
-      console.error("Save invoice API error:", err);
-    }
-
-    // Update customer pending balance
-    if (status === "Credit" && newInvoice.companyName) {
-      try {
-        await fetch("/api/customers", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            companyName: newInvoice.companyName,
-            customerId: newInvoice.customerId,
-            amountToAdd: newInvoice.grandTotal,
-          }),
-        });
-      } catch (custErr) {
-        console.error("Failed to update customer pending balance via API:", custErr);
-      }
-
-      // Also update local customers state/localStorage so changes are visible instantly
-      const updatedCusts = customers.map((c) => {
-        if (c.id === newInvoice.customerId || c.company.toLowerCase().trim() === newInvoice.companyName.toLowerCase().trim()) {
-          return {
-            ...c,
-            pendingBillwiseAmount: (c.pendingBillwiseAmount || 0) + newInvoice.grandTotal,
-          };
-        }
-        return c;
-      });
-      setCustomers(updatedCusts);
-    }
-
-
-
-    // Save locally
+    // 1. Instant local persistence & UI redirect
     let updatedInvoices = [...invoicesList];
     if (editInvoiceNumber) {
       const idx = updatedInvoices.findIndex((i) => i.invoiceNumber === editInvoiceNumber);
@@ -482,10 +426,8 @@ function NewInvoiceForm() {
       updatedInvoices.unshift(newInvoice);
     }
 
-    // Persist
     localStorage.setItem("maat_invoices", JSON.stringify(updatedInvoices));
-    
-    // Update memory cache
+
     const mockIdx = mockInvoices.findIndex((i) => i.invoiceNumber === newInvoice.invoiceNumber);
     if (mockIdx > -1) {
       mockInvoices[mockIdx] = newInvoice;
@@ -499,6 +441,119 @@ function NewInvoiceForm() {
         : `تم حفظ الفاتورة ${newInvoice.invoiceNumber} بنجاح!`
     );
     setIsSaving(false);
+
+    setTimeout(() => {
+      router.push("/invoices");
+    }, 800);
+
+    // 2. Non-blocking Background API Cloud Save, PDF Generation, and Auto Receipt creation
+    (async () => {
+      try {
+        const doc = buildInvoicePDF(newInvoice);
+        const pdfBase64 = doc.output("datauristring").split(",")[1];
+
+        const productsSummary = invoiceItems
+          .map((item) => `${item.quantity} x ${item.productName} (@ AED ${item.discount.toFixed(2)})`)
+          .join(", ");
+
+        const payload = {
+          invoiceNumber: newInvoice.invoiceNumber,
+          customerName: newInvoice.customerName,
+          companyName: newInvoice.companyName,
+          salesmanName: newInvoice.salesmanName,
+          date: newInvoice.date,
+          grandTotal: newInvoice.grandTotal,
+          status: newInvoice.status === "Credit" ? `Credit (${creditDays} Days)` : newInvoice.status,
+          fileName: `MAAT-INVOICE-${newInvoice.invoiceNumber}.pdf`,
+          pdfBase64: pdfBase64,
+          productsListText: productsSummary,
+          invoiceJson: JSON.stringify(newInvoice),
+        };
+
+        await fetch("/api/invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (err) {
+        console.error("Background invoice save error:", err);
+      }
+
+      // Auto-create receipt voucher if payment status is 'Paid'
+      if (status === "Paid") {
+        try {
+          const localRecsStr = localStorage.getItem("maat_receipts");
+          const localRecs: Receipt[] = localRecsStr ? JSON.parse(localRecsStr) : [];
+          const recCount = localRecs.length + 1;
+          const year = new Date().getFullYear();
+          const autoRecNum = `REC-${year}-0${String(recCount).padStart(3, "0")}`;
+
+          const autoReceipt: Receipt = {
+            id: `rec-${Date.now()}`,
+            receiptNumber: autoRecNum,
+            customerId: newInvoice.customerId,
+            customerName: newInvoice.customerName,
+            companyName: newInvoice.companyName,
+            amountPaid: newInvoice.grandTotal,
+            remainingPendingAmount: 0,
+            paymentDate: newInvoice.date,
+            paymentMethod: "Cash",
+            referenceNo: `Auto-Paid for ${newInvoice.invoiceNumber}`,
+            notes: `Auto-generated receipt voucher for Paid Invoice ${newInvoice.invoiceNumber}`,
+            createdBy: user?.name || "Admin",
+          };
+
+          const updatedRecs = [autoReceipt, ...localRecs];
+          localStorage.setItem("maat_receipts", JSON.stringify(updatedRecs));
+
+          const recDoc = buildReceiptPDF(autoReceipt);
+          const recPdfBase64 = recDoc.output("datauristring").split(",")[1];
+
+          const recParams = new URLSearchParams();
+          recParams.append("receiptNumber", autoReceipt.receiptNumber);
+          recParams.append("companyName", autoReceipt.companyName);
+          recParams.append("customerName", autoReceipt.customerName || "");
+          recParams.append("amountPaid", autoReceipt.amountPaid.toString());
+          recParams.append("paymentDate", autoReceipt.paymentDate);
+          recParams.append("paymentMethod", autoReceipt.paymentMethod);
+          recParams.append("referenceNo", autoReceipt.referenceNo || "");
+
+          await fetch(`/api/receipts?${recParams.toString()}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              receiptNumber: autoReceipt.receiptNumber,
+              customerName: autoReceipt.customerName,
+              companyName: autoReceipt.companyName,
+              amountPaid: autoReceipt.amountPaid,
+              paymentDate: autoReceipt.paymentDate,
+              paymentMethod: autoReceipt.paymentMethod,
+              referenceNo: autoReceipt.referenceNo,
+              fileName: `MAAT-RECEIPT-${autoReceipt.receiptNumber}.pdf`,
+              pdfBase64: recPdfBase64,
+            }),
+          });
+        } catch (recErr) {
+          console.error("Failed to auto-create receipt for paid invoice:", recErr);
+        }
+      }
+
+      if (status === "Credit" && newInvoice.companyName) {
+        try {
+          await fetch("/api/customers", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              companyName: newInvoice.companyName,
+              customerId: newInvoice.customerId,
+              amountToAdd: newInvoice.grandTotal,
+            }),
+          });
+        } catch (custErr) {
+          console.error("Background pending update error:", custErr);
+        }
+      }
+    })();
   };
 
   const handleAddNewCustomer = async (e: React.FormEvent) => {
@@ -618,10 +673,18 @@ function NewInvoiceForm() {
                   </label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
+                    inputMode="numeric"
                     required
                     value={creditDays}
-                    onChange={(e) => setCreditDays(parseInt(e.target.value) || 30)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setCreditDays(v === "" ? "" : Math.max(0, parseInt(v, 10) || 0));
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    onBlur={() => {
+                      if (creditDays === "" || creditDays === undefined || creditDays === null) setCreditDays(30);
+                    }}
                     className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
                   />
                 </div>
@@ -691,7 +754,7 @@ function NewInvoiceForm() {
                           )}
                           {(c.pendingBillwiseAmount || 0) > 0 && (
                             <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                              Pending: AED {(c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              Pending: AED {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </span>
                           )}
                         </div>
@@ -712,8 +775,8 @@ function NewInvoiceForm() {
                 </div>
                 <div className="text-right">
                   <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Pending Billwise Amount</span>
-                  <span className={`text-sm font-extrabold ${(selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    AED {(selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span className={`text-sm font-extrabold ${Math.max(0, selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    AED {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -748,7 +811,9 @@ function NewInvoiceForm() {
               {showProductDropdown && filteredProducts.length > 0 && (
                 <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
                   {filteredProducts.map((p) => {
-                    const isDisabled = p.isAvailable === false;
+                    const isOutOfStock = p.isAvailable === false;
+                    const isAlreadyAdded = invoiceItems.some((item) => item.productId === p.id);
+                    const isDisabled = isOutOfStock || isAlreadyAdded;
                     return (
                       <button
                         key={p.id}
@@ -756,7 +821,7 @@ function NewInvoiceForm() {
                         disabled={isDisabled}
                         onClick={() => !isDisabled && handleAddProduct(p)}
                         className={`w-full text-left px-4 py-3 transition-colors flex items-center justify-between ${
-                          isDisabled ? "opacity-50 cursor-not-allowed bg-slate-50/70" : "hover:bg-slate-50"
+                          isDisabled ? "opacity-60 cursor-not-allowed bg-slate-50/70" : "hover:bg-slate-50"
                         }`}
                       >
                         <div>
@@ -764,9 +829,14 @@ function NewInvoiceForm() {
                           <div className="text-xs text-slate-400 font-medium">Unit: {p.unit}</div>
                         </div>
                         <div className="flex items-center gap-3">
-                          {isDisabled && (
+                          {isOutOfStock && (
                             <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded">
-                              Out of Stock
+                              {language === "en" ? "Out of Stock" : "غير متوفر"}
+                            </span>
+                          )}
+                          {isAlreadyAdded && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                              {language === "en" ? "Already in List" : "مضاف في القائمة"}
                             </span>
                           )}
                           <span className="font-bold text-sm text-[#1B2A4A]">AED {p.price.toFixed(2)}</span>
@@ -804,9 +874,11 @@ function NewInvoiceForm() {
                           <td className="px-2 py-4">
                             <input
                               type="number"
-                              min="1"
+                              min="0"
+                              inputMode="numeric"
                               value={item.quantity}
-                              onChange={(e) => handleUpdateQuantity(idx, parseInt(e.target.value) || 1)}
+                              onChange={(e) => handleUpdateQuantity(idx, e.target.value === "" ? 0 : (parseInt(e.target.value, 10) || 0))}
+                              onFocus={(e) => e.target.select()}
                               className="w-16 mx-auto px-2 py-1.5 border border-slate-200 rounded-lg text-center font-bold focus:outline-none focus:border-accent"
                             />
                           </td>
@@ -817,11 +889,13 @@ function NewInvoiceForm() {
                                 type="number"
                                 min="0"
                                 step="any"
+                                inputMode="decimal"
                                 value={item.discount !== undefined ? item.discount : ""}
                                 onChange={(e) => {
                                   const v = e.target.value === "" ? undefined : parseFloat(e.target.value);
                                   handleUpdateDiscount(idx, v);
                                 }}
+                                onFocus={(e) => e.target.select()}
                                 className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm focus:outline-none focus:border-accent text-slate-800"
                               />
                             </div>

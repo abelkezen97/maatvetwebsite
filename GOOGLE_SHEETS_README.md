@@ -61,7 +61,7 @@ function doGet(e) {
         var sheetCompany = (data[i][0] || "").toString().toLowerCase().trim();
         if (sheetCompany === targetCompany) {
           var currentVal = parseFloat(data[i][3]) || 0;
-          var newVal = currentVal + amountToAdd;
+          var newVal = Math.max(0, currentVal + amountToAdd); // Never drop below 0
           sheet.getRange(i + 1, 4).setValue(newVal); // Update Column D
           return ContentService.createTextOutput("Updated: " + newVal)
             .setMimeType(ContentService.MimeType.TEXT);
@@ -122,6 +122,117 @@ NEXT_PUBLIC_CUSTOMERS_SPREADSHEET_ID="your_customers_spreadsheet_id"
 # 3. Customer Apps Script Web App URL (From Part 2 Step 2)
 GOOGLE_CUSTOMERS_SCRIPT_URL="https://script.google.com/macros/s/.../exec"
 
-# 4. Quotes Apps Script Web App URL
-GOOGLE_QUOTES_SCRIPT_URL="https://script.google.com/macros/s/.../exec"
+# 5. Receipts Apps Script Web App URL
+GOOGLE_RECEIPTS_SCRIPT_URL="https://script.google.com/macros/s/.../exec"
 ```
+
+---
+
+## Part 4: Receipt Log & PDF Storage (Google Apps Script)
+
+To automatically record issued payment receipts and upload generated PDF receipts directly into a Google Drive folder:
+
+### Step 1: Create your Receipts Google Sheet
+1. Open Google Sheets and create a new blank spreadsheet (Name it e.g. **"MAAT Customer Receipts"**).
+2. Set up these columns in Row 1:
+   * **Receipt Number** (Column A)
+   * **Customer / Company** (Column B)
+   * **Doctor Name** (Column C)
+   * **Amount Paid** (Column D)
+   * **Payment Date** (Column E)
+   * **Payment Method** (Column F)
+   * **Reference / Cheque No** (Column G)
+   * **PDF Drive Link** (Column H)
+
+### Step 2: Add Apps Script for Writing Receipts & Saving PDFs
+1. Inside the Google Sheet, go to **Extensions** > **Apps Script**.
+2. Replace all content with this script:
+
+```javascript
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = activeSpreadsheet.getSheets()[0];
+
+    var receiptNumber = data.receiptNumber || "";
+    var customerName = data.customerName || "";
+    var companyName = data.companyName || "";
+    var amountPaid = data.amountPaid || 0;
+    var paymentDate = data.paymentDate || "";
+    var paymentMethod = data.paymentMethod || "";
+    var referenceNo = data.referenceNo || "";
+    var fileName = data.fileName || ("MAAT-RECEIPT-" + receiptNumber + ".pdf");
+    var pdfBase64 = data.pdfBase64 || "";
+
+    var pdfUrl = "";
+
+    // If PDF base64 string is provided, save it directly to Google Drive
+    if (pdfBase64) {
+      var decodedBlob = Utilities.newBlob(Utilities.base64Decode(pdfBase64), "application/pdf", fileName);
+      var file = DriveApp.createFile(decodedBlob);
+      pdfUrl = file.getUrl();
+    }
+
+    // Append row to sheet
+    sheet.appendRow([
+      receiptNumber,
+      companyName,
+      customerName,
+      amountPaid,
+      paymentDate,
+      paymentMethod,
+      referenceNo,
+      pdfUrl
+    ]);
+
+    return ContentService.createTextOutput(JSON.stringify({ success: true, pdfUrl: pdfUrl }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  try {
+    var activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = activeSpreadsheet.getSheets()[0];
+    var data = sheet.getDataRange().getValues();
+    var receipts = [];
+
+    for (var i = 1; i < data.length; i++) {
+      if (data[i][0]) {
+        receipts.push({
+          id: "rec-" + i,
+          receiptNumber: data[i][0].toString(),
+          companyName: data[i][1].toString(),
+          customerName: data[i][2].toString(),
+          amountPaid: parseFloat(data[i][3]) || 0,
+          paymentDate: data[i][4].toString(),
+          paymentMethod: data[i][5].toString(),
+          referenceNo: data[i][6] ? data[i][6].toString() : "",
+          pdfUrl: data[i][7] ? data[i][7].toString() : ""
+        });
+      }
+    }
+
+    return ContentService.createTextOutput(JSON.stringify(receipts))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify([]))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+```
+
+3. Save the project (Click the 💾 icon).
+4. Click **Deploy** > **New Deployment**.
+5. Choose **Web app**.
+6. Set **Execute as**: `Me` and **Who has access**: `Anyone`.
+7. Click **Deploy**, authorize permissions if prompted, and copy the **Web App URL**.
+8. Paste the Web App URL into your `.env.local` file as `GOOGLE_RECEIPTS_SCRIPT_URL`:
+   ```env
+   GOOGLE_RECEIPTS_SCRIPT_URL="your_copied_web_app_url_here"
+   ```
+

@@ -132,6 +132,63 @@ export default function InvoicesPage() {
     }
   };
 
+  const shareReceiptToWhatsApp = async (invoice: Invoice) => {
+    const localRecsStr = localStorage.getItem("maat_receipts");
+    const localRecs: any[] = localRecsStr ? JSON.parse(localRecsStr) : [];
+    let matchedReceipt = localRecs.find(
+      (r) =>
+        r.referenceNo?.includes(invoice.invoiceNumber) ||
+        r.notes?.includes(invoice.invoiceNumber) ||
+        (r.companyName === invoice.companyName && Math.abs(r.amountPaid - invoice.grandTotal) < 0.01)
+    );
+
+    if (!matchedReceipt) {
+      const year = new Date().getFullYear();
+      const count = localRecs.length + 1;
+      matchedReceipt = {
+        id: `rec-${Date.now()}`,
+        receiptNumber: `REC-${year}-0${String(count).padStart(3, "0")}`,
+        customerId: invoice.customerId,
+        customerName: invoice.customerName,
+        companyName: invoice.companyName,
+        amountPaid: invoice.grandTotal,
+        remainingPendingAmount: 0,
+        paymentDate: invoice.date || new Date().toISOString().split("T")[0],
+        paymentMethod: "Cash",
+        referenceNo: `Auto-Paid for ${invoice.invoiceNumber}`,
+        notes: `Auto-generated receipt voucher for Paid Invoice ${invoice.invoiceNumber}`,
+        createdBy: user?.name || "Admin",
+      };
+      const updatedRecs = [matchedReceipt, ...localRecs];
+      localStorage.setItem("maat_receipts", JSON.stringify(updatedRecs));
+    }
+
+    const { buildReceiptPDF } = await import("@/lib/pdfReceiptHelper");
+    const doc = buildReceiptPDF(matchedReceipt);
+    const pdfBlob = doc.output("blob");
+    const fileName = `MAAT-RECEIPT-${matchedReceipt.receiptNumber}.pdf`;
+    const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
+
+    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      try {
+        await navigator.share({
+          files: [pdfFile],
+          title: `Receipt ${matchedReceipt.receiptNumber}`,
+          text: `Please find attached Payment Receipt Ref: ${matchedReceipt.receiptNumber} for Invoice ${invoice.invoiceNumber}. Thank you!`,
+        });
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          console.error("Error sharing Receipt PDF:", err);
+        }
+      }
+    } else {
+      doc.save(fileName);
+      const message = `Please find attached Payment Receipt Ref: ${matchedReceipt.receiptNumber} for Invoice ${invoice.invoiceNumber}. Thank you!`;
+      const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, "_blank");
+    }
+  };
+
   const filteredInvoices = useMemo(() => {
     let list = invoices;
     if (user && user.role === "Salesman") {
@@ -164,6 +221,108 @@ export default function InvoicesPage() {
       }
     }
   };
+
+  const handleUpdateStatus = async (invoiceNo: string, newStatus: "Paid" | "Credit") => {
+    const currentInv = invoices.find((i) => i.invoiceNumber === invoiceNo);
+    const oldStatus = currentInv?.status;
+
+    const updated = invoices.map((i) => {
+      if (i.invoiceNumber === invoiceNo) {
+        return {
+          ...i,
+          status: newStatus,
+          creditDays: newStatus === "Credit" ? (i.creditDays || 30) : undefined
+        };
+      }
+      return i;
+    });
+    saveInvoicesToStateAndStorage(updated);
+    if (selectedInvoice && selectedInvoice.invoiceNumber === invoiceNo) {
+      setSelectedInvoice({
+        ...selectedInvoice,
+        status: newStatus,
+        creditDays: newStatus === "Credit" ? (selectedInvoice.creditDays || 30) : undefined
+      });
+    }
+
+    // Auto-create receipt voucher when marked as Paid
+    if (currentInv && newStatus === "Paid") {
+      try {
+        const localRecsStr = localStorage.getItem("maat_receipts");
+        const localRecs: any[] = localRecsStr ? JSON.parse(localRecsStr) : [];
+        const year = new Date().getFullYear();
+        const autoRecNum = `REC-${year}-0${String(localRecs.length + 1).padStart(3, "0")}`;
+
+        const autoReceipt = {
+          id: `rec-${Date.now()}`,
+          receiptNumber: autoRecNum,
+          customerId: currentInv.customerId,
+          customerName: currentInv.customerName,
+          companyName: currentInv.companyName,
+          amountPaid: currentInv.grandTotal,
+          remainingPendingAmount: 0,
+          paymentDate: currentInv.date || new Date().toISOString().split("T")[0],
+          paymentMethod: "Cash" as const,
+          referenceNo: `Auto-Paid for ${currentInv.invoiceNumber}`,
+          notes: `Auto-generated receipt voucher for Paid Invoice ${currentInv.invoiceNumber}`,
+          createdBy: user?.name || "Admin",
+        };
+
+        const updatedRecs = [autoReceipt, ...localRecs];
+        localStorage.setItem("maat_receipts", JSON.stringify(updatedRecs));
+
+        const { buildReceiptPDF } = await import("@/lib/pdfReceiptHelper");
+        const recDoc = buildReceiptPDF(autoReceipt);
+        const recPdfBase64 = recDoc.output("datauristring").split(",")[1];
+
+        const recParams = new URLSearchParams();
+        recParams.append("receiptNumber", autoReceipt.receiptNumber);
+        recParams.append("companyName", autoReceipt.companyName);
+        recParams.append("customerName", autoReceipt.customerName || "");
+        recParams.append("amountPaid", autoReceipt.amountPaid.toString());
+        recParams.append("paymentDate", autoReceipt.paymentDate);
+        recParams.append("paymentMethod", autoReceipt.paymentMethod);
+        recParams.append("referenceNo", autoReceipt.referenceNo || "");
+
+        await fetch(`/api/receipts?${recParams.toString()}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            receiptNumber: autoReceipt.receiptNumber,
+            customerName: autoReceipt.customerName,
+            companyName: autoReceipt.companyName,
+            amountPaid: autoReceipt.amountPaid,
+            paymentDate: autoReceipt.paymentDate,
+            paymentMethod: autoReceipt.paymentMethod,
+            referenceNo: autoReceipt.referenceNo,
+            fileName: `MAAT-RECEIPT-${autoReceipt.receiptNumber}.pdf`,
+            pdfBase64: recPdfBase64,
+          }),
+        });
+      } catch (recErr) {
+        console.error("Failed to auto-create receipt on status change:", recErr);
+      }
+    }
+
+    // Adjust pending balance if status changed
+    if (currentInv && oldStatus !== newStatus && currentInv.companyName) {
+      const amountToAdd = newStatus === "Credit" ? currentInv.grandTotal : -currentInv.grandTotal;
+      try {
+        await fetch("/api/customers", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyName: currentInv.companyName,
+            customerId: currentInv.customerId,
+            amountToAdd,
+          }),
+        });
+      } catch (err) {
+        console.error("Failed to update pending balance on status change:", err);
+      }
+    }
+  };
+
 
   const columns = [
     {
@@ -247,20 +406,22 @@ export default function InvoicesPage() {
               shareToWhatsApp(row);
             }}
             className="p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition"
-            title="Share via WhatsApp"
+            title="Share Invoice via WhatsApp"
           >
             <MessageCircle className="w-4 h-4" />
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              router.push(`/invoices/new?edit=${row.invoiceNumber}`);
-            }}
-            className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 hover:text-amber-700 transition"
-            title="Edit Invoice"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
+          {row.status === "Paid" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                shareReceiptToWhatsApp(row);
+              }}
+              className="p-1.5 rounded-lg hover:bg-teal-50 text-teal-600 hover:text-teal-700 transition"
+              title="Share Receipt Voucher via WhatsApp"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -273,52 +434,9 @@ export default function InvoicesPage() {
           </button>
         </div>
       ),
-      className: "w-44 text-center",
+      className: "w-48 text-center",
     },
   ];
-
-  const handleUpdateStatus = async (invoiceNo: string, newStatus: "Paid" | "Credit") => {
-    const currentInv = invoices.find((i) => i.invoiceNumber === invoiceNo);
-    const oldStatus = currentInv?.status;
-
-    const updated = invoices.map((i) => {
-      if (i.invoiceNumber === invoiceNo) {
-        return {
-          ...i,
-          status: newStatus,
-          creditDays: newStatus === "Credit" ? (i.creditDays || 30) : undefined
-        };
-      }
-      return i;
-    });
-    saveInvoicesToStateAndStorage(updated);
-    if (selectedInvoice && selectedInvoice.invoiceNumber === invoiceNo) {
-      setSelectedInvoice({
-        ...selectedInvoice,
-        status: newStatus,
-        creditDays: newStatus === "Credit" ? (selectedInvoice.creditDays || 30) : undefined
-      });
-    }
-
-    // Adjust pending balance if status changed
-    if (currentInv && oldStatus !== newStatus && currentInv.companyName) {
-      const amountToAdd = newStatus === "Credit" ? currentInv.grandTotal : -currentInv.grandTotal;
-      try {
-        await fetch("/api/customers", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            companyName: currentInv.companyName,
-            customerId: currentInv.customerId,
-            amountToAdd,
-          }),
-        });
-      } catch (err) {
-        console.error("Failed to update pending balance on status change:", err);
-      }
-    }
-  };
-
 
   return (
     <div className="space-y-6">
@@ -503,23 +621,35 @@ export default function InvoicesPage() {
 
             {/* Modal Footer */}
             <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6">
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <button
                   onClick={() => setSelectedInvoice(null)}
-                  className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none"
+                  className="px-4 py-2.5 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none cursor-pointer"
                 >
                   Close
                 </button>
+
+                {selectedInvoice.status === "Paid" && (
+                  <button
+                    onClick={() => shareReceiptToWhatsApp(selectedInvoice)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl transition shadow-md shadow-teal-600/10 cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4" />
+                    Share Receipt
+                  </button>
+                )}
+
                 <button
                   onClick={() => shareToWhatsApp(selectedInvoice)}
-                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-md shadow-emerald-600/10 cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-md shadow-emerald-600/10 cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  Share via WhatsApp
+                  Share Invoice
                 </button>
+
                 <button
                   onClick={() => generatePDF(selectedInvoice)}
-                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-primary hover:bg-[#15223c] rounded-xl transition shadow-md shadow-primary/10"
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-primary hover:bg-[#15223c] rounded-xl transition shadow-md shadow-primary/10 cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   Download PDF

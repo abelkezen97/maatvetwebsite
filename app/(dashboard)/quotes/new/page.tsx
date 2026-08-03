@@ -222,7 +222,7 @@ function NewQuoteForm() {
   };
 
   const handleUpdateQuantity = (index: number, val: number) => {
-    if (val < 1) return;
+    if (val < 0 || isNaN(val)) return;
     const updated = [...quoteItems];
     const item = updated[index];
     
@@ -604,7 +604,9 @@ function NewQuoteForm() {
               {showProductDropdown && filteredProducts.length > 0 && (
                 <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
                   {filteredProducts.map((p) => {
-                    const isDisabled = p.isAvailable === false;
+                    const isOutOfStock = p.isAvailable === false;
+                    const isAlreadyAdded = quoteItems.some((item) => item.productId === p.id);
+                    const isDisabled = isOutOfStock || isAlreadyAdded;
                     return (
                       <button
                         key={p.id}
@@ -613,7 +615,7 @@ function NewQuoteForm() {
                         onClick={() => !isDisabled && handleAddProduct(p)}
                         className={`w-full text-left px-4 py-3 transition-colors flex items-center justify-between ${
                           isDisabled 
-                            ? "opacity-50 cursor-not-allowed bg-slate-50/70" 
+                            ? "opacity-60 cursor-not-allowed bg-slate-50/70" 
                             : "hover:bg-slate-50"
                         }`}
                       >
@@ -622,9 +624,14 @@ function NewQuoteForm() {
                           <div className="text-xs text-slate-400 font-medium">Unit: {p.unit}</div>
                         </div>
                         <div className="flex items-center gap-3">
-                          {isDisabled && (
+                          {isOutOfStock && (
                             <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded">
                               {language === "en" ? "Out of Stock" : "غير متوفر"}
+                            </span>
+                          )}
+                          {isAlreadyAdded && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                              {language === "en" ? "Already in List" : "مضاف في القائمة"}
                             </span>
                           )}
                           <span className="font-bold text-sm text-[#1B2A4A]">AED {p.price.toFixed(2)}</span>
@@ -667,9 +674,11 @@ function NewQuoteForm() {
                           <td className="px-2 py-4">
                             <input
                               type="number"
-                              min="1"
+                              min="0"
+                              inputMode="numeric"
                               value={item.quantity}
-                              onChange={(e) => handleUpdateQuantity(idx, parseInt(e.target.value) || 1)}
+                              onChange={(e) => handleUpdateQuantity(idx, e.target.value === "" ? 0 : (parseInt(e.target.value, 10) || 0))}
+                              onFocus={(e) => e.target.select()}
                               className="w-16 mx-auto px-2 py-1.5 border border-slate-200 rounded-lg text-center font-bold focus:outline-none focus:border-accent"
                             />
                           </td>
@@ -680,11 +689,13 @@ function NewQuoteForm() {
                                 type="number"
                                 min="0"
                                 step="any"
+                                inputMode="decimal"
                                 value={item.discount !== undefined ? item.discount : ""}
                                 onChange={(e) => {
                                   const v = e.target.value === "" ? undefined : parseFloat(e.target.value);
                                   handleUpdateDiscount(idx, v);
                                 }}
+                                onFocus={(e) => e.target.select()}
                                 className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm focus:outline-none focus:border-accent text-slate-800 animate-none"
                               />
                             </div>

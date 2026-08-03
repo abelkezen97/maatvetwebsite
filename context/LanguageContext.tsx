@@ -135,6 +135,8 @@ export const translations: Record<Language, Record<string, string>> = {
     salesAccountBtn: "Sales Account",
     adminAccountBtn: "Admin Account",
     
+    receipts: "Receipts",
+    newReceipt: "New Receipt",
     // Actions & Statuses
     submit: "Submit",
     cancel: "Cancel",
@@ -150,6 +152,8 @@ export const translations: Record<Language, Record<string, string>> = {
     quotes: "عروض الأسعار",
     invoices: "الفواتير",
     newInvoice: "فاتورة جديدة",
+    receipts: "السندات / الإيصالات",
+    newReceipt: "سند قبض جديد",
     customers: "العملاء",
     settings: "الإعدادات",
     logout: "تسجيل الخروج",

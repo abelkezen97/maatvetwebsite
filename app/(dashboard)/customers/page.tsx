@@ -109,7 +109,7 @@ export default function CustomersPage() {
     {
       header: "Pending Billwise Amount",
       accessor: (row: Customer) => {
-        const amt = row.pendingBillwiseAmount || 0;
+        const amt = Math.max(0, row.pendingBillwiseAmount || 0);
         return (
           <span className={`font-extrabold ${amt > 0 ? "text-rose-600" : "text-emerald-600"}`}>
             AED {amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -126,6 +126,20 @@ export default function CustomersPage() {
         </span>
       ),
       className: "w-36",
+    },
+    {
+      header: "Actions",
+      accessor: (row: Customer) => (
+        <div className="flex justify-end">
+          <a
+            href={`/receipts/new?customerId=${row.id}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200/80 transition"
+          >
+            Issue Receipt
+          </a>
+        </div>
+      ),
+      className: "w-32 text-right",
     },
   ];
 
@@ -255,9 +269,12 @@ export default function CustomersPage() {
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
+                      inputMode="decimal"
                       placeholder="0.00"
                       value={formPendingAmount}
                       onChange={(e) => setFormPendingAmount(e.target.value)}
+                      onFocus={(e) => e.target.select()}
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
                     />
                   </div>
