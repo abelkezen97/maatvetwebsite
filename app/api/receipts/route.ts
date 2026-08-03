@@ -31,27 +31,32 @@ export async function POST(request: Request) {
     const { searchParams } = new URL(request.url);
     let scriptUrl = process.env.GOOGLE_RECEIPTS_SCRIPT_URL;
 
-    if (scriptUrl) {
-      scriptUrl = scriptUrl.replace(/^"|"$/g, "").trim();
+    if (!scriptUrl) {
+      console.warn("GOOGLE_RECEIPTS_SCRIPT_URL is not configured.");
+      return NextResponse.json({ success: true });
+    }
 
-      // Method 1: Try POST JSON payload
-      try {
-        const response = await fetch(scriptUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-          redirect: "follow",
-        });
+    scriptUrl = scriptUrl.replace(/^"|"$/g, "").trim();
 
-        const resText = await response.text();
-        console.log("Google Apps Script Receipt POST response:", response.status, resText);
-      } catch (postErr) {
-        console.warn("POST failed, trying GET fallback...", postErr);
-      }
+    // 1. Primary POST request
+    try {
+      const response = await fetch(scriptUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        redirect: "follow",
+        signal: AbortSignal.timeout(15000),
+      });
 
-      // Method 2: Fallback GET request to ensure row appending even if POST redirect is blocked
+      const resText = await response.text();
+      console.log("Google Apps Script Receipt POST response:", response.status, resText);
+      return NextResponse.json({ success: true });
+    } catch (postErr) {
+      console.warn("POST failed, running GET fallback...", postErr);
+
+      // 2. GET Fallback (only runs if POST throws an error)
       const getParams = new URLSearchParams();
       getParams.append("receiptNumber", payload.receiptNumber || searchParams.get("receiptNumber") || "");
       getParams.append("companyName", payload.companyName || searchParams.get("companyName") || "");
@@ -63,12 +68,11 @@ export async function POST(request: Request) {
       getParams.append("action", "addReceipt");
 
       const targetUrl = scriptUrl + (scriptUrl.includes("?") ? "&" : "?") + getParams.toString();
-      const getRes = await fetch(targetUrl, { method: "GET", cache: "no-store" });
+      const getRes = await fetch(targetUrl, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(15000) });
       const getResText = await getRes.text();
       console.log("Google Apps Script Receipt GET fallback response:", getRes.status, getResText);
+      return NextResponse.json({ success: true });
     }
-
-    return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error saving receipt:", error);
     return NextResponse.json({ error: "Failed to save receipt" }, { status: 500 });
