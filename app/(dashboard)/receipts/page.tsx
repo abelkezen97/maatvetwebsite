@@ -35,7 +35,7 @@ export default function ReceiptsPage() {
     try {
       const res = await fetch(`/api/receipts?refresh=true&t=${Date.now()}`);
       const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
+      if (Array.isArray(data)) {
         setReceipts(data);
         localStorage.setItem("maat_receipts", JSON.stringify(data));
       }
