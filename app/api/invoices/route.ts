@@ -10,7 +10,7 @@ export async function GET() {
       return NextResponse.json([]);
     }
 
-    const response = await fetch(scriptUrl, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+    const response = await fetch(scriptUrl, { cache: "no-store", signal: AbortSignal.timeout(25000) });
     if (!response.ok) {
       throw new Error(`Google Apps Script responded with status ${response.status}`);
     }
