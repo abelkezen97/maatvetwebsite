@@ -61,9 +61,7 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
             background: #fff;
             line-height: 1.3;
           }
-          .header { text-align: center; margin-bottom: 8px; }
-          .header h2 { margin: 0; font-size: 16px; font-weight: bold; text-transform: uppercase; }
-          .header p { margin: 2px 0; font-size: 10px; }
+          .header { text-align: center; margin-bottom: 6px; }
           .divider { border-top: 1px dashed #000; margin: 6px 0; }
           .double-divider { border-top: 2px solid #000; margin: 6px 0; }
           .row { display: flex; justify-content: space-between; margin: 2px 0; }
@@ -71,14 +69,11 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
           table { width: 100%; border-collapse: collapse; margin: 4px 0; }
           .total-box { margin-top: 6px; padding-top: 4px; border-top: 1.5px solid #000; }
           .grand-total { font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; margin-top: 4px; }
-          .footer { text-align: center; margin-top: 12px; font-size: 9px; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h2>MAAT GROUP</h2>
-          <p>Veterinary & Trading Portal</p>
-          <p style="font-size: 11px; font-weight: bold; margin-top: 4px;">INVOICE BILL</p>
+          <p style="font-size: 14px; font-weight: bold; margin: 0; text-transform: uppercase;">INVOICE BILL</p>
         </div>
 
         <div class="divider"></div>
@@ -87,7 +82,6 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
         <div class="row"><span>Date:</span><span>${formatDisplayDate(invoice.date)}</span></div>
         ${invoice.customerName ? `<div class="row"><span>Customer:</span><span class="bold">${invoice.customerName}</span></div>` : ""}
         ${invoice.companyName ? `<div class="row"><span>Company:</span><span>${invoice.companyName}</span></div>` : ""}
-        ${invoice.salesmanName ? `<div class="row"><span>Agent:</span><span>${invoice.salesmanName}</span></div>` : ""}
         <div class="row"><span>Status:</span><span class="bold">${invoice.status || "Unpaid"}</span></div>
 
         <div class="divider"></div>
@@ -111,11 +105,6 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
         </div>
 
         <div class="double-divider"></div>
-
-        <div class="footer">
-          <p>Computer Generated Thermal Bill</p>
-          <p>Thank you for choosing MAAT Group!</p>
-        </div>
 
         <script>
           window.onload = function() {
@@ -164,9 +153,7 @@ export const printReceiptThermalBill = (receipt: Receipt) => {
             background: #fff;
             line-height: 1.3;
           }
-          .header { text-align: center; margin-bottom: 8px; }
-          .header h2 { margin: 0; font-size: 16px; font-weight: bold; text-transform: uppercase; }
-          .header p { margin: 2px 0; font-size: 10px; }
+          .header { text-align: center; margin-bottom: 6px; }
           .divider { border-top: 1px dashed #000; margin: 6px 0; }
           .double-divider { border-top: 2px solid #000; margin: 6px 0; }
           .row { display: flex; justify-content: space-between; margin: 3px 0; }
@@ -174,14 +161,11 @@ export const printReceiptThermalBill = (receipt: Receipt) => {
           .amount-box { margin: 8px 0; padding: 6px; border: 1.5px solid #000; text-align: center; }
           .amount-title { font-size: 10px; text-transform: uppercase; }
           .amount-val { font-size: 15px; font-weight: bold; margin-top: 2px; }
-          .footer { text-align: center; margin-top: 12px; font-size: 9px; }
         </style>
       </head>
       <body>
         <div class="header">
-          <h2>MAAT GROUP</h2>
-          <p>Veterinary & Trading Portal</p>
-          <p style="font-size: 11px; font-weight: bold; margin-top: 4px;">RECEIPT VOUCHER</p>
+          <p style="font-size: 14px; font-weight: bold; margin: 0; text-transform: uppercase;">RECEIPT VOUCHER</p>
         </div>
 
         <div class="divider"></div>
@@ -192,7 +176,6 @@ export const printReceiptThermalBill = (receipt: Receipt) => {
         ${receipt.customerName ? `<div class="row"><span>Contact:</span><span>${receipt.customerName}</span></div>` : ""}
         <div class="row"><span>Payment Method:</span><span>${receipt.paymentMethod}</span></div>
         ${receipt.referenceNo ? `<div class="row"><span>Ref / Cheque #:</span><span>${receipt.referenceNo}</span></div>` : ""}
-        ${receipt.createdBy ? `<div class="row"><span>Received By:</span><span>${receipt.createdBy}</span></div>` : ""}
 
         <div class="divider"></div>
 
@@ -202,11 +185,6 @@ export const printReceiptThermalBill = (receipt: Receipt) => {
         </div>
 
         <div class="double-divider"></div>
-
-        <div class="footer">
-          <p>Computer Generated Payment Receipt</p>
-          <p>Thank you for your payment!</p>
-        </div>
 
         <script>
           window.onload = function() {
