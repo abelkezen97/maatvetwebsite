@@ -12,6 +12,7 @@ import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { mockInvoices } from "@/lib/mockData";
 import { useAuth } from "@/hooks/useAuth";
 import { ActionDropdown, ActionOption } from "@/components/ActionDropdown";
+import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -393,6 +394,7 @@ export default function InvoicesPage() {
       accessor: (row: Invoice) => {
         const options: ActionOption[] = [
           { label: "View Details", onClick: () => setSelectedInvoice(row) },
+          { label: "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
           { label: "Download PDF", onClick: () => generatePDF(row) },
           { label: "Share Invoice via WhatsApp", onClick: () => shareToWhatsApp(row) },
         ];

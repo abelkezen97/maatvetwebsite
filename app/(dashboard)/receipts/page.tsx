@@ -11,6 +11,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { Plus, Download, FileText, RotateCw } from "lucide-react";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { ActionDropdown } from "@/components/ActionDropdown";
+import { printReceiptThermalBill } from "@/lib/thermalPrintHelper";
 
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -117,6 +118,7 @@ export default function ReceiptsPage() {
       accessor: (row: Receipt) => (
         <ActionDropdown
           options={[
+            { label: "Print Receipt Bill (80mm)", onClick: () => printReceiptThermalBill(row) },
             { label: "Download PDF Receipt", onClick: () => handleDownloadPDF(row) },
           ]}
         />

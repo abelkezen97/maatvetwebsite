@@ -29,6 +29,7 @@ import { DashboardCard } from "@/components/DashboardCard";
 import { DataTable } from "@/components/DataTable";
 import { mockQuotes, mockInvoices } from "@/lib/mockData";
 import { ActionDropdown } from "@/components/ActionDropdown";
+import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -375,6 +376,7 @@ export default function DashboardPage() {
         <ActionDropdown
           options={[
             { label: "View Details", onClick: () => setSelectedInvoice(row) },
+            { label: "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
             { label: "Download PDF", onClick: () => generateInvoicePDF(row) },
             { label: "Share via WhatsApp", onClick: () => shareInvoiceToWhatsApp(row) },
             { label: "Edit Invoice", onClick: () => router.push(`/invoices/new?edit=${row.invoiceNumber}`) },
