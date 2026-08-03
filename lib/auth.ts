@@ -25,6 +25,14 @@ export function loginUser(email: string, role: UserRole): SessionData | null {
 
 export function logoutUser(): void {
   Cookies.remove(SESSION_COOKIE_NAME);
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {
+      console.error("Failed to clear local storage on logout:", e);
+    }
+  }
 }
 
 export function getClientSession(): SessionData | null {
