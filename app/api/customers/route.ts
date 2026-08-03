@@ -1,29 +1,60 @@
 import { NextResponse } from "next/server";
-export const dynamic = "force-dynamic";
-import { fetchCustomersFromGoogleSheet, clearCustomersCache } from "@/services/sheets";
+import { createClient as createServerClient } from "@/utils/supabase/server";
+import { createClient as createBrowserClient } from "@/utils/supabase/client";
+import { cookies } from "next/headers";
 import { Customer } from "@/types";
 
-export async function GET(request: Request) {
+export const dynamic = "force-dynamic";
+
+async function getSupabase() {
   try {
-    const { searchParams } = new URL(request.url);
-    if (searchParams.get("refresh") === "true" || searchParams.get("t")) {
-      clearCustomersCache();
-    }
-    const sheetCustomers = await fetchCustomersFromGoogleSheet();
-    return NextResponse.json({ 
-      customers: sheetCustomers, 
-      source: "google_sheets" 
-    });
-  } catch (error) {
-    console.error("Failed to load Google Sheet customers:", error);
-    return NextResponse.json({ 
-      customers: [], 
-      source: "error", 
-      error: "Failed to load Google Sheet customers" 
-    });
+    const cookieStore = await cookies();
+    return createServerClient(cookieStore);
+  } catch {
+    return createBrowserClient();
   }
 }
 
+export async function GET() {
+  try {
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .order("company_name", { ascending: true });
+
+    if (error) {
+      console.error("Failed to load Supabase customers:", error);
+      return NextResponse.json({ 
+        customers: [], 
+        source: "error", 
+        error: error.message 
+      });
+    }
+
+    const customers: Customer[] = (data || []).map((row: any) => ({
+      id: row.id || `cust-${Date.now()}`,
+      company: row.company_name || "",
+      name: row.notes || "",
+      address: row.address || row.city || "",
+      phone: row.phone || "",
+      email: row.email || "",
+      pendingBillwiseAmount: typeof row.pending_balance === "number" ? row.pending_balance : parseFloat(row.pending_balance) || 0,
+    }));
+
+    return NextResponse.json({ 
+      customers, 
+      source: "supabase" 
+    });
+  } catch (error) {
+    console.error("Failed to load Supabase customers:", error);
+    return NextResponse.json({ 
+      customers: [], 
+      source: "error", 
+      error: "Failed to load Supabase customers" 
+    });
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -37,42 +68,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Customer Company Name is required" }, { status: 400 });
     }
 
-    const newCustomer: Customer = {
-      id: `cust-${Date.now()}`,
-      company: company.replace(/^"|"$/g, ""),
-      name: name.replace(/^"|"$/g, "") || "",
-      address: location.replace(/^"|"$/g, ""),
-      phone: "", // blank
+    const cleanedCompany = company.replace(/^"|"$/g, "").trim();
+    const cleanedName = name.replace(/^"|"$/g, "").trim();
+    const cleanedLocation = location.replace(/^"|"$/g, "").trim();
+    const pendingAmountNum = parseFloat(pendingAmount) || 0;
+
+    const supabase = await getSupabase();
+
+    const insertPayload = {
+      company_name: cleanedCompany,
+      notes: cleanedName,
+      address: cleanedLocation,
+      pending_balance: pendingAmountNum,
+      phone: "",
       email: "",
-      pendingBillwiseAmount: parseFloat(pendingAmount) || 0,
     };
 
-    // Submit to Google Apps Script Web App
-    let scriptUrl = process.env.GOOGLE_CUSTOMERS_SCRIPT_URL;
-    if (scriptUrl) {
-      scriptUrl = scriptUrl.replace(/^"|"$/g, "");
-      try {
-        const params = new URLSearchParams();
-        params.append("company", company);
-        params.append("name", name);
-        params.append("location", location);
-        params.append("pendingAmount", pendingAmount);
+    const { data, error } = await supabase
+      .from("customers")
+      .insert([insertPayload])
+      .select("*")
+      .single();
 
-        const targetUrl = scriptUrl + (scriptUrl.includes("?") ? "&" : "?") + params.toString();
-
-
-        const response = await fetch(targetUrl, {
-          method: "GET",
-          cache: "no-store"
-        });
-        const resText = await response.text();
-        console.log("Customer Apps Script Response:", response.status, resText);
-      } catch (scriptError) {
-        console.error("Google Apps Script customer post failed:", scriptError);
-      }
+    if (error) {
+      console.error("Supabase customer insert error:", error);
     }
 
-    clearCustomersCache();
+    const newCustomer: Customer = {
+      id: data?.id || `cust-${Date.now()}`,
+      company: data?.company_name || cleanedCompany,
+      name: data?.notes || cleanedName,
+      address: data?.address || cleanedLocation,
+      phone: data?.phone || "",
+      email: data?.email || "",
+      pendingBillwiseAmount: data?.pending_balance !== undefined ? Number(data.pending_balance) : pendingAmountNum,
+    };
+
     return NextResponse.json({ success: true, customer: newCustomer });
   } catch (error) {
     console.error("Error creating customer:", error);
@@ -88,26 +119,36 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Customer identifier and amountToAdd are required" }, { status: 400 });
     }
 
-    let scriptUrl = process.env.GOOGLE_CUSTOMERS_SCRIPT_URL;
-    if (scriptUrl) {
-      scriptUrl = scriptUrl.replace(/^"|"$/g, "");
-      try {
-        const params = new URLSearchParams();
-        if (companyName) params.append("company", companyName);
-        if (customerId) params.append("customerId", customerId);
-        params.append("amountToAdd", amountToAdd.toString());
-        params.append("action", "updatePending");
+    const supabase = await getSupabase();
+    let query = supabase.from("customers").select("*");
+    if (customerId) {
+      query = query.eq("id", customerId);
+    } else if (companyName) {
+      query = query.eq("company_name", companyName);
+    }
 
-        const targetUrl = scriptUrl + (scriptUrl.includes("?") ? "&" : "?") + params.toString();
-        const response = await fetch(targetUrl, { method: "GET", cache: "no-store" });
-        const resText = await response.text();
-        console.log("Apps Script updatePending Response:", response.status, resText);
-      } catch (err) {
-        console.error("Failed to post pending amount update to Google Apps Script:", err);
+    const { data: existingRows, error: fetchErr } = await query;
+    if (fetchErr) {
+      console.error("Error fetching customer for pending amount update:", fetchErr);
+    }
+
+    if (existingRows && existingRows.length > 0) {
+      const targetCustomer = existingRows[0];
+      const currentBalance = typeof targetCustomer.pending_balance === "number"
+        ? targetCustomer.pending_balance
+        : parseFloat(targetCustomer.pending_balance) || 0;
+      const newBalance = Math.max(0, currentBalance + (parseFloat(amountToAdd) || 0));
+
+      const { error: updateErr } = await supabase
+        .from("customers")
+        .update({ pending_balance: newBalance, updated_at: new Date().toISOString() })
+        .eq("id", targetCustomer.id);
+
+      if (updateErr) {
+        console.error("Error updating pending_balance in Supabase:", updateErr);
       }
     }
 
-    clearCustomersCache();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error updating customer pending amount:", error);
