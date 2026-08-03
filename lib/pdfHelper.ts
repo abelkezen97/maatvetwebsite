@@ -27,7 +27,8 @@ export const buildPDF = (quote: Quote): jsPDF => {
   // Reset text color for content
   doc.setTextColor(greyDark[0], greyDark[1], greyDark[2]);
 
-  const hasDiscount = quote.discountTotal > 0;
+  const showBase = quote.showBasePrice !== false;
+  const hasDiscount = quote.discountTotal > 0 && showBase;
 
   // Table Headers
   doc.setFont("helvetica", "bold");
@@ -37,7 +38,7 @@ export const buildPDF = (quote: Quote): jsPDF => {
     doc.text("Base Price", 142, 44, { align: "right" });
     doc.text("Disc. Price", 168, 44, { align: "right" });
   } else {
-    doc.text("Price", 168, 44, { align: "right" });
+    doc.text("Unit Price", 168, 44, { align: "right" });
   }
   doc.text("Total (AED)", 195, 44, { align: "right" });
 
@@ -60,7 +61,8 @@ export const buildPDF = (quote: Quote): jsPDF => {
       const discVal = item.discount < item.price ? item.discount.toFixed(2) : "—";
       doc.text(discVal, 168, yPos, { align: "right" });
     } else {
-      doc.text(`${item.price.toFixed(2)}`, 168, yPos, { align: "right" });
+      const displayPrice = item.discount !== undefined ? item.discount : item.price;
+      doc.text(`${displayPrice.toFixed(2)}`, 168, yPos, { align: "right" });
     }
     doc.text(`${item.total.toFixed(2)}`, 195, yPos, { align: "right" });
 

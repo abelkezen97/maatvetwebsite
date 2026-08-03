@@ -58,6 +58,7 @@ export interface Quote {
   grandTotal: number;
   status: "Pending" | "Approved" | "Rejected";
   notes?: string;
+  showBasePrice?: boolean;
 }
 
 export interface Invoice {

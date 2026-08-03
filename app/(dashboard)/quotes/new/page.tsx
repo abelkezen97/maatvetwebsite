@@ -32,7 +32,8 @@ function NewQuoteForm() {
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   
-  // Search state for product selector modal/dropdown
+  // Form & Option states
+  const [showBasePrice, setShowBasePrice] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [showProductDropdown, setShowProductDropdown] = useState(false);
 
@@ -122,6 +123,10 @@ function NewQuoteForm() {
           setCustomerSearchQuery(existingQuote.companyName || "");
         }
 
+        if (existingQuote.showBasePrice !== undefined) {
+          setShowBasePrice(existingQuote.showBasePrice);
+        }
+
         setNotes(existingQuote.notes || "");
         
         // Map QuoteItems to QuoteItemWithManual
@@ -173,11 +178,19 @@ function NewQuoteForm() {
 
   // Calculate pricing summary details
   const subtotal = useMemo(() => {
-    return quoteItems.reduce((acc, item) => acc + item.price * item.quantity, 0);
+    return quoteItems.reduce((acc, item) => {
+      const q = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
+      const p = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
+      return acc + p * q;
+    }, 0);
   }, [quoteItems]);
 
   const grandTotal = useMemo(() => {
-    return quoteItems.reduce((acc, item) => acc + item.discount * item.quantity, 0);
+    return quoteItems.reduce((acc, item) => {
+      const q = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
+      const d = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
+      return acc + d * q;
+    }, 0);
   }, [quoteItems]);
 
   const discountTotal = useMemo(() => {
@@ -233,57 +246,39 @@ function NewQuoteForm() {
     setShowProductDropdown(false);
   };
 
-  const handleUpdateQuantity = (index: number, val: number) => {
-    if (val < 0 || isNaN(val)) return;
+  const handleUpdateQuantity = (index: number, val: number | string) => {
     const updated = [...quoteItems];
     const item = updated[index];
-    
-    // Find original product to retrieve pricing tiers
     const product = products.find((p) => p.id === item.productId);
     const basePrice = product ? product.price : item.price;
+
+    const numQty = typeof val === "number" ? val : (parseInt(val, 10) || 0);
     let tierPrice = basePrice;
-    
-    if (product) {
-      if (val >= 100) {
-        tierPrice = product.price100 ?? tierPrice;
-      } else if (val >= 50) {
-        tierPrice = product.price50 ?? tierPrice;
-      } else if (val >= 10) {
-        tierPrice = product.price10 ?? tierPrice;
-      }
+    if (product && numQty > 0) {
+      if (numQty >= 100) tierPrice = product.price100 ?? tierPrice;
+      else if (numQty >= 50) tierPrice = product.price50 ?? tierPrice;
+      else if (numQty >= 10) tierPrice = product.price10 ?? tierPrice;
     }
 
-    // Use manual override if set, otherwise the active tier price
-    const finalPrice = item.manualDiscount !== undefined 
-      ? (item.manualDiscount ?? tierPrice)
-      : tierPrice;
+    const finalPrice = item.manualDiscount !== undefined ? item.manualDiscount : tierPrice;
+    const discNum = typeof finalPrice === "number" ? finalPrice : (parseFloat(finalPrice as any) || 0);
 
-    updated[index].quantity = val;
+    updated[index].quantity = val as any;
     updated[index].price = basePrice;
     updated[index].discount = finalPrice;
-    updated[index].total = val * finalPrice;
+    updated[index].total = numQty * discNum;
     setQuoteItems(updated);
   };
 
-  const handleUpdateDiscount = (index: number, val: number | undefined) => {
+  const handleUpdateDiscount = (index: number, val: number | string | undefined) => {
     const updated = [...quoteItems];
     const item = updated[index];
-    const product = products.find((p) => p.id === item.productId);
-    const basePrice = product ? product.price : item.price;
-    
-    // Calculate tier price for the current quantity
-    let tierPrice = basePrice;
-    if (product) {
-      const qty = item.quantity;
-      if (qty >= 100) tierPrice = product.price100 ?? tierPrice;
-      else if (qty >= 50) tierPrice = product.price50 ?? tierPrice;
-      else if (qty >= 10) tierPrice = product.price10 ?? tierPrice;
-    }
+    const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
+    const discNum = typeof val === "number" ? val : (parseFloat(val as any) || 0);
 
-    const discountVal = (val === undefined || isNaN(val)) ? 0 : Math.max(0, val);
-    updated[index].manualDiscount = discountVal;
-    updated[index].discount = discountVal;
-    updated[index].total = item.quantity * discountVal;
+    updated[index].manualDiscount = val as any;
+    updated[index].discount = val as any;
+    updated[index].total = numQty * discNum;
     setQuoteItems(updated);
   };
 
@@ -319,6 +314,7 @@ function NewQuoteForm() {
       grandTotal,
       status: "Pending" as const,
       notes,
+      showBasePrice,
     };
 
     try {
@@ -583,7 +579,20 @@ function NewQuoteForm() {
 
           {/* Product Items Selector */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <h3 className="text-base font-bold text-slate-800">2. Items Configuration</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h3 className="text-base font-bold text-slate-800">2. Items Configuration</h3>
+              <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hover:bg-slate-100 transition w-fit">
+                <input
+                  type="checkbox"
+                  checked={showBasePrice}
+                  onChange={(e) => setShowBasePrice(e.target.checked)}
+                  className="w-4 h-4 rounded text-[#61989B] focus:ring-accent border-slate-300 cursor-pointer"
+                />
+                <span className="text-xs font-bold text-slate-700">
+                  {language === "en" ? "Show Base Price Column" : "إظهار عمود السعر الأساسي"}
+                </span>
+              </label>
+            </div>
             
             {/* Live Search bar */}
             <div className="relative">
@@ -661,9 +670,13 @@ function NewQuoteForm() {
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
                         <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase">Product Name</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Unit Price</th>
+                        {showBasePrice && (
+                          <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Base Price</th>
+                        )}
                         <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-24">Qty</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-36">Discount Price</th>
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-36">
+                          {showBasePrice ? "Discount Price" : "Unit Price"}
+                        </th>
                         <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Subtotal</th>
                         <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-14"></th>
                       </tr>
@@ -674,16 +687,26 @@ function NewQuoteForm() {
                           <td className="px-4 py-4 font-bold text-slate-700">
                             {item.productName}
                           </td>
-                          <td className="px-4 py-4 text-right font-semibold text-slate-700">
-                            AED {item.price.toFixed(2)}
-                          </td>
+                          {showBasePrice && (
+                            <td className="px-4 py-4 text-right font-semibold text-slate-700">
+                              AED {item.price.toFixed(2)}
+                            </td>
+                          )}
                           <td className="px-2 py-4">
                             <input
                               type="number"
                               min="0"
                               inputMode="numeric"
-                              value={item.quantity}
-                              onChange={(e) => handleUpdateQuantity(idx, e.target.value === "" ? 0 : (parseInt(e.target.value, 10) || 0))}
+                              value={item.quantity !== undefined && item.quantity !== null ? item.quantity : ""}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                if (raw === "") {
+                                  handleUpdateQuantity(idx, "");
+                                } else {
+                                  const parsed = parseInt(raw, 10);
+                                  handleUpdateQuantity(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
+                                }
+                              }}
                               onFocus={(e) => e.target.select()}
                               className="w-16 mx-auto px-2 py-1.5 border border-slate-200 rounded-lg text-center font-bold focus:outline-none focus:border-accent"
                             />
@@ -696,11 +719,15 @@ function NewQuoteForm() {
                                 min="0"
                                 step="any"
                                 inputMode="decimal"
-                                value={item.discount !== undefined ? item.discount : 0}
+                                value={item.discount !== undefined && item.discount !== null ? item.discount : ""}
                                 onChange={(e) => {
                                   const raw = e.target.value;
-                                  const v = raw === "" ? 0 : parseFloat(raw);
-                                  handleUpdateDiscount(idx, isNaN(v) ? 0 : v);
+                                  if (raw === "") {
+                                    handleUpdateDiscount(idx, "");
+                                  } else {
+                                    const parsed = parseFloat(raw);
+                                    handleUpdateDiscount(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
+                                  }
                                 }}
                                 onFocus={(e) => e.target.select()}
                                 className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm focus:outline-none focus:border-accent text-slate-800 animate-none"
