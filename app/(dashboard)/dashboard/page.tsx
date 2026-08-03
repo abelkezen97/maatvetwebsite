@@ -28,6 +28,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { DashboardCard } from "@/components/DashboardCard";
 import { DataTable } from "@/components/DataTable";
 import { mockQuotes, mockInvoices } from "@/lib/mockData";
+import { ActionDropdown } from "@/components/ActionDropdown";
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -304,49 +305,16 @@ export default function DashboardPage() {
     {
       header: "Actions",
       accessor: (row: Quote) => (
-        <div className="flex gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedQuote(row);
-            }}
-            title="View Details"
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              generateQuotePDF(row);
-            }}
-            title="Download PDF"
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              shareQuoteToWhatsApp(row);
-            }}
-            title="Share via WhatsApp"
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
-          >
-            <MessageCircle className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              router.push(`/quotes/new?edit=${row.quoteNumber}`);
-            }}
-            title="Edit Quote"
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-[#61989B] transition cursor-pointer"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-        </div>
+        <ActionDropdown
+          options={[
+            { label: "View Details", onClick: () => setSelectedQuote(row) },
+            { label: "Download PDF", onClick: () => generateQuotePDF(row) },
+            { label: "Share via WhatsApp", onClick: () => shareQuoteToWhatsApp(row) },
+            { label: "Edit Quote", onClick: () => router.push(`/quotes/new?edit=${row.quoteNumber}`) },
+          ]}
+        />
       ),
+      className: "w-32 text-center",
     },
   ];
 
@@ -404,49 +372,16 @@ export default function DashboardPage() {
     {
       header: "Actions",
       accessor: (row: Invoice) => (
-        <div className="flex gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedInvoice(row);
-            }}
-            title="View Details"
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              generateInvoicePDF(row);
-            }}
-            title="Download PDF"
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              shareInvoiceToWhatsApp(row);
-            }}
-            title="Share via WhatsApp"
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-slate-800 transition cursor-pointer"
-          >
-            <MessageCircle className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              router.push(`/invoices/new?edit=${row.invoiceNumber}`);
-            }}
-            title="Edit Invoice"
-            className="p-2 text-slate-500 hover:bg-slate-100 rounded-xl hover:text-amber-600 transition cursor-pointer"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-        </div>
+        <ActionDropdown
+          options={[
+            { label: "View Details", onClick: () => setSelectedInvoice(row) },
+            { label: "Download PDF", onClick: () => generateInvoicePDF(row) },
+            { label: "Share via WhatsApp", onClick: () => shareInvoiceToWhatsApp(row) },
+            { label: "Edit Invoice", onClick: () => router.push(`/invoices/new?edit=${row.invoiceNumber}`) },
+          ]}
+        />
       ),
+      className: "w-32 text-center",
     },
   ];
 

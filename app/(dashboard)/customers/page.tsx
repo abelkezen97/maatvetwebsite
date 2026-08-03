@@ -8,8 +8,11 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Customer } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { Plus, X, CheckCircle2, RotateCw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ActionDropdown } from "@/components/ActionDropdown";
 
 export default function CustomersPage() {
+  const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -130,16 +133,15 @@ export default function CustomersPage() {
     {
       header: "Actions",
       accessor: (row: Customer) => (
-        <div className="flex justify-end">
-          <a
-            href={`/receipts/new?customerId=${row.id}`}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200/80 transition"
-          >
-            Issue Receipt
-          </a>
-        </div>
+        <ActionDropdown
+          options={[
+            { label: "Issue Receipt", onClick: () => router.push(`/receipts/new?customerId=${row.id}`) },
+            { label: "Create Quote", onClick: () => router.push(`/quotes/new?customerId=${row.id}`) },
+            { label: "Create Invoice", onClick: () => router.push(`/invoices/new?customerId=${row.id}`) },
+          ]}
+        />
       ),
-      className: "w-32 text-right",
+      className: "w-32 text-center",
     },
   ];
 

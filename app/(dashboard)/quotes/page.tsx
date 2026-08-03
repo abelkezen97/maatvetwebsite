@@ -14,6 +14,7 @@ import jsPDF from "jspdf";
 import { buildPDF } from "@/lib/pdfHelper";
 import { mockQuotes } from "@/lib/mockData";
 import { useAuth } from "@/hooks/useAuth";
+import { ActionDropdown } from "@/components/ActionDropdown";
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -188,63 +189,17 @@ export default function QuotesPage() {
     {
       header: "Actions",
       accessor: (row: Quote) => (
-        <div className="flex gap-2">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedQuote(row);
-            }}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition"
-            title="Preview Details"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              generatePDF(row);
-            }}
-            className="p-1.5 rounded-lg hover:bg-[#61989B]/10 text-[#61989B] hover:text-[#4e7d80] transition"
-            title="Download PDF"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              shareToWhatsApp(row);
-            }}
-            className="p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition"
-            title="Share via WhatsApp"
-          >
-            <MessageCircle className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              router.push(`/quotes/new?edit=${row.quoteNumber}`);
-            }}
-            className="p-1.5 rounded-lg hover:bg-amber-50 text-amber-600 hover:text-amber-700 transition"
-            title="Edit Quote"
-          >
-            <Pencil className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              router.push(`/invoices/new?fromQuote=${row.quoteNumber}`);
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-[#1B2A4A] hover:bg-[#15223c] text-white transition shadow-xs cursor-pointer whitespace-nowrap"
-            title="Convert Quote to Invoice"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5" />
-            Invoice
-          </button>
-
-        </div>
-
+        <ActionDropdown
+          options={[
+            { label: "View Details", onClick: () => setSelectedQuote(row) },
+            { label: "Download PDF", onClick: () => generatePDF(row) },
+            { label: "Share via WhatsApp", onClick: () => shareToWhatsApp(row) },
+            { label: "Edit Quote", onClick: () => router.push(`/quotes/new?edit=${row.quoteNumber}`) },
+            { label: "Convert to Invoice", onClick: () => router.push(`/invoices/new?fromQuote=${row.quoteNumber}`) },
+          ]}
+        />
       ),
-      className: "w-64 text-center",
+      className: "w-32 text-center",
     },
   ];
 

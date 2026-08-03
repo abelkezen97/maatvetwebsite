@@ -10,6 +10,7 @@ import { Receipt } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { Plus, Download, FileText, RotateCw } from "lucide-react";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
+import { ActionDropdown } from "@/components/ActionDropdown";
 
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -114,17 +115,13 @@ export default function ReceiptsPage() {
     {
       header: "Actions",
       accessor: (row: Receipt) => (
-        <div className="flex items-center justify-end gap-2">
-          <button
-            onClick={() => handleDownloadPDF(row)}
-            className="p-2 text-slate-500 hover:text-[#61989B] hover:bg-slate-100 rounded-lg transition"
-            title="Download PDF Receipt"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-        </div>
+        <ActionDropdown
+          options={[
+            { label: "Download PDF Receipt", onClick: () => handleDownloadPDF(row) },
+          ]}
+        />
       ),
-      className: "w-24 text-right",
+      className: "w-32 text-center",
     },
   ];
 

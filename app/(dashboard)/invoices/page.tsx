@@ -11,6 +11,7 @@ import { Invoice, Customer } from "@/types";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { mockInvoices } from "@/lib/mockData";
 import { useAuth } from "@/hooks/useAuth";
+import { ActionDropdown, ActionOption } from "@/components/ActionDropdown";
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -389,63 +390,19 @@ export default function InvoicesPage() {
     },
     {
       header: "Actions",
-      accessor: (row: Invoice) => (
-        <div className="flex gap-1.5 justify-center">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setSelectedInvoice(row);
-            }}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition"
-            title="Preview Details"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              generatePDF(row);
-            }}
-            className="p-1.5 rounded-lg hover:bg-[#61989B]/10 text-[#61989B] hover:text-[#4e7d80] transition"
-            title="Download PDF"
-          >
-            <Download className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              shareToWhatsApp(row);
-            }}
-            className="p-1.5 rounded-lg hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 transition"
-            title="Share Invoice via WhatsApp"
-          >
-            <MessageCircle className="w-4 h-4" />
-          </button>
-          {row.status === "Paid" && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                shareReceiptToWhatsApp(row);
-              }}
-              className="p-1.5 rounded-lg hover:bg-teal-50 text-teal-600 hover:text-teal-700 transition"
-              title="Share Receipt Voucher via WhatsApp"
-            >
-              <FileText className="w-4 h-4" />
-            </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDelete(row.invoiceNumber);
-            }}
-            className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-600 hover:text-rose-700 transition"
-            title="Delete Invoice"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      ),
-      className: "w-48 text-center",
+      accessor: (row: Invoice) => {
+        const options: ActionOption[] = [
+          { label: "View Details", onClick: () => setSelectedInvoice(row) },
+          { label: "Download PDF", onClick: () => generatePDF(row) },
+          { label: "Share Invoice via WhatsApp", onClick: () => shareToWhatsApp(row) },
+        ];
+        if (row.status === "Paid") {
+          options.push({ label: "Share Receipt via WhatsApp", onClick: () => shareReceiptToWhatsApp(row) });
+        }
+        options.push({ label: "Delete Invoice", onClick: () => handleDelete(row.invoiceNumber), danger: true });
+        return <ActionDropdown options={options} />;
+      },
+      className: "w-32 text-center",
     },
   ];
 
