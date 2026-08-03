@@ -280,16 +280,10 @@ function NewQuoteForm() {
       else if (qty >= 10) tierPrice = product.price10 ?? tierPrice;
     }
 
-    if (val === undefined || isNaN(val)) {
-      // Revert to tier price
-      updated[index].manualDiscount = undefined;
-      updated[index].discount = tierPrice;
-      updated[index].total = item.quantity * tierPrice;
-    } else {
-      updated[index].manualDiscount = val;
-      updated[index].discount = val;
-      updated[index].total = item.quantity * val;
-    }
+    const discountVal = (val === undefined || isNaN(val)) ? 0 : Math.max(0, val);
+    updated[index].manualDiscount = discountVal;
+    updated[index].discount = discountVal;
+    updated[index].total = item.quantity * discountVal;
     setQuoteItems(updated);
   };
 
@@ -702,10 +696,11 @@ function NewQuoteForm() {
                                 min="0"
                                 step="any"
                                 inputMode="decimal"
-                                value={item.discount !== undefined ? item.discount : ""}
+                                value={item.discount !== undefined ? item.discount : 0}
                                 onChange={(e) => {
-                                  const v = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                                  handleUpdateDiscount(idx, v);
+                                  const raw = e.target.value;
+                                  const v = raw === "" ? 0 : parseFloat(raw);
+                                  handleUpdateDiscount(idx, isNaN(v) ? 0 : v);
                                 }}
                                 onFocus={(e) => e.target.select()}
                                 className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm focus:outline-none focus:border-accent text-slate-800 animate-none"
