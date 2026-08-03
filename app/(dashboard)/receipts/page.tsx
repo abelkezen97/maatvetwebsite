@@ -53,12 +53,22 @@ export default function ReceiptsPage() {
   }, []);
 
   const filteredReceipts = useMemo(() => {
-    return receipts.filter(
-      (r) =>
-        r.receiptNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (r.referenceNo && r.referenceNo.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    let list = receipts;
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      list = list.filter(
+        (r) =>
+          r.receiptNumber.toLowerCase().includes(query) ||
+          r.companyName.toLowerCase().includes(query) ||
+          (r.referenceNo && r.referenceNo.toLowerCase().includes(query))
+      );
+    }
+    return [...list].sort((a, b) => {
+      const timeA = a.paymentDate ? new Date(a.paymentDate).getTime() : 0;
+      const timeB = b.paymentDate ? new Date(b.paymentDate).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+      return b.receiptNumber.localeCompare(a.receiptNumber);
+    });
   }, [receipts, searchQuery]);
 
   const handleDownloadPDF = (receipt: Receipt) => {
@@ -89,8 +99,10 @@ export default function ReceiptsPage() {
       header: "Customer / Clinic Company",
       accessor: (row: Receipt) => (
         <div>
-          <div className="font-extrabold text-slate-800">{row.companyName}</div>
-          {row.customerName && <div className="text-xs text-slate-400 font-semibold">{row.customerName}</div>}
+          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          {row.companyName && row.customerName && (
+            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
+          )}
         </div>
       ),
     },

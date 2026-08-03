@@ -139,15 +139,22 @@ export default function QuotesPage() {
       list = quotes.filter((q) => q.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
     }
 
-    if (!searchQuery) return list;
-    const query = searchQuery.toLowerCase();
-    return list.filter(
-      (q) =>
-        q.quoteNumber.toLowerCase().includes(query) ||
-        q.customerName.toLowerCase().includes(query) ||
-        q.companyName.toLowerCase().includes(query) ||
-        q.salesmanName.toLowerCase().includes(query)
-    );
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      list = list.filter(
+        (q) =>
+          q.quoteNumber.toLowerCase().includes(query) ||
+          q.customerName.toLowerCase().includes(query) ||
+          q.companyName.toLowerCase().includes(query)
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      const timeA = a.date ? new Date(a.date).getTime() : 0;
+      const timeB = b.date ? new Date(b.date).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+      return b.quoteNumber.localeCompare(a.quoteNumber);
+    });
   }, [quotes, searchQuery, user]);
 
   // Premium PDF Generation using jsPDF
@@ -168,8 +175,10 @@ export default function QuotesPage() {
       header: "Client / Company",
       accessor: (row: Quote) => (
         <div>
-          <div className="font-bold text-slate-800">{row.customerName}</div>
-          <div className="text-xs text-slate-400 font-semibold">{row.companyName}</div>
+          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          {row.companyName && row.customerName && (
+            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
+          )}
         </div>
       ),
     },

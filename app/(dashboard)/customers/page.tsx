@@ -46,12 +46,17 @@ export default function CustomersPage() {
   }, []);
 
   const filteredCustomers = useMemo(() => {
-    return customers.filter(
-      (c) =>
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.phone.includes(searchQuery)
-    );
+    let list = customers;
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      list = list.filter(
+        (c) =>
+          c.name.toLowerCase().includes(query) ||
+          c.company.toLowerCase().includes(query) ||
+          c.phone.includes(query)
+      );
+    }
+    return [...list].reverse();
   }, [customers, searchQuery]);
 
   const handleFormSubmit = async (e: React.FormEvent) => {

@@ -203,14 +203,28 @@ export default function DashboardPage() {
     };
   }, [products, customers, visibleInvoices]);
 
-  // Recent 3 quotes
+  // Recent 3 quotes (most recent on top)
   const recentQuotes = useMemo(() => {
-    return [...visibleQuotes].sort((a, b) => b.quoteNumber.localeCompare(a.quoteNumber)).slice(0, 3);
+    return [...visibleQuotes]
+      .sort((a, b) => {
+        const timeA = a.date ? new Date(a.date).getTime() : 0;
+        const timeB = b.date ? new Date(b.date).getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return b.quoteNumber.localeCompare(a.quoteNumber);
+      })
+      .slice(0, 3);
   }, [visibleQuotes]);
 
-  // Recent 3 invoices
+  // Recent 3 invoices (most recent on top)
   const recentInvoices = useMemo(() => {
-    return [...visibleInvoices].sort((a, b) => b.invoiceNumber.localeCompare(a.invoiceNumber)).slice(0, 3);
+    return [...visibleInvoices]
+      .sort((a, b) => {
+        const timeA = a.date ? new Date(a.date).getTime() : 0;
+        const timeB = b.date ? new Date(b.date).getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return b.invoiceNumber.localeCompare(a.invoiceNumber);
+      })
+      .slice(0, 3);
   }, [visibleInvoices]);
 
   const shareQuoteToWhatsApp = async (quote: Quote) => {
@@ -287,8 +301,10 @@ export default function DashboardPage() {
       header: t("clientCompany"),
       accessor: (row: Quote) => (
         <div>
-          <div className="font-bold text-slate-800">{row.customerName}</div>
-          <div className="text-xs text-slate-400 font-medium">{row.companyName}</div>
+          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          {row.companyName && row.customerName && (
+            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
+          )}
         </div>
       ),
     },
@@ -336,8 +352,10 @@ export default function DashboardPage() {
       header: t("clientCompany"),
       accessor: (row: Invoice) => (
         <div>
-          <div className="font-bold text-slate-800">{row.customerName}</div>
-          <div className="text-xs text-slate-400 font-medium">{row.companyName}</div>
+          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          {row.companyName && row.customerName && (
+            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
+          )}
         </div>
       ),
     },

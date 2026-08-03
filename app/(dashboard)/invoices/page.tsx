@@ -208,16 +208,24 @@ export default function InvoicesPage() {
       list = invoices.filter((i) => i.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
     }
 
-    if (!searchQuery) return list;
-    const query = searchQuery.toLowerCase();
-    return list.filter(
-      (i) =>
-        i.invoiceNumber.toLowerCase().includes(query) ||
-        (i.quoteNumber && i.quoteNumber.toLowerCase().includes(query)) ||
-        i.customerName.toLowerCase().includes(query) ||
-        i.companyName.toLowerCase().includes(query) ||
-        i.salesmanName.toLowerCase().includes(query)
-    );
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      list = list.filter(
+        (i) =>
+          i.invoiceNumber.toLowerCase().includes(query) ||
+          (i.quoteNumber && i.quoteNumber.toLowerCase().includes(query)) ||
+          i.customerName.toLowerCase().includes(query) ||
+          i.companyName.toLowerCase().includes(query) ||
+          i.salesmanName.toLowerCase().includes(query)
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      const timeA = a.date ? new Date(a.date).getTime() : 0;
+      const timeB = b.date ? new Date(b.date).getTime() : 0;
+      if (timeA !== timeB) return timeB - timeA;
+      return b.invoiceNumber.localeCompare(a.invoiceNumber);
+    });
   }, [invoices, searchQuery, user]);
 
   const generatePDF = (invoice: Invoice) => {
@@ -354,8 +362,10 @@ export default function InvoicesPage() {
       header: "Client / Company",
       accessor: (row: Invoice) => (
         <div>
-          <div className="font-bold text-slate-800">{row.customerName}</div>
-          <div className="text-xs text-slate-400 font-semibold">{row.companyName}</div>
+          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          {row.companyName && row.customerName && (
+            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
+          )}
         </div>
       ),
     },
