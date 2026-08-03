@@ -97,20 +97,22 @@ export default function DashboardPage() {
         if (custRes.customers) setCustomers(custRes.customers);
 
         let finalQuotes = [...localQuotes];
-        if (Array.isArray(quotesRes) && quotesRes.length > 0) {
-          const merged = [...quotesRes];
-          localQuotes.forEach((lq) => {
-            if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
-              merged.unshift(lq);
-            }
-          });
+        if (Array.isArray(quotesRes)) {
+          const merged = quotesRes.length === 0 ? [] : [...quotesRes];
+          if (quotesRes.length > 0) {
+            localQuotes.forEach((lq) => {
+              if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
+                merged.unshift(lq);
+              }
+            });
+          }
           finalQuotes = merged;
         }
         setQuotes(finalQuotes);
         localStorage.setItem("maat_quotes", JSON.stringify(finalQuotes));
 
         let finalInvoices = [...localInvoices];
-        if (Array.isArray(invRes) && invRes.length > 0) {
+        if (Array.isArray(invRes)) {
           const parsedInvoices = invRes.map((item: any) => {
             if (item && Array.isArray(item.items)) return item;
             if (item.invoiceJson) {
@@ -132,12 +134,14 @@ export default function DashboardPage() {
             };
           });
 
-          const mergedInvs = [...parsedInvoices];
-          localInvoices.forEach((li) => {
-            if (li.invoiceNumber && !mergedInvs.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
-              mergedInvs.unshift(li);
-            }
-          });
+          const mergedInvs = invRes.length === 0 ? [] : [...parsedInvoices];
+          if (invRes.length > 0) {
+            localInvoices.forEach((li) => {
+              if (li.invoiceNumber && !mergedInvs.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
+                mergedInvs.unshift(li);
+              }
+            });
+          }
           finalInvoices = mergedInvs;
         }
         setInvoices(finalInvoices);

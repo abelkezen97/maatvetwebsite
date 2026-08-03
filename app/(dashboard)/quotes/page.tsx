@@ -72,13 +72,15 @@ export default function QuotesPage() {
     fetch(`/api/quotes?t=${Date.now()}`)
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          const merged = [...data];
-          localQuotes.forEach((lq) => {
-            if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
-              merged.unshift(lq);
-            }
-          });
+        if (Array.isArray(data)) {
+          const merged = data.length === 0 ? [] : [...data];
+          if (data.length > 0) {
+            localQuotes.forEach((lq) => {
+              if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
+                merged.unshift(lq);
+              }
+            });
+          }
           setQuotes(merged);
           localStorage.setItem("maat_quotes", JSON.stringify(merged));
         }

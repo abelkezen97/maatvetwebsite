@@ -63,7 +63,7 @@ export default function InvoicesPage() {
     fetch("/api/invoices")
       .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const parsedInvoices = data.map((item: any) => {
             if (item && Array.isArray(item.items)) {
               return item;
@@ -89,12 +89,14 @@ export default function InvoicesPage() {
             };
           });
 
-          const merged = [...parsedInvoices];
-          localInvoices.forEach((li) => {
-            if (li.invoiceNumber && !merged.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
-              merged.unshift(li);
-            }
-          });
+          const merged = data.length === 0 ? [] : [...parsedInvoices];
+          if (data.length > 0) {
+            localInvoices.forEach((li) => {
+              if (li.invoiceNumber && !merged.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
+                merged.unshift(li);
+              }
+            });
+          }
 
           setInvoices(merged);
           localStorage.setItem("maat_invoices", JSON.stringify(merged));
