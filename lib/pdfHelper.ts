@@ -109,7 +109,11 @@ export const buildPDF = (quote: Quote): jsPDF => {
   }
 
   doc.setFont("helvetica", "normal");
-  doc.text("This is a computer generated quote. Pricing valid for 30 days.", 15, yPos);
+  const footerStr = quote.footerText && quote.footerText.trim() !== ""
+    ? quote.footerText.trim()
+    : "This is a computer generated quote. Pricing valid for 30 days.";
+  const splitFooter = doc.splitTextToSize(footerStr, 180);
+  doc.text(splitFooter, 15, yPos);
 
   return doc;
 };

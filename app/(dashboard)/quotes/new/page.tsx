@@ -26,6 +26,7 @@ function NewQuoteForm() {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [quoteItems, setQuoteItems] = useState<QuoteItemWithManual[]>([]);
   const [notes, setNotes] = useState("");
+  const [footerText, setFooterText] = useState<string>("This is a computer generated quote. Pricing valid for 30 days.");
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotesList, setQuotesList] = useState<Quote[]>([]);
@@ -128,6 +129,9 @@ function NewQuoteForm() {
         }
 
         setNotes(existingQuote.notes || "");
+        if (existingQuote.footerText !== undefined) {
+          setFooterText(existingQuote.footerText);
+        }
         
         // Map QuoteItems to QuoteItemWithManual
         const mappedItems = existingQuote.items.map((item) => ({
@@ -315,6 +319,7 @@ function NewQuoteForm() {
       status: "Pending" as const,
       notes,
       showBasePrice,
+      footerText,
     };
 
     try {
@@ -790,10 +795,24 @@ function NewQuoteForm() {
                 Special Remarks / Delivery Notes
               </label>
               <textarea
-                rows={3}
+                rows={2}
                 placeholder="e.g. deliver before 10 AM, check calcium batch..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+              />
+            </div>
+
+            {/* Quotation Footer / Terms */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">
+                Quotation Footer / Terms & Conditions
+              </label>
+              <textarea
+                rows={2}
+                placeholder="e.g. This is a computer generated quote. Pricing valid for 30 days."
+                value={footerText}
+                onChange={(e) => setFooterText(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
               />
             </div>

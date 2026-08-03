@@ -59,6 +59,7 @@ export interface Quote {
   status: "Pending" | "Approved" | "Rejected";
   notes?: string;
   showBasePrice?: boolean;
+  footerText?: string;
 }
 
 export interface Invoice {
