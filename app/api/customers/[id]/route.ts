@@ -167,10 +167,19 @@ export async function GET(
       0
     );
 
+    const openingBalance =
+      customer.openingBalance !== undefined && customer.openingBalance !== null
+        ? customer.openingBalance
+        : customer.pendingBillwiseAmount || 0;
+
+    const collectionsSum = activeReceiptsForBalance.reduce(
+      (sum, rec) => sum + (Number(rec.amountPaid) || 0),
+      0
+    );
+
     const calculatedPendingBalance = Math.max(
       0,
-      creditInvoicesSum -
-        activeReceiptsForBalance.reduce((sum, rec) => sum + (Number(rec.amountPaid) || 0), 0)
+      openingBalance + creditInvoicesSum - collectionsSum
     );
 
     const pendingBalance =

@@ -651,7 +651,8 @@ export function SuperAdminCustomersView({
                     <th className="py-3.5 px-4">Doctor / Contact</th>
                     <th className="py-3.5 px-4">Salesperson</th>
                     <th className="py-3.5 px-4">Country</th>
-                    <th className="py-3.5 px-4 text-right">Pending Balance</th>
+                    <th className="py-3.5 px-4 text-right">Opening Balance</th>
+                    <th className="py-3.5 px-4 text-right">Current Outstanding</th>
                     <th className="py-3.5 px-4 text-center">Status</th>
                     <th className="py-3.5 px-4 text-center">Actions</th>
                   </tr>
@@ -698,8 +699,13 @@ export function SuperAdminCustomersView({
                           {row.country}
                         </td>
 
-                        {/* Pending Balance */}
-                        <td className="py-3.5 px-4 text-right">
+                        {/* Opening Balance */}
+                        <td className="py-3.5 px-4 text-right font-bold text-slate-700 text-xs whitespace-nowrap">
+                          {formatCurrency(row.openingBalance ?? row.pendingBillwiseAmount ?? 0, row.country)}
+                        </td>
+
+                        {/* Current Outstanding */}
+                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
                           <span className={`font-extrabold text-xs ${isOutstanding ? "text-rose-600" : "text-emerald-600"}`}>
                             {formatCurrency(outstanding, row.country)}
                           </span>

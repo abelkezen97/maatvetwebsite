@@ -34,6 +34,10 @@ export function mapCustomerFromDb(row: any, salesmanMap?: Map<string, string>): 
     (row.assigned_salesman_id && salesmanMap?.get(row.assigned_salesman_id)) ||
     undefined;
 
+  const numOpening = row.opening_balance !== undefined && row.opening_balance !== null ? Number(row.opening_balance) : 0;
+  const numPending = row.pending_balance !== undefined && row.pending_balance !== null ? Number(row.pending_balance) : 0;
+  const openingBalance = numOpening > 0 ? numOpening : (numPending > 0 ? numPending : numOpening);
+
   return {
     id: row.id ? String(row.id) : `cust-${Date.now()}`,
     customerCode: row.customer_code || "",
@@ -52,6 +56,7 @@ export function mapCustomerFromDb(row: any, salesmanMap?: Map<string, string>): 
       typeof row.credit_limit === "number"
         ? row.credit_limit
         : parseFloat(row.credit_limit) || 0,
+    openingBalance: openingBalance,
     pendingBillwiseAmount:
       typeof row.pending_balance === "number"
         ? row.pending_balance
@@ -87,6 +92,9 @@ export function mapCustomerToDb(customer: Partial<Customer>): Record<string, any
   if (customer.phone !== undefined) payload.phone = customer.phone;
   if (customer.address !== undefined) payload.address = customer.address;
   if (customer.city !== undefined) payload.city = customer.city;
+  if (customer.openingBalance !== undefined) {
+    payload.opening_balance = Number(customer.openingBalance) || 0;
+  }
   if (customer.pendingBillwiseAmount !== undefined) {
     payload.pending_balance = Number(customer.pendingBillwiseAmount) || 0;
   }

@@ -60,6 +60,7 @@ function formatDisplayDate(dateStr?: string): string {
 interface WorkspaceData {
   customer: Customer;
   financialSummary: {
+    openingBalance?: number;
     pendingBalance: number;
     totalInvoiced: number;
     totalPaid: number;
@@ -477,59 +478,50 @@ export default function CustomerDetailPage() {
 
         {/* Financial Metrics Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Outstanding Balance */}
+          {/* Opening Balance */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-1.5">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Outstanding Balance</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Opening Balance</span>
+            <div className="text-2xl font-black tracking-tight text-slate-900">
+              {currencySymbol} {(financialSummary.openingBalance ?? customer.openingBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-[11px] font-semibold text-slate-500">
+              Historical statement balance (15-Aug-2026)
+            </p>
+          </div>
+
+          {/* New Invoices (Since MAATWEB) */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-1.5">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">New Invoices</span>
+            <div className="text-2xl font-black tracking-tight text-slate-900">
+              {currencySymbol} {(financialSummary.creditInvoicesSum ?? financialSummary.totalInvoiced ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-[11px] font-semibold text-slate-500">
+              Billed since MAATWEB tracking
+            </p>
+          </div>
+
+          {/* Collections (Since MAATWEB) */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-1.5">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Collections</span>
+            <div className="text-2xl font-black tracking-tight text-emerald-600">
+              {currencySymbol} {(financialSummary.totalPaid ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-[11px] font-semibold text-slate-500">
+              Receipts recorded ({financialSummary.receiptCount} receipts)
+            </p>
+          </div>
+
+          {/* Current Outstanding */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-1.5">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Current Outstanding</span>
             <div className="text-2xl font-black tracking-tight text-slate-900">
               <span className={financialSummary.pendingBalance > 0 ? "text-rose-600" : "text-emerald-600"}>
                 {currencySymbol} {financialSummary.pendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
             <p className="text-[11px] font-semibold text-slate-500">
-              {financialSummary.pendingBalance > 0 ? "Pending collection from customer" : "Account in good standing"}
+              {financialSummary.pendingBalance > 0 ? "Opening + New Invoices - Collections" : "Account in good standing"}
             </p>
-          </div>
-
-          {/* Total Invoiced */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-1.5">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Total Invoiced</span>
-            <div className="text-2xl font-black tracking-tight text-slate-900">
-              {currencySymbol} {financialSummary.totalInvoiced.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <p className="text-[11px] font-semibold text-slate-500">
-              Lifetime billed amount across valid tax invoices
-            </p>
-          </div>
-
-          {/* Total Paid */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-1.5">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Total Paid</span>
-            <div className="text-2xl font-black tracking-tight text-emerald-600">
-              {currencySymbol} {financialSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </div>
-            <p className="text-[11px] font-semibold text-slate-500">
-              Total payment receipts recorded ({financialSummary.receiptCount} receipts)
-            </p>
-          </div>
-
-          {/* Last Payment */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-1.5">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Last Payment</span>
-            {financialSummary.lastPayment ? (
-              <div>
-                <div className="text-2xl font-black tracking-tight text-emerald-600">
-                  {currencySymbol} {financialSummary.lastPayment.amountPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
-                <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
-                  {formatDisplayDate(financialSummary.lastPayment.paymentDate)} ({financialSummary.lastPayment.paymentMethod})
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="text-2xl font-black tracking-tight text-slate-400">—</div>
-                <p className="text-[11px] font-semibold text-slate-500 mt-0.5">No payment receipts recorded yet</p>
-              </div>
-            )}
           </div>
         </div>
 

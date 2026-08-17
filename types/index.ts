@@ -71,6 +71,7 @@ export interface Customer {
   assignedSalesmanName?: string;
   assignedSalesmanRole?: string;
   creditLimit?: number;
+  openingBalance?: number;
   pendingBillwiseAmount?: number;
   notes?: string;
   is_active?: boolean;
