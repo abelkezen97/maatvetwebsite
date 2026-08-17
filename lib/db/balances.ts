@@ -6,6 +6,7 @@
  * Rules:
  * - Active Invoice: customer_id = customerId, is_deleted = false, status = 'Credit' (not 'Cancelled', 'Paid', or deleted)
  * - Active Receipt: customer_id = customerId, is_deleted = false
+ * - Preserves imported/opening pending_balance when there is no transactional history in invoices/receipts.
  */
 
 export async function recalculateCustomerBalance(
@@ -17,6 +18,15 @@ export async function recalculateCustomerBalance(
     throw new Error("recalculateCustomerBalance requires a valid customerId");
   }
 
+  // Fetch existing customer pending_balance
+  const { data: custRow } = await supabase
+    .from("customers")
+    .select("pending_balance")
+    .eq("id", customerId)
+    .maybeSingle();
+
+  const currentPendingBalance = Number(custRow?.pending_balance) || 0;
+
   // 1. Fetch active credit invoices total
   let invQuery = supabase
     .from("invoices")
@@ -25,7 +35,6 @@ export async function recalculateCustomerBalance(
 
   let { data: invRows, error: invErr } = await invQuery;
 
-  // Fallback if is_deleted column does not exist yet
   if (invErr && invErr.message.includes("is_deleted")) {
     const fallback = await supabase
       .from("invoices")
@@ -40,21 +49,7 @@ export async function recalculateCustomerBalance(
     throw new Error(`Failed to calculate customer invoice totals: ${invErr.message}`);
   }
 
-  // Track Paid invoice IDs to exclude their automatic receipts
-  const paidInvoiceIds = new Set<string>();
-  (invRows || []).forEach((inv: any) => {
-    if (!inv.is_deleted && inv.status === "Paid") {
-      paidInvoiceIds.add(inv.id);
-    }
-  });
-
-  const creditInvoicesSum = (invRows || [])
-    .filter((inv: any) => {
-      if (inv.is_deleted) return false;
-      if (inv.status === "Cancelled" || inv.status === "Paid") return false;
-      return inv.status === "Credit" || (inv.credit_days && Number(inv.credit_days) > 0);
-    })
-    .reduce((sum: number, inv: any) => sum + (Number(inv.grand_total) || 0), 0);
+  const activeInvoices = (invRows || []).filter((inv: any) => !inv.is_deleted);
 
   // 2. Fetch active receipts total
   let recQuery = supabase
@@ -78,9 +73,29 @@ export async function recalculateCustomerBalance(
     throw new Error(`Failed to calculate customer receipt totals: ${recErr.message}`);
   }
 
-  const receiptsSum = (recRows || [])
+  const activeReceipts = (recRows || []).filter((rec: any) => !rec.is_deleted);
+
+  // If customer has NO invoices and NO receipts, preserve their imported/opening balance
+  if (activeInvoices.length === 0 && activeReceipts.length === 0) {
+    return { customerId, pendingBalance: currentPendingBalance };
+  }
+
+  const paidInvoiceIds = new Set<string>();
+  activeInvoices.forEach((inv: any) => {
+    if (inv.status === "Paid") {
+      paidInvoiceIds.add(inv.id);
+    }
+  });
+
+  const creditInvoicesSum = activeInvoices
+    .filter((inv: any) => {
+      if (inv.status === "Cancelled" || inv.status === "Paid") return false;
+      return inv.status === "Credit" || (inv.credit_days && Number(inv.credit_days) > 0);
+    })
+    .reduce((sum: number, inv: any) => sum + (Number(inv.grand_total) || 0), 0);
+
+  const receiptsSum = activeReceipts
     .filter((rec: any) => {
-      if (rec.is_deleted) return false;
       if (rec.invoice_id && paidInvoiceIds.has(rec.invoice_id)) return false;
       return true;
     })
@@ -88,7 +103,7 @@ export async function recalculateCustomerBalance(
 
   const pendingBalance = Math.max(0, creditInvoicesSum - receiptsSum);
 
-  // 3. Persist recalculated balance on public.customers
+  // Persist recalculated balance on public.customers
   const updatePayload: Record<string, any> = {
     pending_balance: pendingBalance,
     updated_at: new Date().toISOString(),
@@ -121,7 +136,8 @@ export async function recalculateCustomerBalance(
 }
 
 /**
- * Bulk recalculate and sync balances for multiple customer IDs (or all accessible customers)
+ * Bulk sync balances for multiple customer IDs
+ * Safe against destroying imported/opening pending_balance values when no invoice history exists.
  */
 export async function syncAllCustomerBalances(
   supabase: any,
@@ -133,13 +149,11 @@ export async function syncAllCustomerBalances(
   const customerIds = customers.map((c) => c.id).filter(Boolean);
   if (customerIds.length === 0) return balanceMap;
 
-  // Fetch all active invoices for these customers
   const { data: invRows } = await supabase
     .from("invoices")
     .select("id, customer_id, grand_total, status, credit_days, is_deleted")
     .in("customer_id", customerIds);
 
-  // Fetch all active receipts for these customers
   const { data: recRows } = await supabase
     .from("receipts")
     .select("customer_id, invoice_id, amount_paid, is_deleted")
@@ -153,7 +167,11 @@ export async function syncAllCustomerBalances(
   });
 
   const creditInvByCust: Record<string, number> = {};
+  const activeInvoiceCustIds = new Set<string>();
   (invRows || []).forEach((inv: any) => {
+    if (!inv.is_deleted) {
+      activeInvoiceCustIds.add(inv.customer_id);
+    }
     const isCredit = !inv.is_deleted && inv.status !== "Cancelled" && inv.status !== "Paid" && (inv.status === "Credit" || (inv.credit_days && Number(inv.credit_days) > 0));
     if (isCredit && inv.customer_id) {
       creditInvByCust[inv.customer_id] = (creditInvByCust[inv.customer_id] || 0) + (Number(inv.grand_total) || 0);
@@ -161,8 +179,10 @@ export async function syncAllCustomerBalances(
   });
 
   const receiptsByCust: Record<string, number> = {};
+  const activeReceiptCustIds = new Set<string>();
   (recRows || []).forEach((rec: any) => {
     if (!rec.is_deleted && rec.customer_id) {
+      activeReceiptCustIds.add(rec.customer_id);
       if (rec.invoice_id && paidInvoiceIds.has(rec.invoice_id)) {
         return;
       }
@@ -173,13 +193,24 @@ export async function syncAllCustomerBalances(
   const updatesToPersist: Array<{ id: string; pending_balance: number }> = [];
 
   customerIds.forEach((id) => {
+    const custObj = customers.find((c) => c.id === id);
+    const existingBalance = Number(custObj?.pending_balance ?? custObj?.pendingBillwiseAmount) || 0;
+
+    const hasInvoices = activeInvoiceCustIds.has(id);
+    const hasReceipts = activeReceiptCustIds.has(id);
+
+    // If customer has no invoice/receipt history, preserve existing balance!
+    if (!hasInvoices && !hasReceipts) {
+      balanceMap.set(id, existingBalance);
+      return;
+    }
+
     const creditTotal = creditInvByCust[id] || 0;
     const recTotal = receiptsByCust[id] || 0;
     const calculated = Math.max(0, creditTotal - recTotal);
     balanceMap.set(id, calculated);
 
-    const custObj = customers.find((c) => c.id === id);
-    if (custObj && Number(custObj.pending_balance ?? custObj.pendingBillwiseAmount) !== calculated) {
+    if (custObj && existingBalance !== calculated) {
       updatesToPersist.push({ id, pending_balance: calculated });
     }
   });

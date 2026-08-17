@@ -125,7 +125,6 @@ export async function GET() {
     }
 
     const rawCustomers = data || [];
-    const balanceMap = await syncAllCustomerBalances(supabase, rawCustomers);
 
     const { data: profileRows } = await supabase.from("profiles").select("id, full_name");
     const salesmanMap = new Map<string, string>();
@@ -133,13 +132,7 @@ export async function GET() {
       if (p.id && p.full_name) salesmanMap.set(p.id, p.full_name);
     });
 
-    const customers = rawCustomers.map((row: any) => {
-      const cust = mapCustomerFromDb(row, salesmanMap);
-      if (balanceMap.has(row.id)) {
-        cust.pendingBillwiseAmount = balanceMap.get(row.id)!;
-      }
-      return cust;
-    });
+    const customers = rawCustomers.map((row: any) => mapCustomerFromDb(row, salesmanMap));
 
     return NextResponse.json({ customers, source: "supabase" });
   } catch (error: any) {
