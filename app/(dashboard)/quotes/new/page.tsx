@@ -455,7 +455,7 @@ function NewQuoteForm() {
         ]}
       />
 
-      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* Left Side: Builder Details (2/3 width) */}

@@ -33,6 +33,7 @@ import {
   Download,
 } from "lucide-react";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { InvoiceDetailModal } from "@/components/InvoiceDetailModal";
 import { Customer, Invoice, Quote, Receipt as ReceiptType } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { PageHeader } from "@/components/PageHeader";
@@ -364,7 +365,7 @@ export default function CustomerDetailPage() {
         }
       />
 
-      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 md:space-y-8 pb-12">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
 
         {/* Minimal Actionable Quick Contact & Address Strip */}
         <div className="pt-3 border-t border-slate-100 flex items-center gap-3 text-xs flex-wrap">
@@ -1060,111 +1061,12 @@ export default function CustomerDetailPage() {
 
       {/* Invoice Details Quick View Modal */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">Invoice Details</h3>
-                <span className="text-xs font-semibold text-slate-400">Ref: {selectedInvoice.invoiceNumber}</span>
-              </div>
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {loadingModalInvoice ? (
-              <div className="py-12 text-center space-y-2">
-                <div className="w-8 h-8 border-3 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
-                <span className="text-xs font-bold text-slate-500 block">Fetching invoice details...</span>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm border border-slate-100">
-                  <div>
-                    <span className="block text-xs font-bold text-slate-400 uppercase">Customer</span>
-                    <span className="block font-bold text-slate-800 mt-0.5">{selectedInvoice.customerName || customer.doctorName || customer.name}</span>
-                    <span className="block text-slate-500 text-xs mt-0.5">{selectedInvoice.companyName || customer.company || customer.companyName}</span>
-                  </div>
-                  <div>
-                    <span className="block text-xs font-bold text-slate-400 uppercase">Date & Salesperson</span>
-                    <span className="block font-bold text-slate-800 mt-0.5">{formatDisplayDate(selectedInvoice.date)}</span>
-                    <span className="block text-slate-500 text-xs mt-0.5">
-                      {selectedInvoice.salesmanName && selectedInvoice.salesmanName !== "Salesperson"
-                        ? selectedInvoice.salesmanName
-                        : (customer.assignedSalesmanName || "Salesperson")}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="border border-slate-100 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-100">
-                      <tr>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase">Product</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-center">Qty</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Price</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {(!selectedInvoice.items || selectedInvoice.items.length === 0) ? (
-                        <tr>
-                          <td colSpan={4} className="px-4 py-6 text-center text-xs text-slate-400 font-semibold">
-                            No item details recorded for this invoice.
-                          </td>
-                        </tr>
-                      ) : (
-                        selectedInvoice.items.map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="px-4 py-3 font-semibold text-slate-700">{item.productName || "Product"}</td>
-                            <td className="px-4 py-3 text-slate-500 text-center font-medium">{item.quantity}</td>
-                            <td className="px-4 py-3 text-slate-500 text-right font-medium">
-                              {currencySymbol} {(item.discount ?? item.price ?? 0).toFixed(2)}
-                            </td>
-                            <td className="px-4 py-3 text-slate-800 text-right font-bold">
-                              {currencySymbol} {(item.total ?? (item.quantity * item.price)).toFixed(2)}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="flex flex-col items-end gap-1.5 border-t border-slate-100 pt-4 text-sm font-semibold">
-                  <div className="flex w-64 justify-between text-base font-bold text-slate-900">
-                    <span>Grand Total:</span>
-                    <span>{currencySymbol} {(selectedInvoice.grandTotal ?? 0).toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6 gap-3">
-              <button
-                onClick={() => printInvoiceThermalBill(selectedInvoice)}
-                className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition cursor-pointer"
-              >
-                Print 80mm
-              </button>
-              <button
-                onClick={() => generatePDF(selectedInvoice)}
-                className="px-4 py-2 text-xs font-bold text-white bg-[#1B2A4A] rounded-xl hover:bg-[#15223c] transition cursor-pointer"
-              >
-                Download PDF
-              </button>
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <InvoiceDetailModal
+          invoice={selectedInvoice}
+          onClose={() => setSelectedInvoice(null)}
+          onPrintThermal={printInvoiceThermalBill}
+          onDownloadPDF={generatePDF}
+        />
       )}
       {/* Receipt Details Quick View Modal */}
       {selectedReceipt && (

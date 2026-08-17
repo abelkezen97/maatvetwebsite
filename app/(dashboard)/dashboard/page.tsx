@@ -23,6 +23,7 @@ import {
   CreditCard
 } from "lucide-react";
 import { buildPDF, buildInvoicePDF } from "@/lib/pdfHelper";
+import { InvoiceDetailModal } from "@/components/InvoiceDetailModal";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { DashboardCard } from "@/components/DashboardCard";
@@ -475,7 +476,7 @@ export default function DashboardPage() {
       />
 
       {/* Main Dashboard Content Area */}
-      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-8">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
         {/* SUPER ADMIN / ACCOUNTANT 4-KPI OPERATIONS BANNER */}
         {isAdminOrAccountant ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -762,73 +763,11 @@ export default function DashboardPage() {
 
       {/* Invoice Detail Modal */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto text-start">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">{t("invoicesTitle")}</h3>
-                <span className="text-xs font-semibold text-slate-400">Ref: {selectedInvoice.invoiceNumber}</span>
-              </div>
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="space-y-6">
-              {/* Status banner */}
-              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("statusCol")}</span>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                      selectedInvoice.status === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                      "bg-amber-50 text-amber-700 border-amber-200"
-                    }`}>
-                      {translateBusinessText(selectedInvoice.status)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Top metadata grid */}
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm border border-slate-100">
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("clientCompany")}</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{translateBusinessText(selectedInvoice.customerName)}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{translateBusinessText(selectedInvoice.companyName)}</span>
-                </div>
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("dateCol")} & {t("salespersonCol")}</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{formatDate(selectedInvoice.date)}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{translateBusinessText(selectedInvoice.salesmanName)}</span>
-                </div>
-              </div>
-
-              {/* Cost Calculation summary */}
-              <div className="flex flex-col items-end gap-1.5 border-t border-slate-100 pt-4 text-sm font-semibold">
-                <div className="flex w-64 justify-between text-base font-bold text-slate-900 border-t border-slate-100 pt-2 mt-1">
-                  <span>{t("grandTotalCol")}:</span>
-                  <span>{formatCurrency(selectedInvoice.grandTotal)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6">
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none cursor-pointer"
-              >
-                {t("close")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <InvoiceDetailModal
+          invoice={selectedInvoice}
+          onClose={() => setSelectedInvoice(null)}
+          onPrintThermal={printInvoiceThermalBill}
+        />
       )}
     </div>
   );

@@ -176,7 +176,7 @@ export default function ReceiptsPage() {
         }
       />
 
-      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 text-start">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
           <SearchInput
             placeholder={t("searchPlaceholder")}

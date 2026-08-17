@@ -92,7 +92,7 @@ export default function ExpensesPage() {
         }
       />
 
-      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 text-start">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
         {/* Table Container */}
         <div className="bg-white border border-slate-200/80 rounded-2xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">

@@ -342,7 +342,7 @@ export default function ProductDetailPage() {
         }
       />
 
-      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 text-slate-800">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
         {isSuperAdmin && (
           <div className="flex items-center gap-2 justify-end">
             <button

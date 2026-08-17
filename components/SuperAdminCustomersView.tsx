@@ -23,6 +23,8 @@ import {
   FilterX,
 } from "lucide-react";
 
+import { useLanguage } from "@/context/LanguageContext";
+
 const COUNTRY_OPTIONS: UserCountry[] = ["UAE", "Oman"];
 
 interface SalespersonOption {
@@ -48,6 +50,7 @@ export function SuperAdminCustomersView({
   onCustomerUpdated,
 }: SuperAdminCustomersViewProps) {
   const router = useRouter();
+  const { t } = useLanguage();
 
   // Search and Filters state
   const [searchQuery, setSearchQuery] = useState("");
@@ -356,31 +359,35 @@ export function SuperAdminCustomersView({
   };
 
   return (
-    <div className="space-[#1B2A4A] space-y-6">
+    <div className="w-full">
       {/* Super Admin Administrative Control Center Header */}
       <PageHeader
-        title="Customers"
-        description="Manage customers, accounts, credit exposure and sales assignments."
+        title={t("customersTitle") || "Customers & Accounts"}
+        description={t("customersDesc") || "Manage customers, accounts, credit exposure and sales assignments."}
         action={
           <div className="flex flex-wrap items-center gap-3">
             <button
+              type="button"
               onClick={onRefresh}
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold disabled:opacity-50 transition cursor-pointer backdrop-blur-xs"
             >
               <RotateCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              <span>Sync Customers</span>
+              <span>{t("syncCatalog") || "Sync Customers"}</span>
             </button>
             <button
+              type="button"
               onClick={openAddModal}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-[#61989B] text-white font-extrabold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/20 cursor-pointer text-sm"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition shadow-md shadow-emerald-600/20 cursor-pointer"
             >
               <Plus className="w-5 h-5" />
-              <span>Add Customer</span>
+              <span>{t("addCustomer") || "Add Customer"}</span>
             </button>
           </div>
         }
       />
+
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
 
       {loadError && (
         <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-rose-700 text-sm font-semibold">
@@ -495,7 +502,7 @@ export function SuperAdminCustomersView({
           {/* Search Bar */}
           <div className="flex-1">
             <SearchInput
-              placeholder="Search customers by company, code, doctor, phone, email, salesperson..."
+              placeholder={t("searchCustomersPlaceholder") || "Search by clinic name, doctor, code, phone, or salesperson..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onClear={() => setSearchQuery("")}
@@ -1191,6 +1198,7 @@ export function SuperAdminCustomersView({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

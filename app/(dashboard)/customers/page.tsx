@@ -350,82 +350,90 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full">
       <PageHeader
         title={t("customersTitle") || "Customers & Accounts"}
         description={t("customersDesc") || "Manage veterinary clinics, equestrian centers, livestock farms, and key contact details."}
         action={
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
+              type="button"
               onClick={loadCustomers}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold disabled:opacity-50 transition cursor-pointer backdrop-blur-xs"
             >
               <RotateCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              Sync Customers
+              <span>{t("syncCatalog") || "Sync Customers"}</span>
             </button>
             <button
+              type="button"
               onClick={openAddModal}
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15 cursor-pointer text-sm"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition shadow-md shadow-emerald-600/20 cursor-pointer"
             >
-              <Plus className="w-5 h-5" /> Add Customer
+              <Plus className="w-5 h-5" />
+              <span>{t("addCustomer") || "Add Customer"}</span>
             </button>
           </div>
         }
       />
 
-      {loadError && (
-        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-rose-700 text-sm font-semibold">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
-            <span>{loadError}</span>
-          </div>
-          <button
-            onClick={loadCustomers}
-            className="px-3 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-xs font-bold transition"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <SearchInput
-          placeholder="Search by clinic name, doctor, code, phone, salesman..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onClear={() => setSearchQuery("")}
-        />
-
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-          <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
+        {loadError && (
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-rose-700 text-sm font-semibold">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
+              <span>{loadError}</span>
+            </div>
             <button
+              type="button"
+              onClick={loadCustomers}
+              className="px-3 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-xs font-bold transition"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-stretch sm:items-center">
+          <div className="flex-1">
+            <SearchInput
+              placeholder={t("searchCustomersPlaceholder") || "Search by clinic name, doctor, code, phone, or salesperson..."}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onClear={() => setSearchQuery("")}
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-slate-200/80 shadow-2xs min-h-[52px]">
+            <button
+              type="button"
               onClick={() => setStatusFilter("all")}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                statusFilter === "all" ? "bg-white text-slate-900 shadow-xs" : "hover:text-slate-900"
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                statusFilter === "all" ? "bg-slate-900 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
               }`}
             >
               All ({customers.length})
             </button>
             <button
+              type="button"
               onClick={() => setStatusFilter("active")}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                statusFilter === "active" ? "bg-emerald-500 text-white shadow-xs" : "hover:text-slate-900"
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                statusFilter === "active" ? "bg-emerald-600 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Active ({customers.filter((c) => c.is_active !== false).length})
             </button>
             <button
+              type="button"
               onClick={() => setStatusFilter("inactive")}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                statusFilter === "inactive" ? "bg-slate-700 text-white shadow-xs" : "hover:text-slate-900"
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                statusFilter === "inactive" ? "bg-rose-600 text-white shadow-2xs" : "text-slate-600 hover:text-slate-900"
               }`}
             >
               Inactive ({customers.filter((c) => c.is_active === false).length})
             </button>
           </div>
         </div>
-      </div>
 
       {loading ? (
         <LoadingSkeleton type="table" />
@@ -680,6 +688,7 @@ export default function CustomersPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -58,7 +58,7 @@ export default function SettingsPage() {
         description="Configure enterprise organization parameters, user roles, country governance, document sequences, and financial parameters."
       />
 
-      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-8 pb-12">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
 
       {/* Alert Messages */}
       {errorMsg && (

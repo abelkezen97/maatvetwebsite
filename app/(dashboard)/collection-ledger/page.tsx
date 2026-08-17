@@ -473,7 +473,7 @@ export default function CollectionLedgerPage() {
         }
       />
 
-      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 pb-12 text-start">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
 
       {/* Filter Toolbar: Salesperson Selector + Period Presets + Year/Month Navigation */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">
