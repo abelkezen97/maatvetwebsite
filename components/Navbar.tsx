@@ -58,7 +58,7 @@ export function Navbar({ user, onMenuToggle }: NavbarProps) {
               </span>
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-accent uppercase tracking-wider">
                 <ShieldCheck className="w-3 h-3" />
-                {user.role === "Salesman" ? t("bdmRole") : t("adminRole")}
+                {user.role === "salesperson" ? t("bdmRole") : user.role === "accountant" ? "Accountant" : t("adminRole")}
               </span>
             </div>
             {user.avatarUrl ? (

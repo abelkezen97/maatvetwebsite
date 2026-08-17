@@ -1,102 +1,283 @@
 import { NextResponse } from "next/server";
+import { requireAuth, AuthError } from "@/lib/auth/guard";
+import { Permissions } from "@/lib/auth/permissions";
+import { mapReceiptFromDb, mapReceiptToDb } from "@/lib/db/mappers";
+import { recalculateCustomerBalance } from "@/lib/db/balances";
+import { generateNextDocumentNumber } from "@/lib/db/sequence";
+import { createAdminClient } from "@/utils/supabase/admin";
+
 export const dynamic = "force-dynamic";
 
-let cachedReceipts: any[] | null = null;
-let lastReceiptsFetchTime = 0;
-const CACHE_TTL = 3 * 60 * 1000; // 3 minutes in-memory cache
-
-export function clearReceiptsCache() {
-  cachedReceipts = null;
-  lastReceiptsFetchTime = 0;
-}
-
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const forceRefresh = searchParams.get("refresh") === "true";
-  const now = Date.now();
-
-  if (!forceRefresh && cachedReceipts && now - lastReceiptsFetchTime < CACHE_TTL) {
-    return NextResponse.json(cachedReceipts);
-  }
-
+export async function GET() {
   try {
-    let scriptUrl = process.env.GOOGLE_RECEIPTS_SCRIPT_URL;
+    const { profile, supabase: userClient } = await requireAuth();
 
-    if (!scriptUrl) {
-      console.warn("GOOGLE_RECEIPTS_SCRIPT_URL is not configured.");
-      return NextResponse.json(cachedReceipts || []);
+    if (!Permissions.canViewReceipts(profile)) {
+      return NextResponse.json({ error: "Forbidden: Cannot view receipts" }, { status: 403 });
     }
 
-    scriptUrl = scriptUrl.replace(/^"|"$/g, "").trim();
+    const queryClient = createAdminClient() || userClient;
 
-    const response = await fetch(scriptUrl, { cache: "no-store", signal: AbortSignal.timeout(10000) });
-    if (!response.ok) {
-      throw new Error(`Google Apps Script responded with status ${response.status}`);
+    let query = queryClient
+      .from("receipts")
+      .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!left(invoice_number, salesman_id)")
+      .order("created_at", { ascending: false });
+
+    if (profile.role === "salesperson") {
+      query = query.eq("country", profile.country);
+    } else if (profile.role === "accountant") {
+      query = query.eq("country", profile.country);
     }
 
-    const data = await response.json();
-    if (Array.isArray(data)) {
-      cachedReceipts = data;
-      lastReceiptsFetchTime = now;
+    let { data, error } = await query.eq("is_deleted", false);
+
+    // Resilient fallback if is_deleted or country column does not exist yet in live DB
+    if (error && (error.message.includes("is_deleted") || error.message.includes("country"))) {
+      let fallbackQuery = queryClient
+        .from("receipts")
+        .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!left(invoice_number, salesman_id)")
+        .order("created_at", { ascending: false });
+
+      if (profile.role === "salesperson" || profile.role === "accountant") {
+        fallbackQuery = fallbackQuery.eq("country", profile.country);
+      }
+      const res = await fallbackQuery;
+      data = res.data;
+      error = res.error;
     }
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error("Failed to load receipts from Google Sheet:", error);
-    return NextResponse.json(cachedReceipts || []);
+
+    if (error) {
+      console.error("Failed to load Supabase receipts:", error);
+      return NextResponse.json([]);
+    }
+
+    let rawReceipts = data || [];
+
+    // Server-side salesperson ownership post-filtering
+    if (profile.role === "salesperson") {
+      rawReceipts = rawReceipts.filter((row: any) => {
+        const isCreatedBy = row.created_by === profile.id;
+        const isInvoiceOwner = row.invoices?.salesman_id === profile.id;
+        const isCustomerOwner = row.customers?.assigned_salesman_id === profile.id;
+        return isCreatedBy || isInvoiceOwner || isCustomerOwner;
+      });
+    }
+
+    const { data: profileRows } = await queryClient.from("profiles").select("id, full_name");
+    const salesmanMap = new Map<string, string>();
+    (profileRows || []).forEach((p: any) => {
+      if (p.id && p.full_name) salesmanMap.set(p.id, p.full_name);
+    });
+
+    const receipts = rawReceipts.map((row: any) => mapReceiptFromDb(row, salesmanMap));
+    return NextResponse.json(receipts);
+  } catch (error: any) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Failed to fetch receipts from Supabase:", error);
+    return NextResponse.json([]);
   }
 }
 
 export async function POST(request: Request) {
-  clearReceiptsCache();
   try {
+    const { profile, supabase } = await requireAuth();
+
+    if (!Permissions.canCreateReceipt(profile)) {
+      return NextResponse.json({ error: "Forbidden: Cannot create receipt" }, { status: 403 });
+    }
+
     const payload = await request.json();
-    const { searchParams } = new URL(request.url);
-    let scriptUrl = process.env.GOOGLE_RECEIPTS_SCRIPT_URL;
 
-    if (!scriptUrl) {
-      console.warn("GOOGLE_RECEIPTS_SCRIPT_URL is not configured.");
-      return NextResponse.json({ success: true });
+    let receiptNumber = payload.receiptNumber;
+    
+    // Check if candidate client receipt number already exists in DB
+    let isClientNumTaken = false;
+    if (receiptNumber) {
+      const { data: existingByNum } = await supabase
+        .from("receipts")
+        .select("id")
+        .eq("receipt_number", receiptNumber)
+        .maybeSingle();
+      if (existingByNum?.id) {
+        isClientNumTaken = true;
+      }
     }
 
-    scriptUrl = scriptUrl.replace(/^"|"$/g, "").trim();
-
-    // 1. Primary POST request
-    try {
-      const response = await fetch(scriptUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-        redirect: "follow",
-        signal: AbortSignal.timeout(15000),
-      });
-
-      const resText = await response.text();
-      console.log("Google Apps Script Receipt POST response:", response.status, resText);
-      return NextResponse.json({ success: true });
-    } catch (postErr) {
-      console.warn("POST failed, running GET fallback...", postErr);
-
-      // 2. GET Fallback (only runs if POST throws an error)
-      const getParams = new URLSearchParams();
-      getParams.append("receiptNumber", payload.receiptNumber || searchParams.get("receiptNumber") || "");
-      getParams.append("companyName", payload.companyName || searchParams.get("companyName") || "");
-      getParams.append("customerName", payload.customerName || searchParams.get("customerName") || "");
-      getParams.append("amountPaid", (payload.amountPaid || searchParams.get("amountPaid") || 0).toString());
-      getParams.append("paymentDate", payload.paymentDate || searchParams.get("paymentDate") || "");
-      getParams.append("paymentMethod", payload.paymentMethod || searchParams.get("paymentMethod") || "");
-      getParams.append("referenceNo", payload.referenceNo || searchParams.get("referenceNo") || "");
-      getParams.append("action", "addReceipt");
-
-      const targetUrl = scriptUrl + (scriptUrl.includes("?") ? "&" : "?") + getParams.toString();
-      const getRes = await fetch(targetUrl, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(15000) });
-      const getResText = await getRes.text();
-      console.log("Google Apps Script Receipt GET fallback response:", getRes.status, getResText);
-      return NextResponse.json({ success: true });
+    if (!receiptNumber || isClientNumTaken) {
+      receiptNumber = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
     }
-  } catch (error) {
-    console.error("Error saving receipt:", error);
-    return NextResponse.json({ error: "Failed to save receipt" }, { status: 500 });
+
+    const customerId = payload.customerId || null;
+    const invoiceId = payload.invoiceId || null;
+    const amountPaid = Number(payload.amountPaid || 0);
+    if (amountPaid <= 0) {
+      return NextResponse.json(
+        { error: "Receipt payment amount must be greater than 0" },
+        { status: 400 }
+      );
+    }
+
+    const paymentDate = payload.paymentDate || new Date().toISOString().split("T")[0];
+    const paymentMethod = payload.paymentMethod || "Cash";
+    const referenceNo = payload.referenceNo || payload.reference_number || "";
+    const notes = payload.notes || "";
+
+    // 1. Invoice & Customer Integrity & Ownership Verification
+    if (invoiceId) {
+      const { data: invRow, error: invErr } = await supabase
+        .from("invoices")
+        .select("id, customer_id, country, salesman_id")
+        .eq("id", invoiceId)
+        .maybeSingle();
+
+      if (invErr || !invRow) {
+        return NextResponse.json({ error: "Linked invoice not found" }, { status: 400 });
+      }
+
+      if (profile.role === "salesperson") {
+        if (invRow.country !== profile.country || invRow.salesman_id !== profile.id) {
+          return NextResponse.json(
+            { error: "Forbidden: Cannot create receipt for another salesperson's invoice" },
+            { status: 403 }
+          );
+        }
+      } else if (profile.role === "accountant" && invRow.country !== profile.country) {
+        return NextResponse.json(
+          { error: "Forbidden: Cannot create receipt for invoice in another country" },
+          { status: 403 }
+        );
+      }
+
+      if (customerId && invRow.customer_id && invRow.customer_id !== customerId) {
+        return NextResponse.json(
+          { error: "Invoice/Customer Integrity Violation: Selected invoice belongs to another customer." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (customerId) {
+      let { data: fetchedCust, error: custErr } = await supabase
+        .from("customers")
+        .select("id, country, assigned_salesman_id")
+        .eq("id", customerId)
+        .maybeSingle();
+
+      if ((custErr || !fetchedCust) && createAdminClient()) {
+        const adminClient = createAdminClient();
+        if (adminClient) {
+          const { data: adminCust } = await adminClient
+            .from("customers")
+            .select("id, country, assigned_salesman_id")
+            .eq("id", customerId)
+            .maybeSingle();
+          fetchedCust = adminCust;
+          custErr = null;
+        }
+      }
+
+      const custRow = fetchedCust;
+
+      if (custErr || !custRow) {
+        return NextResponse.json({ error: "Linked customer not found" }, { status: 400 });
+      }
+
+      if (profile.role === "salesperson") {
+        if (custRow.country !== profile.country || custRow.assigned_salesman_id !== profile.id) {
+          return NextResponse.json(
+            { error: "Forbidden: Cannot create receipt for another salesperson's customer" },
+            { status: 403 }
+          );
+        }
+      } else if (profile.role === "accountant" && custRow.country !== profile.country) {
+        return NextResponse.json(
+          { error: "Forbidden: Cannot create receipt for customer in another country" },
+          { status: 403 }
+        );
+      }
+    }
+
+    const insertPayload = mapReceiptToDb({
+      receiptNumber,
+      customerId,
+      invoiceId,
+      amountPaid,
+      paymentDate,
+      paymentMethod,
+      referenceNo,
+      notes,
+    });
+
+    // SERVER IS SOURCE OF TRUTH (Client payload ignored for country, created_by, updated_by)
+    insertPayload.country = profile.country;
+    insertPayload.created_by = profile.id;
+    insertPayload.updated_by = profile.id;
+
+    let inserted: any = null;
+    let insertAttempts = 0;
+    const maxAttempts = 5;
+
+    while (!inserted && insertAttempts < maxAttempts) {
+      insertAttempts++;
+      if (insertAttempts > 1) {
+        insertPayload.receipt_number = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
+        receiptNumber = insertPayload.receipt_number;
+      }
+
+      let { data: createdData, error: insertErr } = await supabase
+        .from("receipts")
+        .insert([insertPayload])
+        .select("*, customers!left(company_name, doctor_name, pending_balance)")
+        .single();
+
+      if (insertErr && (insertErr.message.includes("country") || insertErr.message.includes("updated_by"))) {
+        delete insertPayload.country;
+        delete insertPayload.updated_by;
+
+        const retryRes = await supabase
+          .from("receipts")
+          .insert([insertPayload])
+          .select("*, customers!left(company_name, doctor_name, pending_balance)")
+          .single();
+        createdData = retryRes.data;
+        insertErr = retryRes.error;
+      }
+
+      if (insertErr) {
+        if (insertErr.code === "23505" || insertErr.message.includes("unique constraint") || insertErr.message.includes("already exists")) {
+          console.warn(`Receipt number concurrency collision on ${insertPayload.receipt_number}, retrying...`);
+          continue;
+        }
+        console.error("Supabase insert receipt error:", insertErr);
+        throw insertErr;
+      }
+
+      inserted = createdData;
+    }
+
+    if (!inserted) {
+      throw new Error("Failed to insert receipt after multiple concurrency retries.");
+    }
+
+    // Recalculate customer balance from single source of truth
+    if (customerId) {
+      try {
+        await recalculateCustomerBalance(supabase, customerId, profile.id);
+      } catch (e: any) {
+        console.error("Failed to recalculate customer balance on receipt creation:", e);
+        return NextResponse.json({ error: `Receipt created, but customer balance recalculation failed: ${e.message}` }, { status: 500 });
+      }
+    }
+
+    const newReceipt = mapReceiptFromDb(inserted);
+    return NextResponse.json({ success: true, receipt: newReceipt });
+  } catch (error: any) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Error saving receipt to Supabase:", error);
+    return NextResponse.json({ error: error.message || "Failed to save receipt" }, { status: 500 });
   }
 }

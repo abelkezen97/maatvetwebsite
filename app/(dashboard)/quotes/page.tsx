@@ -59,37 +59,33 @@ export default function QuotesPage() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadQuotes = () => {
+  const loadQuotes = async () => {
     setIsLoading(true);
-    let localQuotes: Quote[] = [];
     try {
-      const localData = localStorage.getItem("maat_quotes");
-      localQuotes = localData ? JSON.parse(localData) : mockQuotes;
-      if (localQuotes.length > 0) {
-        setQuotes(localQuotes);
-      }
-    } catch (e) {}
+      const res = await fetch(`/api/quotes?t=${Date.now()}`);
+      const data = await res.json();
+      setQuotes(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load quotations from Supabase:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    fetch(`/api/quotes?t=${Date.now()}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          const merged = data.length === 0 ? [] : [...data];
-          if (data.length > 0) {
-            localQuotes.forEach((lq) => {
-              if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
-                merged.unshift(lq);
-              }
-            });
-          }
-          setQuotes(merged);
-          localStorage.setItem("maat_quotes", JSON.stringify(merged));
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to load quotes:", err);
-      })
-      .finally(() => setIsLoading(false));
+  const handleDeleteQuote = async (quote: Quote) => {
+    if (!confirm(`Are you sure you want to delete quotation ${quote.quoteNumber}?`)) return;
+    try {
+      const res = await fetch(`/api/quotes/${quote.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setQuotes((prev) => prev.filter((q) => q.id !== quote.id));
+        if (selectedQuote?.id === quote.id) setSelectedQuote(null);
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed to delete quotation");
+      }
+    } catch (err) {
+      console.error("Error deleting quotation:", err);
+    }
   };
 
 
@@ -135,9 +131,6 @@ export default function QuotesPage() {
 
   const filteredQuotes = useMemo(() => {
     let list = quotes;
-    if (user && user.role === "Salesman") {
-      list = quotes.filter((q) => q.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
-    }
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -145,7 +138,8 @@ export default function QuotesPage() {
         (q) =>
           q.quoteNumber.toLowerCase().includes(query) ||
           q.customerName.toLowerCase().includes(query) ||
-          q.companyName.toLowerCase().includes(query)
+          q.companyName.toLowerCase().includes(query) ||
+          (q.salesmanName && q.salesmanName.toLowerCase().includes(query))
       );
     }
 
@@ -155,7 +149,7 @@ export default function QuotesPage() {
       if (timeA !== timeB) return timeB - timeA;
       return b.quoteNumber.localeCompare(a.quoteNumber);
     });
-  }, [quotes, searchQuery, user]);
+  }, [quotes, searchQuery]);
 
   // Premium PDF Generation using jsPDF
   const generatePDF = (quote: Quote) => {
@@ -172,27 +166,56 @@ export default function QuotesPage() {
       className: "w-40",
     },
     {
-      header: "Client / Company",
+      header: "Customer",
       accessor: (row: Quote) => (
         <div>
           <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
           {row.companyName && row.customerName && (
-            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
+            <div className="text-xs text-slate-400 font-medium">Dr: {row.customerName}</div>
           )}
         </div>
       ),
     },
     {
+      header: "Salesperson",
+      accessor: (row: Quote) => (
+        <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2 py-0.5 rounded border border-slate-200/50 inline-block">
+          {row.salesmanName || "Salesperson"}
+        </span>
+      ),
+      className: "w-44",
+    },
+    {
+      header: "Country",
+      accessor: (row: Quote) => (
+        <span className="text-xs font-bold text-slate-700">
+          {row.country || "UAE"}
+        </span>
+      ),
+      className: "w-28",
+    },
+    {
       header: "Date",
       accessor: (row: Quote) => formatDisplayDate(row.date),
-      className: "w-48",
+      className: "w-36",
+    },
+    {
+      header: "Status",
+      accessor: (row: Quote) => (
+        <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+          {row.status}
+        </span>
+      ),
+      className: "w-28 text-center",
     },
     {
       header: "Grand Total",
       accessor: (row: Quote) => (
-        <span className="font-bold text-slate-900">AED {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+        <span className="font-extrabold text-slate-900">
+          {row.country === "Oman" ? "OMR" : "AED"} {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </span>
       ),
-      className: "w-40",
+      className: "w-36 text-right",
     },
 
     {
@@ -205,10 +228,11 @@ export default function QuotesPage() {
             { label: "Share via WhatsApp", onClick: () => shareToWhatsApp(row) },
             { label: "Edit Quote", onClick: () => router.push(`/quotes/new?edit=${row.quoteNumber}`) },
             { label: "Convert to Invoice", onClick: () => router.push(`/invoices/new?fromQuote=${row.quoteNumber}`) },
+            { label: "Delete Quote", onClick: () => handleDeleteQuote(row) },
           ]}
         />
       ),
-      className: "w-32 text-center",
+      className: "w-28 text-center",
     },
   ];
 
@@ -256,7 +280,7 @@ export default function QuotesPage() {
       {isLoading ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-4" />
-          <p className="text-sm font-semibold text-slate-500">Loading quotations...</p>
+          <p className="text-sm font-semibold text-slate-500">Loading quotes...</p>
         </div>
       ) : (
         <DataTable
@@ -264,8 +288,6 @@ export default function QuotesPage() {
           columns={columns}
           keyExtractor={(row, idx) => row.id || row.quoteNumber || `q-${idx}`}
           onRowClick={(row) => setSelectedQuote(row)}
-          emptyTitle="No quotations found"
-          emptyDescription="Try searching for a different customer name or quotation number."
         />
       )}
 
@@ -276,12 +298,12 @@ export default function QuotesPage() {
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Quotation Details</h3>
-                <span className="text-xs font-semibold text-slate-400">Ref: {selectedQuote.quoteNumber}</span>
+                <h3 className="text-lg font-bold text-slate-900">QUOTATION Details</h3>
+                <span className="text-xs font-mono font-bold text-slate-500">Ref: {selectedQuote.quoteNumber}</span>
               </div>
               <button
                 onClick={() => setSelectedQuote(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -289,17 +311,38 @@ export default function QuotesPage() {
 
             {/* Modal Body */}
             <div className="space-y-6">
-              {/* Top metadata grid */}
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm border border-slate-100">
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Customer</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{selectedQuote.customerName}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{selectedQuote.companyName}</span>
+              {/* Contextual Quotation Information Area (Compact) */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+                <div className="text-[10px] font-black text-[#61989B] uppercase tracking-wider pb-2 border-b border-slate-200/60">
+                  QUOTATION INFORMATION
                 </div>
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Date & Agent</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{formatDisplayDate(selectedQuote.date)}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{selectedQuote.salesmanName}</span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs font-semibold">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Salesperson</span>
+                    <span className="font-extrabold text-[#1B2A4A] mt-0.5 block">{selectedQuote.salesmanName || "Salesperson"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Customer</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{selectedQuote.companyName || selectedQuote.customerName}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Country</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{selectedQuote.country || "UAE"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Created Date</span>
+                    <span className="font-bold text-slate-700 mt-0.5 block">{formatDisplayDate(selectedQuote.createdAt || selectedQuote.date)}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Created By</span>
+                    <span className="font-bold text-slate-700 mt-0.5 block">{selectedQuote.createdByName || selectedQuote.salesmanName || "System"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Quotation Status</span>
+                    <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-bold mt-0.5 bg-slate-100 text-slate-700 border border-slate-200">
+                      {selectedQuote.status}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -321,15 +364,19 @@ export default function QuotesPage() {
                         <tr key={idx}>
                           <td className="px-4 py-3 font-semibold text-slate-700">
                             {item.productName}
-                            {item.discount < item.price && (
-                              <span className="ml-2 text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
-                                (Base: AED {(item.price ?? 0).toFixed(2)})
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 text-center font-medium">{item.quantity}</td>
+                          <td className="px-4 py-3 text-slate-500 text-right font-medium">
+                            {selectedQuote.country === "Oman" ? "OMR" : "AED"} {(item.price ?? 0).toFixed(2)}
+                            {(item.discount ?? 0) > 0 && (
+                              <span className="block text-[10px] text-emerald-600 font-semibold">
+                                (-{(item.discount ?? 0).toFixed(2)} disc)
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-slate-500 text-center font-medium">{item.quantity}</td>
-                          <td className="px-4 py-3 text-slate-500 text-right font-medium">AED {(item.discount ?? 0).toFixed(2)}</td>
-                          <td className="px-4 py-3 text-slate-800 text-right font-bold">AED {(item.total ?? 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-slate-800 text-right font-bold">
+                            {selectedQuote.country === "Oman" ? "OMR" : "AED"} {(item.total ?? 0).toFixed(2)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -341,18 +388,24 @@ export default function QuotesPage() {
               <div className="flex flex-col items-end gap-1.5 border-t border-slate-100 pt-4 text-sm font-semibold">
                 <div className="flex w-64 justify-between text-slate-500">
                   <span>Subtotal:</span>
-                  <span>AED {(selectedQuote.subtotal ?? 0).toFixed(2)}</span>
+                  <span>{selectedQuote.country === "Oman" ? "OMR" : "AED"} {(selectedQuote.subtotal ?? 0).toFixed(2)}</span>
                 </div>
                 {(selectedQuote.discountTotal ?? 0) > 0 && (
                   <div className="flex w-64 justify-between text-slate-500">
                     <span>Discount Total:</span>
-                    <span className="text-emerald-600">-AED {(selectedQuote.discountTotal ?? 0).toFixed(2)}</span>
+                    <span className="text-emerald-600">-{selectedQuote.country === "Oman" ? "OMR" : "AED"} {(selectedQuote.discountTotal ?? 0).toFixed(2)}</span>
+                  </div>
+                )}
+                {selectedQuote.country === "Oman" && (selectedQuote.taxTotal ?? 0) > 0 && (
+                  <div className="flex w-64 justify-between text-slate-500">
+                    <span>VAT:</span>
+                    <span>OMR {(selectedQuote.taxTotal ?? 0).toFixed(2)}</span>
                   </div>
                 )}
 
                 <div className="flex w-64 justify-between text-base font-bold text-slate-900 border-t border-slate-100 pt-2 mt-1">
                   <span>Grand Total:</span>
-                  <span>AED {(selectedQuote.grandTotal ?? 0).toFixed(2)}</span>
+                  <span>{selectedQuote.country === "Oman" ? "OMR" : "AED"} {(selectedQuote.grandTotal ?? 0).toFixed(2)}</span>
                 </div>
               </div>
 

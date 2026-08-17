@@ -8,7 +8,7 @@ import { SearchInput } from "@/components/SearchInput";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Receipt } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
-import { Plus, Download, FileText, RotateCw } from "lucide-react";
+import { Plus, Download, FileText, RotateCw, X } from "lucide-react";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { printReceiptThermalBill } from "@/lib/thermalPrintHelper";
@@ -80,62 +80,99 @@ export default function ReceiptsPage() {
     }
   };
 
+  const handleDeleteReceipt = async (receipt: Receipt) => {
+    if (!confirm(`Are you sure you want to delete receipt ${receipt.receiptNumber}?`)) return;
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setReceipts((prev) => prev.filter((r) => r.id !== receipt.id));
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed to delete receipt");
+      }
+    } catch (err) {
+      console.error("Error deleting receipt:", err);
+    }
+  };
+
+  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
+
   const columns = [
     {
-      header: "Receipt No",
+      header: "Receipt Ref",
       accessor: (row: Receipt) => (
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100">
-            <FileText className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="font-extrabold text-slate-800">{row.receiptNumber}</div>
-            <div className="text-xs text-slate-400 font-semibold">{row.paymentDate}</div>
-          </div>
+        <div className="flex flex-col">
+          <span className="font-bold text-[#1B2A4A]">{row.receiptNumber}</span>
+          <span className="text-[10px] text-slate-400 font-semibold">{row.country || "UAE"}</span>
         </div>
       ),
+      className: "w-36",
     },
     {
-      header: "Customer / Clinic Company",
+      header: "Customer",
       accessor: (row: Receipt) => (
         <div>
           <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
           {row.companyName && row.customerName && (
-            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
+            <div className="text-xs text-slate-400 font-medium">Dr: {row.customerName}</div>
           )}
         </div>
       ),
     },
     {
-      header: "Amount Paid",
+      header: "Invoice Ref",
       accessor: (row: Receipt) => (
-        <span className="font-extrabold text-emerald-600">
-          AED {(row.amountPaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <span className="text-xs font-mono font-bold text-slate-600">
+          {row.referenceNo || row.invoiceId || "Direct Credit"}
         </span>
       ),
-      className: "w-40 text-right",
+      className: "w-36",
+    },
+    {
+      header: "Salesperson",
+      accessor: (row: Receipt) => (
+        <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2 py-0.5 rounded border border-slate-200/50 inline-block">
+          {row.createdByName || (row as any).salesmanName || "Salesperson"}
+        </span>
+      ),
+      className: "w-44",
     },
     {
       header: "Payment Method",
       accessor: (row: Receipt) => (
-        <div className="flex flex-col">
-          <span className="font-bold text-slate-800 text-sm">{row.paymentMethod}</span>
-          {row.referenceNo && <span className="text-xs text-slate-400 font-semibold">Ref: {row.referenceNo}</span>}
-        </div>
+        <span className="text-xs font-bold text-slate-700">
+          {row.paymentMethod || "Cash"}
+        </span>
       ),
-      className: "w-40",
+      className: "w-32",
+    },
+    {
+      header: "Amount Paid",
+      accessor: (row: Receipt) => (
+        <span className="font-extrabold text-emerald-600">
+          {row.country === "Oman" ? "OMR" : "AED"} {(row.amountPaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </span>
+      ),
+      className: "w-36 text-right",
+    },
+    {
+      header: "Receipt Date",
+      accessor: (row: Receipt) => row.paymentDate || row.createdAt?.split("T")[0] || "",
+      className: "w-32",
     },
     {
       header: "Actions",
       accessor: (row: Receipt) => (
         <ActionDropdown
           options={[
+            { label: "View Receipt Details", onClick: () => setSelectedReceipt(row) },
             { label: "Print Receipt Bill (80mm)", onClick: () => printReceiptThermalBill(row) },
             { label: "Download PDF Receipt", onClick: () => handleDownloadPDF(row) },
+            { label: "Delete Receipt", onClick: () => handleDeleteReceipt(row), danger: true },
           ]}
         />
       ),
-      className: "w-32 text-center",
+      className: "w-28 text-center",
     },
   ];
 
@@ -183,9 +220,101 @@ export default function ReceiptsPage() {
           data={filteredReceipts}
           columns={columns}
           keyExtractor={(row) => row.id}
+          onRowClick={(row) => setSelectedReceipt(row)}
           emptyTitle="No receipts found"
           emptyDescription="Issue a receipt when a customer pays back credit or makes a payment."
         />
+      )}
+
+      {/* Receipt Detail Modal */}
+      {selectedReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">RECEIPT Details</h3>
+                <span className="text-xs font-mono font-bold text-emerald-600">Ref: {selectedReceipt.receiptNumber}</span>
+              </div>
+              <button
+                onClick={() => setSelectedReceipt(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* PAYMENT INFORMATION Section */}
+            <div className="space-y-4">
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+                <div className="text-[10px] font-black text-[#61989B] uppercase tracking-wider pb-2 border-b border-slate-200/60">
+                  PAYMENT INFORMATION
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-xs font-semibold">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Customer</span>
+                    <span className="font-extrabold text-[#1B2A4A] mt-0.5 block">{selectedReceipt.companyName || selectedReceipt.customerName}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Invoice Ref</span>
+                    <span className="font-mono font-bold text-slate-800 mt-0.5 block">{selectedReceipt.referenceNo || selectedReceipt.invoiceId || "Direct Credit"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Salesperson</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{selectedReceipt.createdByName || (selectedReceipt as any).salesmanName || "Salesperson"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Payment Method</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{selectedReceipt.paymentMethod || "Cash"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Amount Paid</span>
+                    <span className="font-black text-emerald-600 text-sm mt-0.5 block">
+                      {selectedReceipt.country === "Oman" ? "OMR" : "AED"} {(selectedReceipt.amountPaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Receipt Date</span>
+                    <span className="font-bold text-slate-700 mt-0.5 block">{selectedReceipt.paymentDate || selectedReceipt.createdAt?.split("T")[0]}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Created By</span>
+                    <span className="font-bold text-slate-700 mt-0.5 block">{selectedReceipt.createdByName || "System"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {selectedReceipt.notes && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Notes / Remarks</span>
+                  <p className="text-slate-700 italic font-medium">"{selectedReceipt.notes}"</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-4 mt-6">
+              <button
+                onClick={() => printReceiptThermalBill(selectedReceipt)}
+                className="px-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer"
+              >
+                Print 80mm
+              </button>
+              <button
+                onClick={() => handleDownloadPDF(selectedReceipt)}
+                className="px-4 py-2.5 text-xs font-bold text-white bg-accent hover:bg-[#4e7d80] rounded-xl transition shadow-sm cursor-pointer"
+              >
+                Download PDF
+              </button>
+              <button
+                onClick={() => setSelectedReceipt(null)}
+                className="px-4 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

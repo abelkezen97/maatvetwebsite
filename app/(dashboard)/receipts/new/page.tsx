@@ -2,10 +2,10 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, ArrowLeft, CheckCircle2, X, Plus } from "lucide-react";
+import { Search, ArrowLeft, CheckCircle2, X, Plus, FileText } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
-import { Customer, Receipt } from "@/types";
+import { Customer, Receipt, Invoice } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 
@@ -13,11 +13,13 @@ export default function NewReceiptPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedCustomerId = searchParams.get("customerId");
+  const preselectedInvoiceId = searchParams.get("invoiceId");
   const { user } = useAuth();
 
   // Form states
   const [receiptNumber, setReceiptNumber] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [amountPaid, setAmountPaid] = useState<string>("");
   const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split("T")[0]);
   const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Bank Transfer" | "Cheque" | "Other">("Cash");
@@ -26,9 +28,12 @@ export default function NewReceiptPage() {
 
   // Data states
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [invoicesList, setInvoicesList] = useState<Invoice[]>([]);
   const [receiptsList, setReceiptsList] = useState<Receipt[]>([]);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showInvoiceDropdown, setShowInvoiceDropdown] = useState(false);
 
   // Status states
   const [isSaving, setIsSaving] = useState(false);
@@ -52,6 +57,19 @@ export default function NewReceiptPage() {
         const loadedCusts: Customer[] = custData.customers || [];
         setCustomers(loadedCusts);
 
+        // Fetch invoices
+        let loadedInvoices: Invoice[] = [];
+        try {
+          const invRes = await fetch("/api/invoices");
+          const invData = await invRes.json();
+          if (Array.isArray(invData)) {
+            loadedInvoices = invData;
+            setInvoicesList(invData);
+          }
+        } catch (e) {
+          console.error("Failed to load invoices for receipt selector:", e);
+        }
+
         // Fetch receipts
         try {
           const recRes = await fetch("/api/receipts");
@@ -68,8 +86,25 @@ export default function NewReceiptPage() {
           setReceiptsList(local ? JSON.parse(local) : []);
         }
 
+        // Handle preselected invoice
+        if (preselectedInvoiceId && loadedInvoices.length > 0) {
+          const matchedInv = loadedInvoices.find(i => i.id === preselectedInvoiceId || i.invoiceNumber === preselectedInvoiceId);
+          if (matchedInv) {
+            setSelectedInvoiceId(matchedInv.id);
+            setInvoiceSearchQuery(`${matchedInv.invoiceNumber} - ${matchedInv.companyName}`);
+            
+            // Auto-populate customer from invoice
+            const matchedCust = loadedCusts.find(c => c.id === matchedInv.customerId || c.company === matchedInv.companyName);
+            if (matchedCust) {
+              setSelectedCustomerId(matchedCust.id);
+              setCustomerSearchQuery(`${matchedCust.company} ${matchedCust.name ? `(${matchedCust.name})` : ""}`);
+            } else if (matchedInv.companyName) {
+              setCustomerSearchQuery(`${matchedInv.companyName} ${matchedInv.customerName ? `(${matchedInv.customerName})` : ""}`);
+            }
+          }
+        }
         // Handle preselected customer
-        if (preselectedCustomerId) {
+        else if (preselectedCustomerId) {
           const matched = loadedCusts.find((c) => c.id === preselectedCustomerId);
           if (matched) {
             setSelectedCustomerId(matched.id);
@@ -83,7 +118,7 @@ export default function NewReceiptPage() {
       }
     }
     loadData();
-  }, [preselectedCustomerId]);
+  }, [preselectedCustomerId, preselectedInvoiceId]);
 
   // Generate Receipt Number
   useEffect(() => {
@@ -97,6 +132,32 @@ export default function NewReceiptPage() {
   const selectedCustomer = useMemo(() => {
     return customers.find((c) => c.id === selectedCustomerId);
   }, [selectedCustomerId, customers]);
+
+  const currencySymbol = selectedCustomer?.country === "Oman" ? "OMR" : "AED";
+
+  const selectedInvoice = useMemo(() => {
+    return invoicesList.find((i) => i.id === selectedInvoiceId);
+  }, [selectedInvoiceId, invoicesList]);
+
+  // Available invoices: active, non-deleted, non-cancelled (both Paid and Credit)
+  const availableInvoices = useMemo(() => {
+    let list = invoicesList.filter(i => !i.isDeleted && (i.status as string) !== "Cancelled");
+    if (selectedCustomerId) {
+      list = list.filter(i => i.customerId === selectedCustomerId || (selectedCustomer && i.companyName === selectedCustomer.company));
+    }
+    return list;
+  }, [invoicesList, selectedCustomerId, selectedCustomer]);
+
+  const filteredInvoices = useMemo(() => {
+    if (!invoiceSearchQuery) return availableInvoices;
+    const query = invoiceSearchQuery.toLowerCase();
+    return availableInvoices.filter(
+      (i) =>
+        i.invoiceNumber.toLowerCase().includes(query) ||
+        i.companyName.toLowerCase().includes(query) ||
+        (i.customerName && i.customerName.toLowerCase().includes(query))
+    );
+  }, [invoiceSearchQuery, availableInvoices]);
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearchQuery) return customers;
@@ -112,12 +173,45 @@ export default function NewReceiptPage() {
     );
   }, [customerSearchQuery, customers, selectedCustomerId]);
 
+  // Invoice-specific outstanding calculation
+  const invoiceReceiptsSum = useMemo(() => {
+    if (!selectedInvoiceId) return 0;
+    return receiptsList
+      .filter((r) => !r.isDeleted && r.invoiceId === selectedInvoiceId)
+      .reduce((sum, r) => sum + (r.amountPaid || 0), 0);
+  }, [selectedInvoiceId, receiptsList]);
+
+  const invoiceOutstanding = useMemo(() => {
+    if (!selectedInvoice) return 0;
+    return Math.max(0, selectedInvoice.grandTotal - invoiceReceiptsSum);
+  }, [selectedInvoice, invoiceReceiptsSum]);
+
+  const handleSelectInvoice = (inv: Invoice) => {
+    setSelectedInvoiceId(inv.id);
+    setInvoiceSearchQuery(`${inv.invoiceNumber} - ${inv.companyName}`);
+    setShowInvoiceDropdown(false);
+
+    // Auto-populate Customer when invoice is selected
+    const matchedCust = customers.find(c => c.id === inv.customerId || c.company === inv.companyName || c.companyName === inv.companyName);
+    if (matchedCust) {
+      setSelectedCustomerId(matchedCust.id);
+      setCustomerSearchQuery(`${matchedCust.company} ${matchedCust.name ? `(${matchedCust.name})` : ""}`);
+    }
+
+    // Auto-fill amount paid with remaining invoice outstanding balance
+    const existingRecSum = receiptsList
+      .filter((r) => !r.isDeleted && r.invoiceId === inv.id)
+      .reduce((sum, r) => sum + (r.amountPaid || 0), 0);
+    const remOutstanding = Math.max(0, inv.grandTotal - existingRecSum);
+    setAmountPaid(remOutstanding > 0 ? String(remOutstanding) : String(inv.grandTotal));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const numericAmount = parseFloat(amountPaid);
 
-    if (!selectedCustomerId) {
-      setErrorMessage("Please select a customer.");
+    if (!selectedCustomerId && !selectedInvoiceId) {
+      setErrorMessage("Please select a customer or an invoice.");
       return;
     }
 
@@ -134,89 +228,41 @@ export default function NewReceiptPage() {
     setIsSaving(true);
     setErrorMessage(null);
 
+    const targetCustId = selectedCustomerId || selectedInvoice?.customerId;
     const remainingAmt = Math.max(0, (selectedCustomer?.pendingBillwiseAmount || 0) - numericAmount);
 
-    const newReceipt: Receipt = {
-      id: `rec-${Date.now()}`,
+    const payload = {
       receiptNumber: receiptNumber.trim(),
-      customerId: selectedCustomerId,
-      customerName: selectedCustomer?.name,
-      companyName: selectedCustomer?.company || customerSearchQuery.replace(/\s*\([^)]*\)/, "").trim(),
+      customerId: targetCustId,
+      invoiceId: selectedInvoiceId || undefined,
+      customerName: selectedCustomer?.name || selectedInvoice?.customerName,
+      companyName: selectedCustomer?.company || selectedInvoice?.companyName || customerSearchQuery.replace(/\s*\([^)]*\)/, "").trim(),
       amountPaid: numericAmount,
-      remainingPendingAmount: remainingAmt,
       paymentDate: paymentDate,
       paymentMethod: paymentMethod,
       referenceNo: referenceNo.trim() || undefined,
       notes: notes.trim() || undefined,
-      createdBy: user?.name || "Admin",
     };
 
     try {
-      // 1. Generate PDF base64
-      const doc = buildReceiptPDF(newReceipt);
-      const pdfBase64 = doc.output("datauristring").split(",")[1];
-
-      // 2. Submit to API backend (support both query params & JSON body for Apps Script)
-      const params = new URLSearchParams();
-      params.append("receiptNumber", newReceipt.receiptNumber);
-      params.append("companyName", newReceipt.companyName);
-      params.append("customerName", newReceipt.customerName || "");
-      params.append("amountPaid", newReceipt.amountPaid.toString());
-      params.append("paymentDate", newReceipt.paymentDate);
-      params.append("paymentMethod", newReceipt.paymentMethod);
-      params.append("referenceNo", newReceipt.referenceNo || "");
-
-      await fetch(`/api/receipts?${params.toString()}`, {
+      const res = await fetch("/api/receipts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          receiptNumber: newReceipt.receiptNumber,
-          customerName: newReceipt.customerName,
-          companyName: newReceipt.companyName,
-          amountPaid: newReceipt.amountPaid,
-          paymentDate: newReceipt.paymentDate,
-          paymentMethod: newReceipt.paymentMethod,
-          referenceNo: newReceipt.referenceNo,
-          fileName: `MAAT-RECEIPT-${newReceipt.receiptNumber}.pdf`,
-          pdfBase64,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      // 3. Update customer pending balance (minus from pending billwise amount)
-      await fetch("/api/customers", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          companyName: newReceipt.companyName,
-          customerId: newReceipt.customerId,
-          amountToAdd: -numericAmount, // Minus from pending credit
-        }),
-      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to save receipt");
+      }
 
-      // Local update for state/localStorage
-      const updatedCusts = customers.map((c) => {
-        if (c.id === newReceipt.customerId || c.company.toLowerCase().trim() === newReceipt.companyName.toLowerCase().trim()) {
-          return {
-            ...c,
-            pendingBillwiseAmount: Math.max(0, (c.pendingBillwiseAmount || 0) - numericAmount),
-          };
-        }
-        return c;
-      });
-      setCustomers(updatedCusts);
-
-      // Save receipt locally
-      const updatedReceipts = [newReceipt, ...receiptsList];
-      setReceiptsList(updatedReceipts);
-      localStorage.setItem("maat_receipts", JSON.stringify(updatedReceipts));
-
-      setSuccessMessage(`Receipt ${newReceipt.receiptNumber} generated and billwise balance updated successfully!`);
+      setSuccessMessage(`Receipt ${receiptNumber} generated and billwise balance updated successfully!`);
       setTimeout(() => {
         router.push("/receipts");
-      }, 1800);
-    } catch (err) {
+      }, 1500);
+    } catch (err: any) {
       console.error("Failed to save receipt:", err);
-      setErrorMessage("Failed to process receipt. Please try again.");
+      setErrorMessage(err.message || "Failed to process receipt. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -330,11 +376,107 @@ export default function NewReceiptPage() {
             </div>
           </div>
 
+          {/* Invoice Selector Section */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
+                1. Select Invoice (Optional)
+              </h3>
+              {selectedInvoiceId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedInvoiceId("");
+                    setInvoiceSearchQuery("");
+                  }}
+                  className="text-xs font-bold text-rose-500 hover:text-rose-700 transition"
+                >
+                  Clear Selected Invoice
+                </button>
+              )}
+            </div>
+
+            <div className="relative">
+              <div className="relative flex items-center">
+                <FileText className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search invoice number or customer name..."
+                  value={invoiceSearchQuery}
+                  onChange={(e) => {
+                    setInvoiceSearchQuery(e.target.value);
+                    setShowInvoiceDropdown(true);
+                  }}
+                  onFocus={() => setShowInvoiceDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowInvoiceDropdown(false), 200)}
+                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
+                />
+              </div>
+
+              {showInvoiceDropdown && (
+                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
+                  {filteredInvoices.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-slate-400 text-center font-medium">
+                      No invoices found
+                    </div>
+                  ) : (
+                    filteredInvoices.map((inv) => (
+                      <button
+                        key={inv.id}
+                        type="button"
+                        onClick={() => handleSelectInvoice(inv)}
+                        className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                            <span>{inv.invoiceNumber}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${inv.status === "Paid" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                              {inv.status}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-500 font-medium">{inv.companyName}</div>
+                        </div>
+                        <div className="text-right">
+                          <span className="block text-xs font-black text-slate-800">
+                            {currencySymbol} {inv.grandTotal.toFixed(2)}
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-400">
+                            Date: {inv.date}
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Selected Invoice Banner */}
+            {selectedInvoice && (
+              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 animate-in fade-in duration-200 text-xs">
+                <div>
+                  <span className="block text-slate-400 font-bold uppercase tracking-wider">Invoice Ref</span>
+                  <span className="font-bold text-slate-800 text-sm">{selectedInvoice.invoiceNumber}</span>
+                </div>
+                <div>
+                  <span className="block text-slate-400 font-bold uppercase tracking-wider">Invoice Grand Total</span>
+                  <span className="font-bold text-slate-800 text-sm">{currencySymbol} {selectedInvoice.grandTotal.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="block text-slate-400 font-bold uppercase tracking-wider">Remaining Outstanding</span>
+                  <span className={`font-black text-sm ${invoiceOutstanding > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                    {currencySymbol} {invoiceOutstanding.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Customer Selection */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                1. Select Customer
+                2. Select Customer
               </h3>
               <button
                 type="button"
@@ -386,7 +528,7 @@ export default function NewReceiptPage() {
                         </div>
                         <div className="text-right">
                           <span className={`text-xs font-extrabold ${(c.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                            Pending: AED {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            Pending: {c.country === "Oman" ? "OMR" : "AED"} {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                       </button>
@@ -409,7 +551,7 @@ export default function NewReceiptPage() {
                     Current Pending Billwise
                   </span>
                   <span className={`text-base font-black ${Math.max(0, selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    AED {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {currencySymbol} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>

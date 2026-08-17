@@ -1,67 +1,12 @@
-import Cookies from "js-cookie";
-import { User, UserRole } from "@/types";
-import { demoUsers } from "./mockData";
+/**
+ * MAATWEB Authentication System
+ *
+ * NOTE: Legacy custom session cookie authentication ("maat_session") has been removed.
+ * All authentication, session state, and user identity across MAATWEB strictly
+ * use Supabase Auth and @supabase/ssr.
+ *
+ * Server-side identity guard: @/lib/auth/guard -> requireAuth()
+ * Client-side auth hook: @/hooks/useAuth -> useAuth()
+ */
 
-const SESSION_COOKIE_NAME = "maat_session";
-
-export interface SessionData {
-  user: User;
-  token: string;
-}
-
-export function loginUser(email: string, role: UserRole): SessionData | null {
-  const user = demoUsers.find(u => u.email === email && u.role === role);
-  if (!user) return null;
-
-  const session: SessionData = {
-    user,
-    token: `mock-jwt-${user.id}-${Date.now()}`
-  };
-
-  // Set cookie for 7 days
-  Cookies.set(SESSION_COOKIE_NAME, JSON.stringify(session), { expires: 7 });
-  return session;
-}
-
-export function logoutUser(): void {
-  Cookies.remove(SESSION_COOKIE_NAME);
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-    } catch (e) {
-      console.error("Failed to clear local storage on logout:", e);
-    }
-  }
-}
-
-export function getClientSession(): SessionData | null {
-  const cookieVal = Cookies.get(SESSION_COOKIE_NAME);
-  if (!cookieVal) return null;
-
-  try {
-    return JSON.parse(cookieVal) as SessionData;
-  } catch {
-    return null;
-  }
-}
-
-export function getServerSession(cookieHeader?: string): SessionData | null {
-  if (!cookieHeader) return null;
-
-  const nameEQ = `${SESSION_COOKIE_NAME}=`;
-  const cookies = cookieHeader.split(";");
-
-  for (let c of cookies) {
-    c = c.trim();
-    if (c.indexOf(nameEQ) === 0) {
-      try {
-        const decoded = decodeURIComponent(c.substring(nameEQ.length));
-        return JSON.parse(decoded) as SessionData;
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
-}
+export {};

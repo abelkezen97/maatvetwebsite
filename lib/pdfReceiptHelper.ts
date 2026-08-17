@@ -52,13 +52,15 @@ export const buildReceiptPDF = (receipt: Receipt): jsPDF => {
   const custNameStr = receipt.companyName + (receipt.customerName ? ` (${receipt.customerName})` : "");
   doc.text(custNameStr, 75, boxY);
 
+  const currencySymbol = receipt.country === "Oman" ? "OMR" : "AED";
+
   // Row 2: Amount Received
   boxY += 10;
   doc.setFont("helvetica", "bold");
   doc.text("Amount Received:", 22, boxY);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(greenHeaderColor[0], greenHeaderColor[1], greenHeaderColor[2]);
-  doc.text(`AED ${(receipt.amountPaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 75, boxY);
+  doc.text(`${currencySymbol} ${(receipt.amountPaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 75, boxY);
 
   // Row 3: Payment Method
   doc.setTextColor(greyDark[0], greyDark[1], greyDark[2]);
@@ -88,7 +90,7 @@ export const buildReceiptPDF = (receipt: Receipt): jsPDF => {
   } else {
     doc.setTextColor(16, 122, 87); // Emerald green for zero balance
   }
-  doc.text(`AED ${remAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 75, boxY);
+  doc.text(`${currencySymbol} ${remAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 75, boxY);
   doc.setTextColor(greyDark[0], greyDark[1], greyDark[2]);
 
   // Notes section

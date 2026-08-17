@@ -27,7 +27,6 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { DashboardCard } from "@/components/DashboardCard";
 import { DataTable } from "@/components/DataTable";
-import { mockQuotes, mockInvoices } from "@/lib/mockData";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 
@@ -61,59 +60,43 @@ function formatDisplayDate(dateStr: string): string {
 }
 
 export default function DashboardPage() {
-  const { t, language } = useLanguage();
-  const { user } = useAuth();
+  const { t } = useLanguage();
+  const { user, profile } = useAuth();
   const router = useRouter();
+
+  const isAdminOrAccountant = profile?.role === "super_admin" || profile?.role === "accountant";
+
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [receipts, setReceipts] = useState<any[]>([]);
+  const [salespeopleCount, setSalespeopleCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
 
   useEffect(() => {
-    // 1. Instant local load
-    let localQuotes: Quote[] = [];
-    let localInvoices: Invoice[] = [];
-    try {
-      const qStr = localStorage.getItem("maat_quotes");
-      localQuotes = qStr ? JSON.parse(qStr) : mockQuotes;
-      if (localQuotes.length > 0) setQuotes(localQuotes);
-
-      const iStr = localStorage.getItem("maat_invoices");
-      localInvoices = iStr ? JSON.parse(iStr) : mockInvoices;
-      if (localInvoices.length > 0) setInvoices(localInvoices);
-    } catch (e) {}
-
     async function loadDashboardData() {
       try {
-        const [prodRes, custRes, quotesRes, invRes] = await Promise.all([
+        setLoading(true);
+        const [prodRes, custRes, quotesRes, invRes, recRes, spRes] = await Promise.all([
           fetch("/api/products").then((r) => r.json()).catch(() => ({ products: [] })),
           fetch("/api/customers").then((r) => r.json()).catch(() => ({ customers: [] })),
           fetch("/api/quotes").then((r) => r.json()).catch(() => []),
           fetch("/api/invoices").then((r) => r.json()).catch(() => []),
+          fetch("/api/receipts").then((r) => r.json()).catch(() => []),
+          fetch("/api/salespeople").then((r) => r.json()).catch(() => ({ salespeople: [] })),
         ]);
 
-        if (prodRes.products) setProducts(prodRes.products);
-        if (custRes.customers) setCustomers(custRes.customers);
+        if (prodRes && Array.isArray(prodRes.products)) setProducts(prodRes.products);
+        if (custRes && Array.isArray(custRes.customers)) setCustomers(custRes.customers);
+        if (Array.isArray(quotesRes)) setQuotes(quotesRes);
+        if (Array.isArray(recRes)) setReceipts(recRes);
+        if (spRes && Array.isArray(spRes.salespeople)) setSalespeopleCount(spRes.salespeople.length);
 
-        let finalQuotes = [...localQuotes];
-        if (Array.isArray(quotesRes)) {
-          const merged = quotesRes.length === 0 ? [] : [...quotesRes];
-          if (quotesRes.length > 0) {
-            localQuotes.forEach((lq) => {
-              if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
-                merged.unshift(lq);
-              }
-            });
-          }
-          finalQuotes = merged;
-        }
-        setQuotes(finalQuotes);
-        localStorage.setItem("maat_quotes", JSON.stringify(finalQuotes));
-
-        let finalInvoices = [...localInvoices];
         if (Array.isArray(invRes)) {
           const parsedInvoices = invRes.map((item: any) => {
             if (item && Array.isArray(item.items)) return item;
@@ -128,26 +111,15 @@ export default function DashboardPage() {
               salesmanName: item.salesmanName || "",
               date: item.date || "",
               grandTotal: parseFloat(item.grandTotal) || 0,
-              status: item.status || "Unpaid",
+              status: item.status || "Credit",
               items: [],
               subtotal: parseFloat(item.grandTotal) || 0,
               discountTotal: 0,
               taxTotal: 0,
             };
           });
-
-          const mergedInvs = invRes.length === 0 ? [] : [...parsedInvoices];
-          if (invRes.length > 0) {
-            localInvoices.forEach((li) => {
-              if (li.invoiceNumber && !mergedInvs.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
-                mergedInvs.unshift(li);
-              }
-            });
-          }
-          finalInvoices = mergedInvs;
+          setInvoices(parsedInvoices);
         }
-        setInvoices(finalInvoices);
-        localStorage.setItem("maat_invoices", JSON.stringify(finalInvoices));
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
       } finally {
@@ -158,74 +130,96 @@ export default function DashboardPage() {
     loadDashboardData();
   }, []);
 
-  // Segment quotes & invoices by Salesman role restrictions
-  const visibleQuotes = useMemo(() => {
-    if (user && user.role === "Salesman") {
-      return quotes.filter((q) => q.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
-    }
-    return quotes;
-  }, [quotes, user]);
-
-  const visibleInvoices = useMemo(() => {
-    if (user && user.role === "Salesman") {
-      return invoices.filter((i) => i.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
-    }
-    return invoices;
-  }, [invoices, user]);
-
-  // Compute metrics
+  // Calculate Admin KPIs
   const metrics = useMemo(() => {
-    const totalProducts = products.length;
-    const totalClients = customers.length;
+    const todayStr = new Date().toISOString().split("T")[0];
 
-    // 1. Calculate running month total invoice sales
+    // 1. Today's Sales
+    const todayInvoices = invoices.filter((inv) => inv.date && String(inv.date).startsWith(todayStr));
+    const todaySalesSum = todayInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+
+    // Today's Collections (Receipts collected today)
+    const todayReceipts = receipts.filter((rec) => rec.paymentDate && String(rec.paymentDate).startsWith(todayStr));
+    const todayCollectionSum = todayReceipts.reduce((sum, rec) => sum + (Number(rec.amountPaid) || 0), 0);
+
+    // 2. Monthly Sales (Running Month)
     const now = new Date();
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth(); // 0-indexed
-
-    const thisMonthInvoices = visibleInvoices.filter((inv) => {
+    const currentMonth = now.getMonth();
+    const monthlyInvoices = invoices.filter((inv) => {
       if (!inv.date) return false;
-      const invDate = new Date(inv.date);
-      if (isNaN(invDate.getTime())) return false;
-      return invDate.getFullYear() === currentYear && invDate.getMonth() === currentMonth;
+      const d = new Date(inv.date);
+      if (isNaN(d.getTime())) return false;
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
     });
+    const monthlySalesSum = monthlyInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
 
-    const thisMonthSales = thisMonthInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+    // 3. Outstanding Receivables
+    const outstandingSum = customers.reduce((sum, c) => sum + Math.max(0, c.pendingBillwiseAmount || 0), 0);
 
-    // 2. Calculate Pending Billwise Amount total from Customers
-    const pendingCreditAmount = customers.reduce((sum, c) => sum + (c.pendingBillwiseAmount || 0), 0);
+    // 4. Credit Invoices
+    const creditInvoicesList = invoices.filter((inv) => inv.status === "Credit");
+    const creditInvoicesCount = creditInvoicesList.length;
+    const creditInvoicesSum = creditInvoicesList.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+
+    // 5. Payments Received
+    const totalPaymentsReceived = receipts.reduce((sum, r) => sum + (Number(r.amountPaid) || 0), 0);
+
+    // 6. Active Customers
+    const activeCustomersCount = customers.filter((c) => c.is_active !== false).length;
+
+    // 7. Active Salespersons
+    const activeSalespersonsCount = salespeopleCount || customers.reduce((acc, c) => {
+      if (c.assignedSalesmanName) acc.add(c.assignedSalesmanName);
+      return acc;
+    }, new Set<string>()).size;
 
     return {
-      totalProducts,
-      totalClients,
-      thisMonthSales,
-      pendingCreditAmount,
+      todaySalesSum,
+      todayCollectionSum,
+      monthlySalesSum,
+      outstandingSum,
+      creditInvoicesCount,
+      creditInvoicesSum,
+      totalPaymentsReceived,
+      activeCustomersCount,
+      activeSalespersonsCount,
     };
-  }, [products, customers, visibleInvoices]);
+  }, [invoices, customers, receipts, salespeopleCount]);
 
-  // Recent 3 quotes (most recent on top)
-  const recentQuotes = useMemo(() => {
-    return [...visibleQuotes]
-      .sort((a, b) => {
-        const timeA = a.date ? new Date(a.date).getTime() : 0;
-        const timeB = b.date ? new Date(b.date).getTime() : 0;
-        if (timeA !== timeB) return timeB - timeA;
-        return b.quoteNumber.localeCompare(a.quoteNumber);
-      })
-      .slice(0, 3);
-  }, [visibleQuotes]);
-
-  // Recent 3 invoices (most recent on top)
+  // Operational Recent Records
   const recentInvoices = useMemo(() => {
-    return [...visibleInvoices]
+    return [...invoices]
       .sort((a, b) => {
         const timeA = a.date ? new Date(a.date).getTime() : 0;
         const timeB = b.date ? new Date(b.date).getTime() : 0;
         if (timeA !== timeB) return timeB - timeA;
         return b.invoiceNumber.localeCompare(a.invoiceNumber);
       })
-      .slice(0, 3);
-  }, [visibleInvoices]);
+      .slice(0, 5);
+  }, [invoices]);
+
+  const recentQuotes = useMemo(() => {
+    return [...quotes]
+      .sort((a, b) => {
+        const timeA = a.date ? new Date(a.date).getTime() : 0;
+        const timeB = b.date ? new Date(b.date).getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return b.quoteNumber.localeCompare(a.quoteNumber);
+      })
+      .slice(0, 5);
+  }, [quotes]);
+
+  const recentReceiptsList = useMemo(() => {
+    return [...receipts]
+      .sort((a, b) => {
+        const timeA = a.paymentDate ? new Date(a.paymentDate).getTime() : 0;
+        const timeB = b.paymentDate ? new Date(b.paymentDate).getTime() : 0;
+        if (timeA !== timeB) return timeB - timeA;
+        return (b.receiptNumber || "").localeCompare(a.receiptNumber || "");
+      })
+      .slice(0, 5);
+  }, [receipts]);
 
   const shareQuoteToWhatsApp = async (quote: Quote) => {
     const doc = buildPDF(quote);
@@ -289,104 +283,64 @@ export default function DashboardPage() {
     doc.save(`MAAT-INVOICE-${invoice.invoiceNumber}.pdf`);
   };
 
-  // Columns for recent quotes table
-  const quoteColumns = [
-    {
-      header: t("quoteNo"),
-      accessor: (row: Quote) => (
-        <span className="font-bold text-[#1B2A4A]">{row.quoteNumber}</span>
-      ),
-    },
-    {
-      header: t("clientCompany"),
-      accessor: (row: Quote) => (
-        <div>
-          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
-          {row.companyName && row.customerName && (
-            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
-          )}
-        </div>
-      ),
-    },
-    {
-      header: "Date",
-      accessor: (row: Quote) => formatDisplayDate(row.date),
-      className: "w-44",
-    },
-    {
-      header: t("grandTotalCol"),
-      accessor: (row: Quote) => (
-        <span className="font-bold text-slate-900">AED {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-      ),
-    },
-    {
-      header: "Actions",
-      accessor: (row: Quote) => (
-        <ActionDropdown
-          options={[
-            { label: "View Details", onClick: () => setSelectedQuote(row) },
-            { label: "Download PDF", onClick: () => generateQuotePDF(row) },
-            { label: "Share via WhatsApp", onClick: () => shareQuoteToWhatsApp(row) },
-            { label: "Edit Quote", onClick: () => router.push(`/quotes/new?edit=${row.quoteNumber}`) },
-          ]}
-        />
-      ),
-      className: "w-32 text-center",
-    },
-  ];
-
-  // Columns for recent invoices table
+  // Operational Invoice Columns with ownership
   const invoiceColumns = [
     {
-      header: "Invoice Number",
+      header: "Invoice Ref",
       accessor: (row: Invoice) => (
         <div className="flex flex-col">
           <span className="font-bold text-[#1B2A4A]">{row.invoiceNumber}</span>
-          {row.quoteNumber && (
-            <span className="text-[10px] text-slate-400 font-semibold">From Quote: {row.quoteNumber}</span>
+          {row.country && (
+            <span className="text-[10px] text-slate-400 font-semibold">{row.country}</span>
+          )}
+        </div>
+      ),
+      className: "w-36",
+    },
+    {
+      header: "Customer",
+      accessor: (row: Invoice) => (
+        <div>
+          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          {row.customerName && row.companyName && (
+            <div className="text-xs text-slate-400 font-medium">Dr: {row.customerName}</div>
           )}
         </div>
       ),
     },
     {
-      header: t("clientCompany"),
+      header: "Salesperson",
       accessor: (row: Invoice) => (
-        <div>
-          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
-          {row.companyName && row.customerName && (
-            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
-          )}
-        </div>
+        <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2.5 py-1 rounded-lg border border-slate-200/60 inline-block">
+          {row.salesmanName || "Salesperson"}
+        </span>
       ),
+      className: "w-44",
+    },
+    {
+      header: "Grand Total",
+      accessor: (row: Invoice) => (
+        <span className="font-extrabold text-slate-900">
+          {row.country === "Oman" ? "OMR" : "AED"} {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </span>
+      ),
+      className: "w-36 text-right",
+    },
+    {
+      header: "Status",
+      accessor: (row: Invoice) => (
+        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+          row.status === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"
+        }`}>
+          {row.status}
+        </span>
+      ),
+      className: "w-28 text-center",
     },
     {
       header: "Date",
       accessor: (row: Invoice) => formatDisplayDate(row.date),
-      className: "w-44",
-    },
-    {
-      header: t("grandTotalCol"),
-      accessor: (row: Invoice) => (
-        <span className="font-bold text-slate-900">AED {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-      ),
-    },
-    {
-      header: "Status",
-      accessor: (row: Invoice) => {
-        let badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
-        if (row.status === "Paid") badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
-
-        const label = row.status === "Credit" && row.creditDays
-          ? `Credit (${row.creditDays} Days)`
-          : row.status;
-
-        return (
-          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold border ${badgeColor}`}>
-            {label}
-          </span>
-        );
-      },
-      className: "w-36 text-center",
+      className: "w-32",
     },
     {
       header: "Actions",
@@ -397,31 +351,152 @@ export default function DashboardPage() {
             { label: "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
             { label: "Download PDF", onClick: () => generateInvoicePDF(row) },
             { label: "Share via WhatsApp", onClick: () => shareInvoiceToWhatsApp(row) },
-            { label: "Edit Invoice", onClick: () => router.push(`/invoices/new?edit=${row.invoiceNumber}`) },
           ]}
         />
       ),
-      className: "w-32 text-center",
+      className: "w-28 text-center",
+    },
+  ];
+
+  // Operational Quote Columns with ownership
+  const quoteColumns = [
+    {
+      header: "Quote Ref",
+      accessor: (row: Quote) => (
+        <span className="font-bold text-[#1B2A4A]">{row.quoteNumber}</span>
+      ),
+      className: "w-36",
+    },
+    {
+      header: "Customer",
+      accessor: (row: Quote) => (
+        <div>
+          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          {row.customerName && row.companyName && (
+            <div className="text-xs text-slate-400 font-medium">Dr: {row.customerName}</div>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: "Salesperson",
+      accessor: (row: Quote) => (
+        <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2.5 py-1 rounded-lg border border-slate-200/60 inline-block">
+          {row.salesmanName || "Salesperson"}
+        </span>
+      ),
+      className: "w-44",
+    },
+    {
+      header: "Grand Total",
+      accessor: (row: Quote) => (
+        <span className="font-bold text-slate-900">
+          {row.country === "Oman" ? "OMR" : "AED"} {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </span>
+      ),
+      className: "w-36 text-right",
+    },
+    {
+      header: "Status",
+      accessor: (row: Quote) => (
+        <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+          {row.status}
+        </span>
+      ),
+      className: "w-28 text-center",
+    },
+    {
+      header: "Date",
+      accessor: (row: Quote) => formatDisplayDate(row.date),
+      className: "w-32",
+    },
+    {
+      header: "Actions",
+      accessor: (row: Quote) => (
+        <ActionDropdown
+          options={[
+            { label: "View Details", onClick: () => setSelectedQuote(row) },
+            { label: "Download PDF", onClick: () => generateQuotePDF(row) },
+            { label: "Share via WhatsApp", onClick: () => shareQuoteToWhatsApp(row) },
+          ]}
+        />
+      ),
+      className: "w-28 text-center",
+    },
+  ];
+
+  // Operational Receipt Columns with ownership
+  const receiptColumns = [
+    {
+      header: "Receipt Ref",
+      accessor: (row: any) => (
+        <span className="font-bold text-emerald-700">{row.receiptNumber}</span>
+      ),
+      className: "w-36",
+    },
+    {
+      header: "Customer",
+      accessor: (row: any) => (
+        <div>
+          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+        </div>
+      ),
+    },
+    {
+      header: "Salesperson",
+      accessor: (row: any) => (
+        <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2.5 py-1 rounded-lg border border-slate-200/60 inline-block">
+          {row.createdByName || row.salesmanName || "Salesperson"}
+        </span>
+      ),
+      className: "w-44",
+    },
+    {
+      header: "Amount Paid",
+      accessor: (row: any) => (
+        <span className="font-extrabold text-emerald-600">
+          {row.country === "Oman" ? "OMR" : "AED"} {(Number(row.amountPaid) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </span>
+      ),
+      className: "w-36 text-right",
+    },
+    {
+      header: "Method",
+      accessor: (row: any) => (
+        <span className="text-xs font-bold text-slate-700">
+          {row.paymentMethod || "Cash"}
+        </span>
+      ),
+      className: "w-28 text-center",
+    },
+    {
+      header: "Date",
+      accessor: (row: any) => formatDisplayDate(row.paymentDate || row.createdAt),
+      className: "w-32",
     },
   ];
 
   return (
     <div className="space-y-8">
-      {/* Header */}
+      {/* Dashboard Page Header */}
       <PageHeader 
-        title={t("dashboardTitle")} 
-        description={t("dashboardDesc")}
+        title="Dashboard" 
+        description={
+          isAdminOrAccountant
+            ? "High-level operational metrics, credit exposure, and cross-salesperson business overview."
+            : t("dashboardDesc")
+        }
         action={
           <div className="flex flex-wrap gap-3">
             <Link
               href="/invoices/new"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-white font-bold hover:bg-[#15223c] transition shadow-md shadow-primary/15"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1B2A4A] text-white font-bold hover:bg-[#15223c] transition shadow-md shadow-[#1B2A4A]/15 cursor-pointer text-sm"
             >
               {t("createInvoice") || "Create Invoice"}
             </Link>
             <Link
               href="/quotes/new"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15 cursor-pointer text-sm"
             >
               {t("createQuote")}
             </Link>
@@ -429,83 +504,199 @@ export default function DashboardPage() {
         }
       />
 
-      {/* Metric Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <DashboardCard
-          title={t("totalProducts").toUpperCase()}
-          value={loading ? "..." : metrics.totalProducts}
-          description={t("cataloguedMedicines")}
-          icon={Package}
-          trend={{ value: "12%", isPositive: true }}
-        />
-        <DashboardCard
-          title={t("activeClients").toUpperCase()}
-          value={loading ? "..." : metrics.totalClients}
-          description={t("veterinaryClinicsFarms")}
-          icon={Users}
-          trend={{ value: "8%", isPositive: true }}
-        />
-        <DashboardCard
-          title={(t("thisMonthSales") || "THIS MONTH SALES").toUpperCase()}
-          value={loading ? "..." : `AED ${metrics.thisMonthSales.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          description={t("currentMonthSalesDesc") || "total invoice sales for running month"}
-          icon={TrendingUp}
-          trend={{ value: "18%", isPositive: true }}
-        />
-        <DashboardCard
-          title={(t("pendingCreditAmount") || "PENDING CREDIT AMOUNT").toUpperCase()}
-          value={loading ? "..." : `AED ${metrics.pendingCreditAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          description={t("totalPendingBalanceDesc") || "total customer credit outstanding"}
-          icon={CreditCard}
-          trend={{ value: "5%", isPositive: false }}
-        />
-      </div>
-
-      {/* Recent Invoices Section */}
-      <div className="space-y-4 w-full mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-primary" />
-            {t("recentInvoices") || "Recent Invoices"}
-          </h2>
-          <Link
-            href="/invoices"
-            className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
-          >
-            {(t("viewAllInvoices") || "View All Invoices")} <ArrowRight className="w-3.5 h-3.5 rtl:rotate-180" />
-          </Link>
+      {/* SUPER ADMIN / ACCOUNTANT 4-KPI OPERATIONS BANNER */}
+      {isAdminOrAccountant ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <DashboardCard
+            title="TODAY'S SALES"
+            value={loading ? "..." : `AED ${metrics.todaySalesSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            description="Issued invoices today"
+            icon={TrendingUp}
+          />
+          <DashboardCard
+            title="MONTHLY SALES"
+            value={loading ? "..." : `AED ${metrics.monthlySalesSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            description="Running month invoice sales"
+            icon={TrendingUp}
+          />
+          <DashboardCard
+            title="OUTSTANDING RECEIVABLES"
+            value={loading ? "..." : `AED ${metrics.outstandingSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            description="Net customer credit balance"
+            icon={CreditCard}
+          />
+          <DashboardCard
+            title="PAYMENTS RECEIVED"
+            value={loading ? "..." : `AED ${metrics.totalPaymentsReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            description="Total collected receipts"
+            icon={DollarSign}
+          />
         </div>
-        <DataTable
-          data={recentInvoices}
-          columns={invoiceColumns}
-          keyExtractor={(row, idx) => row.id || row.invoiceNumber || `inv-${idx}`}
-          onRowClick={(row) => setSelectedInvoice(row)}
-          emptyTitle="No invoices found"
-          emptyDescription="Create your first invoice using the Create Invoice button above."
-        />
-      </div>
-
-      {/* Recent Quotes Section (Full Width) */}
-      <div className="space-y-4 w-full mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-primary" />
-            {t("recentQuotations")}
-          </h2>
-          <Link
-            href="/quotes"
-            className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
-          >
-            {t("viewAllQuotes")} <ArrowRight className="w-3.5 h-3.5 rtl:rotate-180" />
-          </Link>
+      ) : (
+        /* SALESPERSON SIMPLE FOCUSED KPIS */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <DashboardCard
+            title="MY SALES TODAY"
+            value={loading ? "..." : `AED ${metrics.todaySalesSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            description="Tax invoices issued today"
+            icon={TrendingUp}
+          />
+          <DashboardCard
+            title="MY COLLECTION TODAY"
+            value={loading ? "..." : `AED ${metrics.todayCollectionSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            description="Payment receipts collected today"
+            icon={DollarSign}
+          />
+          <DashboardCard
+            title="MONTHLY SALE"
+            value={loading ? "..." : `AED ${metrics.monthlySalesSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            description="Running month invoice sales"
+            icon={TrendingUp}
+          />
+          <DashboardCard
+            title="OUTSTANDING"
+            value={loading ? "..." : `AED ${metrics.outstandingSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            description="Net pending balance to collect"
+            icon={CreditCard}
+          />
         </div>
-        <DataTable
-          data={recentQuotes}
-          columns={quoteColumns}
-          keyExtractor={(row, idx) => row.id || row.quoteNumber || `q-${idx}`}
-          onRowClick={(row) => setSelectedQuote(row)}
-        />
-      </div>
+      )}
+
+      {/* OPERATIONAL TABLES SECTION */}
+      {isAdminOrAccountant ? (
+        <div className="space-y-8">
+          {/* Recent Invoices Operational Table */}
+          <div className="space-y-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-extrabold text-[#1B2A4A] flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-accent" />
+                  Recent Invoices
+                </h2>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  Latest tax invoices issued across assigned territories and salespersons
+                </p>
+              </div>
+              <Link
+                href="/invoices"
+                className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
+              >
+                View All Invoices &rarr;
+              </Link>
+            </div>
+            <DataTable
+              data={recentInvoices}
+              columns={invoiceColumns}
+              keyExtractor={(row, idx) => row.id || row.invoiceNumber || `inv-${idx}`}
+              onRowClick={(row) => setSelectedInvoice(row)}
+              emptyTitle="No recent invoices found"
+              emptyDescription="No invoice records available in the business system."
+            />
+          </div>
+
+          {/* Recent Quotations Operational Table */}
+          <div className="space-y-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-extrabold text-[#1B2A4A] flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-accent" />
+                  Recent Quotations
+                </h2>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  Active price quotes and proposals issued to customers
+                </p>
+              </div>
+              <Link
+                href="/quotes"
+                className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
+              >
+                View All Quotations &rarr;
+              </Link>
+            </div>
+            <DataTable
+              data={recentQuotes}
+              columns={quoteColumns}
+              keyExtractor={(row, idx) => row.id || row.quoteNumber || `q-${idx}`}
+              onRowClick={(row) => setSelectedQuote(row)}
+              emptyTitle="No recent quotations"
+              emptyDescription="No quotation records available."
+            />
+          </div>
+
+          {/* Recent Receipts Operational Table */}
+          <div className="space-y-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-extrabold text-[#1B2A4A] flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-emerald-600" />
+                  Recent Receipts & Payments
+                </h2>
+                <p className="text-xs text-slate-400 font-semibold mt-0.5">
+                  Latest customer repayments and cash/bank collections
+                </p>
+              </div>
+              <Link
+                href="/receipts"
+                className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
+              >
+                View All Receipts &rarr;
+              </Link>
+            </div>
+            <DataTable
+              data={recentReceiptsList}
+              columns={receiptColumns}
+              keyExtractor={(row, idx) => row.id || row.receiptNumber || `rec-${idx}`}
+              emptyTitle="No recent receipts"
+              emptyDescription="No payment receipt records logged yet."
+            />
+          </div>
+        </div>
+      ) : (
+        /* SALESPERSON SIMPLE TABLES VIEW */
+        <div className="space-y-8">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-primary" />
+                My Recent Invoices
+              </h2>
+              <Link
+                href="/invoices"
+                className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
+              >
+                View All &rarr;
+              </Link>
+            </div>
+            <DataTable
+              data={recentInvoices}
+              columns={invoiceColumns}
+              keyExtractor={(row, idx) => row.id || row.invoiceNumber || `inv-${idx}`}
+              onRowClick={(row) => setSelectedInvoice(row)}
+            />
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-primary" />
+                My Recent Quotations
+              </h2>
+              <Link
+                href="/quotes"
+                className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
+              >
+                View All &rarr;
+              </Link>
+            </div>
+            <DataTable
+              data={recentQuotes}
+              columns={quoteColumns}
+              keyExtractor={(row, idx) => row.id || row.quoteNumber || `q-${idx}`}
+              onRowClick={(row) => setSelectedQuote(row)}
+            />
+          </div>
+        </div>
+      )}
 
 
       {/* Quote Detail Modal */}

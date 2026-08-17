@@ -1,97 +1,242 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { SearchInput } from "@/components/SearchInput";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { Customer } from "@/types";
+import { Customer, UserCountry } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
-import { Plus, X, CheckCircle2, RotateCw } from "lucide-react";
+import { Plus, X, CheckCircle2, RotateCw, AlertTriangle, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ActionDropdown } from "@/components/ActionDropdown";
+import { useAuth } from "@/hooks/useAuth";
+import { SuperAdminCustomersView } from "@/components/SuperAdminCustomersView";
+
+const COUNTRY_OPTIONS: UserCountry[] = ["UAE", "Oman"];
+
+interface SalespersonOption {
+  id: string;
+  full_name: string;
+  email: string;
+  country: string;
+}
 
 export default function CustomersPage() {
   const router = useRouter();
+  const { user, profile, loading: authLoading } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const { t } = useLanguage();
+
+  // Salespeople options for assignment
+  const [salespeople, setSalespeople] = useState<SalespersonOption[]>([]);
 
   // Modal form states
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+
   const [formCompany, setFormCompany] = useState("");
   const [formName, setFormName] = useState("");
+  const [formEmail, setFormEmail] = useState("");
+  const [formPhone, setFormPhone] = useState("");
   const [formLocation, setFormLocation] = useState("");
-  const [formPendingAmount, setFormPendingAmount] = useState("");
+  const [formCity, setFormCity] = useState("");
+  const [formCountry, setFormCountry] = useState<UserCountry>("UAE");
+  const [formCreditLimit, setFormCreditLimit] = useState("");
+  const [formAssignedSalesmanId, setFormAssignedSalesmanId] = useState("");
+  const [formNotes, setFormNotes] = useState("");
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formSuccess, setFormSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Delete modal state
+  const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const loadCustomers = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetch(`/api/customers?refresh=true&t=${Date.now()}`);
       const data = await res.json();
-      setCustomers(data.customers || []);
-    } catch (err) {
+      if (!res.ok) {
+        setLoadError(data.error || "Failed to load customers from database");
+        setCustomers([]);
+      } else {
+        setCustomers(data.customers || []);
+      }
+    } catch (err: any) {
       console.error("Failed to load customers:", err);
+      setLoadError(err?.message || "Network error loading customers");
     } finally {
       setLoading(false);
     }
   };
 
+  const loadSalespeople = async (country: UserCountry) => {
+    try {
+      const res = await fetch(`/api/salespeople?country=${country}`);
+      const data = await res.json();
+      setSalespeople(data.salespeople || []);
+    } catch (err) {
+      console.error("Failed to load salespeople options:", err);
+    }
+  };
 
   useEffect(() => {
     loadCustomers();
   }, []);
 
+  useEffect(() => {
+    if (isModalOpen && user && user.role !== "salesperson") {
+      loadSalespeople(formCountry);
+    }
+  }, [formCountry, isModalOpen, user]);
+
   const filteredCustomers = useMemo(() => {
     let list = customers;
+
+    if (statusFilter === "active") {
+      list = list.filter((c) => c.is_active !== false);
+    } else if (statusFilter === "inactive") {
+      list = list.filter((c) => c.is_active === false);
+    }
+
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       list = list.filter(
         (c) =>
-          c.name.toLowerCase().includes(query) ||
-          c.company.toLowerCase().includes(query) ||
-          c.phone.includes(query)
+          (c.name && c.name.toLowerCase().includes(query)) ||
+          (c.company && c.company.toLowerCase().includes(query)) ||
+          (c.customerCode && c.customerCode.toLowerCase().includes(query)) ||
+          (c.phone && c.phone.includes(query)) ||
+          (c.email && c.email.toLowerCase().includes(query)) ||
+          (c.assignedSalesmanName && c.assignedSalesmanName.toLowerCase().includes(query))
       );
     }
     return [...list].reverse();
-  }, [customers, searchQuery]);
+  }, [customers, searchQuery, statusFilter]);
+
+  const openAddModal = () => {
+    const userCountryVal: UserCountry = user?.country === "Oman" ? "Oman" : "UAE";
+    setEditingCustomer(null);
+    setFormCompany("");
+    setFormName("");
+    setFormEmail("");
+    setFormPhone("");
+    setFormLocation("");
+    setFormCity("");
+    setFormCountry(userCountryVal);
+    setFormCreditLimit("0");
+    setFormAssignedSalesmanId(user?.role === "salesperson" ? user.id : "");
+    setFormNotes("");
+    setErrorMessage(null);
+    setFormSuccess(false);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (customer: Customer) => {
+    setEditingCustomer(customer);
+    setFormCompany(customer.company || customer.companyName || "");
+    setFormName(customer.doctorName || customer.name || "");
+    setFormEmail(customer.email || "");
+    setFormPhone(customer.phone || "");
+    setFormLocation(customer.address || "");
+    setFormCity(customer.city || "");
+    setFormCountry(customer.country === "Oman" ? "Oman" : "UAE");
+    setFormCreditLimit(String(customer.creditLimit ?? 0));
+    setFormAssignedSalesmanId(customer.assignedSalesmanId || "");
+    setFormNotes(customer.notes || "");
+    setErrorMessage(null);
+    setFormSuccess(false);
+    setIsModalOpen(true);
+  };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formCompany) return;
+    setErrorMessage(null);
+
+    if (!formCompany || !formCompany.trim()) {
+      setErrorMessage("Company / Clinic Name is required.");
+      return;
+    }
 
     setIsSubmitting(true);
-    const formData = new FormData();
-    formData.append("company", formCompany);
-    formData.append("name", formName);
-    formData.append("location", formLocation);
-    formData.append("pendingAmount", formPendingAmount || "0");
+    const isEdit = !!editingCustomer;
+
+    const payload: any = {
+      id: editingCustomer?.id,
+      company: formCompany.trim(),
+      companyName: formCompany.trim(),
+      name: formName.trim(),
+      doctorName: formName.trim(),
+      email: formEmail.trim(),
+      phone: formPhone.trim(),
+      address: formLocation.trim(),
+      city: formCity.trim(),
+      country: formCountry,
+      creditLimit: parseFloat(formCreditLimit) || 0,
+      notes: formNotes.trim(),
+    };
+
+    if (user?.role !== "salesperson" && formAssignedSalesmanId) {
+      payload.assignedSalesmanId = formAssignedSalesmanId;
+    }
 
     try {
+      const method = isEdit ? "PUT" : "POST";
       const res = await fetch("/api/customers", {
-        method: "POST",
-        body: formData,
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
+      const resData = await res.json();
+
+      if (res.ok && resData.success) {
         setFormSuccess(true);
         setTimeout(() => {
           setIsModalOpen(false);
-          setFormCompany("");
-          setFormName("");
-          setFormLocation("");
-          setFormPendingAmount("");
+          setEditingCustomer(null);
           setFormSuccess(false);
+          setErrorMessage(null);
           loadCustomers();
-        }, 1500);
+        }, 800);
+      } else {
+        const errText = resData.error || `Failed to ${isEdit ? "update" : "create"} customer`;
+        setErrorMessage(errText);
       }
-    } catch (err) {
-      console.error("Failed to submit customer:", err);
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Network error submitting customer form");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingCustomer) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/customers?id=${deletingCustomer.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setDeletingCustomer(null);
+        loadCustomers();
+      } else {
+        alert(data.error || "Failed to deactivate customer");
+      }
+    } catch (err: any) {
+      alert(err.message || "Failed to deactivate customer");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -100,8 +245,32 @@ export default function CustomersPage() {
       header: t("companyHeader") || "Clinic / Farm Company",
       accessor: (row: Customer) => (
         <div>
-          <div className="font-extrabold text-slate-800">{row.company}</div>
-          <div className="text-xs text-slate-400 font-semibold mt-0.5">{row.address}</div>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/customers/${row.id}`}
+              className="font-extrabold text-slate-900 hover:text-accent transition flex items-center gap-1.5"
+            >
+              {row.company}
+            </Link>
+
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                row.is_active !== false
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-slate-100 text-slate-500 border-slate-200"
+              }`}
+            >
+              {row.is_active !== false ? "Active" : "Inactive"}
+            </span>
+          </div>
+
+          <div className="text-xs text-slate-400 font-semibold mt-0.5 flex items-center gap-1">
+            <span>{row.address || row.city || "No address"}</span>
+            {row.country && <span className="text-slate-300">• {row.country}</span>}
+            {row.assignedSalesmanName && (
+              <span className="text-accent font-bold">• Sales: {row.assignedSalesmanName}</span>
+            )}
+          </div>
         </div>
       ),
     },
@@ -109,13 +278,13 @@ export default function CustomersPage() {
       header: t("doctorHeader") || "Primary Contact Doctor",
       accessor: (row: Customer) => (
         <span className="font-bold text-slate-800">
-          {row.name || "—"}
+          {row.name || row.doctorName || "—"}
         </span>
       ),
       className: "w-48",
     },
     {
-      header: "Pending Billwise Amount",
+      header: "Pending Billwise Balance",
       accessor: (row: Customer) => {
         const amt = Math.max(0, row.pendingBillwiseAmount || 0);
         return (
@@ -127,22 +296,26 @@ export default function CustomersPage() {
       className: "w-48 text-right",
     },
     {
-      header: t("phoneHeader") || "Phone Number",
+      header: t("phoneHeader") || "Phone & Email",
       accessor: (row: Customer) => (
-        <span className="font-bold text-slate-850">
-          {row.phone || "—"}
-        </span>
+        <div className="flex flex-col">
+          <span className="font-bold text-slate-850">{row.phone || "—"}</span>
+          {row.email && <span className="text-xs text-slate-400">{row.email}</span>}
+        </div>
       ),
-      className: "w-36",
+      className: "w-44",
     },
     {
       header: "Actions",
       accessor: (row: Customer) => (
         <ActionDropdown
           options={[
+            { label: "View Ledger & Details", onClick: () => router.push(`/customers/${row.id}`) },
+            { label: "Edit Customer", onClick: () => openEditModal(row) },
             { label: "Issue Receipt", onClick: () => router.push(`/receipts/new?customerId=${row.id}`) },
             { label: "Create Quote", onClick: () => router.push(`/quotes/new?customerId=${row.id}`) },
             { label: "Create Invoice", onClick: () => router.push(`/invoices/new?customerId=${row.id}`) },
+            { label: "Deactivate Customer", onClick: () => setDeletingCustomer(row), danger: true },
           ]}
         />
       ),
@@ -150,6 +323,31 @@ export default function CustomersPage() {
     },
   ];
 
+  if (authLoading || !profile) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          title={t("customersTitle") || "Customers & Accounts"}
+          description={t("customersDesc") || "Manage veterinary clinics, equestrian centers, livestock farms, and key contact details."}
+        />
+        <LoadingSkeleton type="table" count={5} />
+      </div>
+    );
+  }
+
+  const isSuperAdmin = profile?.role === "super_admin" || user?.role === "super_admin";
+
+  if (isSuperAdmin) {
+    return (
+      <SuperAdminCustomersView
+        customers={customers}
+        loading={loading}
+        loadError={loadError}
+        onRefresh={loadCustomers}
+        onCustomerUpdated={loadCustomers}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -167,7 +365,7 @@ export default function CustomersPage() {
               Sync Customers
             </button>
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={openAddModal}
               className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15 cursor-pointer text-sm"
             >
               <Plus className="w-5 h-5" /> Add Customer
@@ -176,20 +374,59 @@ export default function CustomersPage() {
         }
       />
 
-      {/* Filter and Actions Bar */}
+      {loadError && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between text-rose-700 text-sm font-semibold">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
+            <span>{loadError}</span>
+          </div>
+          <button
+            onClick={loadCustomers}
+            className="px-3 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-xs font-bold transition"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
         <SearchInput
-          placeholder="Search by clinic name, doctor, phone..."
+          placeholder="Search by clinic name, doctor, code, phone, salesman..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onClear={() => setSearchQuery("")}
         />
-        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-          Showing {filteredCustomers.length} Clients
+
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">
+            <button
+              onClick={() => setStatusFilter("all")}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                statusFilter === "all" ? "bg-white text-slate-900 shadow-xs" : "hover:text-slate-900"
+              }`}
+            >
+              All ({customers.length})
+            </button>
+            <button
+              onClick={() => setStatusFilter("active")}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                statusFilter === "active" ? "bg-emerald-500 text-white shadow-xs" : "hover:text-slate-900"
+              }`}
+            >
+              Active ({customers.filter((c) => c.is_active !== false).length})
+            </button>
+            <button
+              onClick={() => setStatusFilter("inactive")}
+              className={`px-3 py-1.5 rounded-lg transition ${
+                statusFilter === "inactive" ? "bg-slate-700 text-white shadow-xs" : "hover:text-slate-900"
+              }`}
+            >
+              Inactive ({customers.filter((c) => c.is_active === false).length})
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Customers table */}
       {loading ? (
         <LoadingSkeleton type="table" />
       ) : (
@@ -197,25 +434,30 @@ export default function CustomersPage() {
           data={filteredCustomers}
           columns={columns}
           keyExtractor={(row) => row.id}
+          onRowClick={(row) => router.push(`/customers/${row.id}`)}
           emptyTitle="No veterinary clinics found"
-          emptyDescription="Try typing alternative names or phone prefixes."
+          emptyDescription="Try adjusting search parameters or filter toggles."
         />
       )}
 
-      {/* Add Customer Modal */}
+      {/* Add / Edit Customer Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl relative">
+          <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
             {formSuccess ? (
               <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
                 <CheckCircle2 className="w-12 h-12 text-emerald-500 animate-bounce" />
-                <h4 className="text-lg font-bold text-slate-900">Customer Added</h4>
+                <h4 className="text-lg font-bold text-slate-900">
+                  {editingCustomer ? "Customer Updated" : "Customer Added"}
+                </h4>
                 <p className="text-sm text-slate-500">The account database has been updated.</p>
               </div>
             ) : (
               <>
                 <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
-                  <h3 className="text-lg font-bold text-slate-900">Add New Customer</h3>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {editingCustomer ? "Edit Customer" : "Add New Customer"}
+                  </h3>
                   <button
                     onClick={() => setIsModalOpen(false)}
                     className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
@@ -224,11 +466,16 @@ export default function CustomersPage() {
                   </button>
                 </div>
 
+                {errorMessage && (
+                  <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-semibold">
+                    {errorMessage}
+                  </div>
+                )}
+
                 <form onSubmit={handleFormSubmit} className="space-y-4">
-                  {/* Company/Clinic Name */}
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Clinic / Farm Company Name
+                      Clinic / Farm Company Name *
                     </label>
                     <input
                       type="text"
@@ -240,10 +487,9 @@ export default function CustomersPage() {
                     />
                   </div>
 
-                  {/* Contact Doctor Name */}
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Primary Contact Doctor (Optional)
+                      Primary Contact Doctor Name
                     </label>
                     <input
                       type="text"
@@ -254,40 +500,134 @@ export default function CustomersPage() {
                     />
                   </div>
 
-                  {/* Location Name */}
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Location / Region
+                      Country *
+                    </label>
+                    {user?.role === "salesperson" || editingCustomer ? (
+                      <div className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-bold flex items-center justify-between">
+                        <span>{formCountry}</span>
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-slate-200 px-2 py-0.5 rounded">
+                          {editingCustomer ? "Immutable" : "Locked"}
+                        </span>
+                      </div>
+                    ) : (
+                      <select
+                        value={formCountry}
+                        onChange={(e) => setFormCountry(e.target.value as UserCountry)}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+                      >
+                        {COUNTRY_OPTIONS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+
+                  {user?.role !== "salesperson" && (
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Assigned Salesperson ({formCountry})
+                      </label>
+                      <select
+                        value={formAssignedSalesmanId}
+                        onChange={(e) => setFormAssignedSalesmanId(e.target.value)}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+                      >
+                        <option value="">-- No Salesperson Assigned --</option>
+                        {salespeople.map((sp) => (
+                          <option key={sp.id} value={sp.id}>
+                            {sp.full_name} ({sp.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Phone Number
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. +971 50 123 4567"
+                        value={formPhone}
+                        onChange={(e) => setFormPhone(e.target.value)}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        City
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Dubai / Muscat"
+                        value={formCity}
+                        onChange={(e) => setFormCity(e.target.value)}
+                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="e.g. clinic@example.com"
+                      value={formEmail}
+                      onChange={(e) => setFormEmail(e.target.value)}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Address / Location Details
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Ajman, UAE"
+                      placeholder="e.g. Street 14, Industrial Area 3"
                       value={formLocation}
                       onChange={(e) => setFormLocation(e.target.value)}
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
                     />
                   </div>
 
-                  {/* Pending Billwise Amount */}
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Pending Billwise Amount (AED)
+                      Credit Limit ({formCountry === "Oman" ? "OMR" : "AED"})
                     </label>
                     <input
                       type="number"
                       step="0.01"
                       min="0"
-                      inputMode="decimal"
                       placeholder="0.00"
-                      value={formPendingAmount}
-                      onChange={(e) => setFormPendingAmount(e.target.value)}
+                      value={formCreditLimit}
+                      onChange={(e) => setFormCreditLimit(e.target.value)}
                       onFocus={(e) => e.target.select()}
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Notes / Account Remarks
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Prefer payment via cheque. VIP client."
+                      value={formNotes}
+                      onChange={(e) => setFormNotes(e.target.value)}
                       className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
                     />
                   </div>
 
-
-                  {/* Modal Action buttons */}
                   <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
                     <button
                       type="button"
@@ -298,15 +638,45 @@ export default function CustomersPage() {
                     </button>
                     <button
                       type="submit"
-                      disabled={isSubmitting || !formCompany}
+                      disabled={isSubmitting || !formCompany.trim()}
                       className="px-5 py-3 text-sm font-bold text-white bg-[#1B2A4A] hover:bg-[#15223c] rounded-xl transition disabled:opacity-50 cursor-pointer"
                     >
-                      {isSubmitting ? "Adding..." : "Add Customer"}
+                      {isSubmitting ? "Saving..." : editingCustomer ? "Update Customer" : "Save Customer"}
                     </button>
                   </div>
                 </form>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete / Soft Deactivate Confirmation Modal */}
+      {deletingCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl relative">
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Deactivate Customer</h3>
+            <p className="text-sm text-slate-600 mb-6">
+              Are you sure you want to deactivate <span className="font-bold text-slate-900">{deletingCustomer.company}</span>? Historical invoices, quotations, and receipts will remain intact.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeletingCustomer(null)}
+                disabled={isDeleting}
+                className="px-4 py-2.5 text-sm font-semibold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-4 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? "Deactivating..." : "Deactivate"}
+              </button>
+            </div>
           </div>
         </div>
       )}

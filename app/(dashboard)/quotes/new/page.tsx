@@ -8,11 +8,10 @@ import { PageHeader } from "@/components/PageHeader";
 import { Product, Customer, QuoteItem, Quote } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
-import { mockQuotes } from "@/lib/mockData";
 import { buildPDF } from "@/lib/pdfHelper";
 
 interface QuoteItemWithManual extends QuoteItem {
-  manualDiscount?: number;
+  manualUnitPrice?: number;
 }
 
 function NewQuoteForm() {
@@ -54,37 +53,26 @@ function NewQuoteForm() {
 
   // Load products, customers, and quotes on mount
   useEffect(() => {
-    let localQuotes: Quote[] = [];
-    try {
-      const qStr = localStorage.getItem("maat_quotes");
-      localQuotes = qStr ? JSON.parse(qStr) : mockQuotes;
-      if (localQuotes.length > 0) setQuotesList(localQuotes);
-    } catch (e) {}
-
     async function loadData() {
       try {
-        const prodRes = await fetch("/api/products");
+        const [prodRes, custRes, quotesRes] = await Promise.all([
+          fetch("/api/products"),
+          fetch("/api/customers"),
+          fetch("/api/quotes"),
+        ]);
+
         const prodData = await prodRes.json();
         setProducts(prodData.products || []);
 
-        const custRes = await fetch("/api/customers");
         const custData = await custRes.json();
-        setCustomers(custData.customers || []);
+        setCustomers(custData.customers || (Array.isArray(custData) ? custData : []));
 
-        const quotesRes = await fetch("/api/quotes");
         const quotesData = await quotesRes.json();
-        if (Array.isArray(quotesData) && quotesData.length > 0) {
-          const merged = [...quotesData];
-          localQuotes.forEach((lq) => {
-            if (lq.quoteNumber && !merged.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
-              merged.unshift(lq);
-            }
-          });
-          setQuotesList(merged);
-          localStorage.setItem("maat_quotes", JSON.stringify(merged));
+        if (Array.isArray(quotesData)) {
+          setQuotesList(quotesData);
         }
       } catch (err) {
-        console.error("Failed to load inventory/customer data:", err);
+        console.error("Failed to load inventory/customer data from Supabase:", err);
       } finally {
         setIsPageLoading(false);
       }
@@ -133,15 +121,14 @@ function NewQuoteForm() {
           setFooterText(existingQuote.footerText);
         }
         
-        // Map QuoteItems to QuoteItemWithManual
+        // Map QuoteItems to form state
         const mappedItems = existingQuote.items.map((item) => ({
           productId: item.productId,
           productName: item.productName,
           quantity: item.quantity,
-          price: item.price,
-          discount: item.discount,
-          total: item.total,
-          manualDiscount: item.discount < item.price ? item.discount : undefined,
+          price: item.price, // Unit price
+          discount: item.discount, // Explicit discount per unit
+          total: item.total, // Line total: quantity * (price - discount)
         }));
         setQuoteItems(mappedItems);
       }
@@ -153,7 +140,8 @@ function NewQuoteForm() {
     return customers.find((c) => c.id === selectedCustomerId);
   }, [selectedCustomerId, customers]);
 
-
+  const activeCountry = selectedCustomer?.country || user?.country || "UAE";
+  const currencySymbol = activeCountry === "Oman" ? "OMR" : "AED";
 
   // Filter customers by search query
   const filteredCustomers = useMemo(() => {
@@ -181,38 +169,39 @@ function NewQuoteForm() {
   }, [searchQuery, products]);
 
   // Calculate pricing summary details
+  // subtotal = sum of (quantity * unit_price) before explicit discount
   const subtotal = useMemo(() => {
     return quoteItems.reduce((acc, item) => {
       const q = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
       const p = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
-      return acc + p * q;
+      return acc + Math.max(0, q) * Math.max(0, p);
     }, 0);
   }, [quoteItems]);
 
-  const grandTotal = useMemo(() => {
+  // discountTotal = sum of (quantity * discount_per_unit)
+  const discountTotal = useMemo(() => {
     return quoteItems.reduce((acc, item) => {
       const q = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
       const d = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
-      return acc + d * q;
+      return acc + Math.max(0, q) * Math.max(0, d);
     }, 0);
   }, [quoteItems]);
 
-  const discountTotal = useMemo(() => {
-    return subtotal - grandTotal;
-  }, [subtotal, grandTotal]);
+  // UAE VAT Rule: VAT is NOT applicable to UAE quotations (0.00). Oman preserves existing 0.00 rule.
+  const taxTotal = 0.00;
 
-  const taxTotal = 0.00; // Removed VAT calculation as per policy
+  const grandTotal = useMemo(() => {
+    return Math.max(0, subtotal - discountTotal + taxTotal);
+  }, [subtotal, discountTotal, taxTotal]);
 
   // Handlers
   const handleAddProduct = (product: Product) => {
-    // Check if product is already in quote
     const existingIndex = quoteItems.findIndex((item) => item.productId === product.id);
 
     if (existingIndex > -1) {
       const updated = [...quoteItems];
-      const newQty = updated[existingIndex].quantity + 1;
+      const newQty = (Number(updated[existingIndex].quantity) || 0) + 1;
       
-      // Determine applicable tier price
       let tierPrice = product.price;
       if (newQty >= 100) {
         tierPrice = product.price100 ?? tierPrice;
@@ -222,15 +211,16 @@ function NewQuoteForm() {
         tierPrice = product.price10 ?? tierPrice;
       }
 
-      // Final price: Use manual override if set, otherwise the active tier price
-      const finalPrice = updated[existingIndex].manualDiscount !== undefined 
-        ? (updated[existingIndex].manualDiscount ?? tierPrice)
+      updated[existingIndex].quantity = newQty;
+      updated[existingIndex].price = tierPrice;
+
+      const rawDiscPrice = updated[existingIndex].discountPrice ?? updated[existingIndex].manualDiscount;
+      const effective = (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "")
+        ? Math.min(tierPrice, Math.max(0, Number(rawDiscPrice)))
         : tierPrice;
 
-      updated[existingIndex].quantity = newQty;
-      updated[existingIndex].price = product.price; // Keep base price visible
-      updated[existingIndex].discount = finalPrice; // Discount stores active unit price
-      updated[existingIndex].total = newQty * finalPrice;
+      updated[existingIndex].discount = Math.max(0, tierPrice - effective);
+      updated[existingIndex].total = newQty * effective;
       setQuoteItems(updated);
     } else {
       setQuoteItems([
@@ -240,8 +230,9 @@ function NewQuoteForm() {
           productName: product.name,
           quantity: 1,
           price: product.price,
-          discount: product.price, // Initial price is original base price
-          manualDiscount: undefined,
+          discount: 0,
+          discountPrice: "",
+          manualDiscount: "",
           total: product.price,
         },
       ]);
@@ -256,7 +247,7 @@ function NewQuoteForm() {
     const product = products.find((p) => p.id === item.productId);
     const basePrice = product ? product.price : item.price;
 
-    const numQty = typeof val === "number" ? val : (parseInt(val, 10) || 0);
+    const numQty = typeof val === "number" ? val : (parseInt(val as any, 10) || 0);
     let tierPrice = basePrice;
     if (product && numQty > 0) {
       if (numQty >= 100) tierPrice = product.price100 ?? tierPrice;
@@ -264,13 +255,16 @@ function NewQuoteForm() {
       else if (numQty >= 10) tierPrice = product.price10 ?? tierPrice;
     }
 
-    const finalPrice = item.manualDiscount !== undefined ? item.manualDiscount : tierPrice;
-    const discNum = typeof finalPrice === "number" ? finalPrice : (parseFloat(finalPrice as any) || 0);
-
     updated[index].quantity = val as any;
-    updated[index].price = basePrice;
-    updated[index].discount = finalPrice;
-    updated[index].total = numQty * discNum;
+    updated[index].price = tierPrice;
+
+    const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
+    const effective = (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "")
+      ? Math.min(tierPrice, Math.max(0, Number(rawDiscPrice)))
+      : tierPrice;
+
+    updated[index].discount = Math.max(0, tierPrice - effective);
+    updated[index].total = numQty * effective;
     setQuoteItems(updated);
   };
 
@@ -278,11 +272,29 @@ function NewQuoteForm() {
     const updated = [...quoteItems];
     const item = updated[index];
     const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
-    const discNum = typeof val === "number" ? val : (parseFloat(val as any) || 0);
 
-    updated[index].manualDiscount = val as any;
-    updated[index].discount = val as any;
-    updated[index].total = numQty * discNum;
+    const valStr = val !== undefined && val !== null ? String(val).trim() : "";
+    if (valStr === "") {
+      updated[index].discountPrice = "";
+      updated[index].manualDiscount = "";
+      updated[index].discount = 0;
+      updated[index].total = numQty * item.price;
+    } else {
+      const discPriceNum = parseFloat(valStr);
+      if (!isNaN(discPriceNum)) {
+        if (discPriceNum > item.price) {
+          setErrorMessage(`Discount Price (${currencySymbol} ${discPriceNum.toFixed(2)}) cannot be greater than Unit Price (${currencySymbol} ${item.price.toFixed(2)})`);
+        } else {
+          setErrorMessage(null);
+        }
+        const validPrice = Math.max(0, discPriceNum);
+        const effective = Math.min(item.price, validPrice);
+        updated[index].discountPrice = val as any;
+        updated[index].manualDiscount = val as any;
+        updated[index].discount = Math.max(0, item.price - effective);
+        updated[index].total = numQty * effective;
+      }
+    }
     setQuoteItems(updated);
   };
 
@@ -297,117 +309,51 @@ function NewQuoteForm() {
     if (!selectedCustomerId || quoteItems.length === 0 || isSaving) return;
 
     setIsSaving(true);
-    const newQuoteNum = editQuoteNumber || `QT-2026-0${quotesList.length + 1}`;
     const dateStr = new Date().toISOString().split("T")[0];
 
-    const newQuote = {
-      id: editQuoteNumber
-        ? (quotesList.find((q) => q.quoteNumber === editQuoteNumber)?.id || `q-mock-${Date.now()}`)
-        : `q-mock-${Date.now()}`,
-      quoteNumber: newQuoteNum,
+    const quotePayload = {
+      quoteNumber: editQuoteNumber || undefined,
       customerId: selectedCustomerId,
-      customerName: selectedCustomer?.name || "",
-      companyName: selectedCustomer?.company || "",
       salesmanId: user?.id || "user-salesman",
-      salesmanName: user?.name || "Dr. Kaleemullah M.",
       date: dateStr,
-      items: quoteItems,
+      items: quoteItems.map((item) => ({
+        productId: item.productId,
+        productName: item.productName,
+        quantity: typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0),
+        price: typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0),
+        discount: typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0),
+        total: typeof item.total === "number" ? item.total : (parseFloat(item.total as any) || 0),
+      })),
       subtotal,
       discountTotal,
-      taxTotal,
+      taxTotal: 0,
       grandTotal,
-      status: "Pending" as const,
+      status: "Draft",
       notes,
-      showBasePrice,
-      footerText,
     };
 
     try {
-      // 1. Generate PDF and get Base64 string
-      const doc = buildPDF(newQuote);
-      const pdfBase64 = doc.output("datauristring").split(",")[1];
-
-      // Convert items to human-readable string summary
-      const productsSummary = quoteItems
-        .map((item) => `${item.quantity} x ${item.productName} (@ AED ${item.discount.toFixed(2)})`)
-        .join(", ");
-
-      // 2. Upload to Google Drive & log to sheet via our secure API
-      const payload = {
-        quoteNumber: newQuoteNum,
-        customerName: selectedCustomer?.name || "",
-        companyName: selectedCustomer?.company || "",
-        salesmanName: user?.name || "Dr. Kaleemullah M.",
-        date: dateStr,
-        grandTotal: grandTotal,
-        fileName: `MAAT-QUOTE-${newQuoteNum}.pdf`,
-        pdfBase64: pdfBase64,
-        productsListText: productsSummary,
-        quoteJson: JSON.stringify(newQuote),
-      };
-
       const response = await fetch("/api/quotes", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(quotePayload),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to upload quote to cloud storage");
+      const resData = await response.json();
+
+      if (!response.ok || resData.error) {
+        throw new Error(resData.error || "Failed to save quotation to Supabase");
       }
 
-      // Add or Update in quotesList and localStorage
-      let updatedQuotes = [...quotesList];
-      if (editQuoteNumber) {
-        const existingIdx = updatedQuotes.findIndex((q) => q.quoteNumber === editQuoteNumber);
-        if (existingIdx > -1) {
-          updatedQuotes[existingIdx] = newQuote;
-        } else {
-          updatedQuotes.unshift(newQuote);
-        }
-        setSuccessMessage(language === "en" ? `Quotation ${newQuoteNum} successfully updated!` : `تم تحديث عرض السعر ${newQuoteNum} بنجاح!`);
-      } else {
-        updatedQuotes.unshift(newQuote);
-        setSuccessMessage(language === "en" ? `Quotation ${newQuoteNum} successfully saved!` : `تم حفظ عرض السعر ${newQuoteNum} بنجاح!`);
-      }
-
-      localStorage.setItem("maat_quotes", JSON.stringify(updatedQuotes));
-
-      // Also update in-memory fallback array
-      const fallbackIdx = mockQuotes.findIndex((q) => q.quoteNumber === newQuoteNum);
-      if (fallbackIdx > -1) {
-        mockQuotes[fallbackIdx] = newQuote;
-      } else {
-        mockQuotes.unshift(newQuote);
-      }
-
-    } catch (err) {
+      const assignedNum = resData.quotationNumber || editQuoteNumber || "Quotation";
+      setSuccessMessage(
+        language === "en"
+          ? `Quotation ${assignedNum} successfully saved!`
+          : `تم حفظ عرض السعر ${assignedNum} بنجاح!`
+      );
+    } catch (err: any) {
       console.error("Save quote error:", err);
-      setSuccessMessage(language === "en" ? `Quotation ${newQuoteNum} saved successfully!` : `تم حفظ عرض السعر ${newQuoteNum} بنجاح!`);
-      
-      // Still push in-memory / localStorage for fallback session continuity
-      let updatedQuotes = [...quotesList];
-      if (editQuoteNumber) {
-        const existingIdx = updatedQuotes.findIndex((q) => q.quoteNumber === editQuoteNumber);
-        if (existingIdx > -1) {
-          updatedQuotes[existingIdx] = newQuote;
-        } else {
-          updatedQuotes.unshift(newQuote);
-        }
-      } else {
-        updatedQuotes.unshift(newQuote);
-      }
-      localStorage.setItem("maat_quotes", JSON.stringify(updatedQuotes));
-
-      const fallbackIdx = mockQuotes.findIndex((q) => q.quoteNumber === newQuoteNum);
-      if (fallbackIdx > -1) {
-        mockQuotes[fallbackIdx] = newQuote;
-      } else {
-        mockQuotes.unshift(newQuote);
-      }
-      
+      setErrorMessage(err.message || "Failed to save quotation");
     } finally {
       setIsSaving(false);
     }
@@ -675,13 +621,9 @@ function NewQuoteForm() {
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
                         <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase">Product Name</th>
-                        {showBasePrice && (
-                          <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Base Price</th>
-                        )}
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Unit Price</th>
                         <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-24">Qty</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-36">
-                          {showBasePrice ? "Discount Price" : "Unit Price"}
-                        </th>
+                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-36">Discount Price</th>
                         <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Subtotal</th>
                         <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-14"></th>
                       </tr>
@@ -692,11 +634,9 @@ function NewQuoteForm() {
                           <td className="px-4 py-4 font-bold text-slate-700">
                             {item.productName}
                           </td>
-                          {showBasePrice && (
-                            <td className="px-4 py-4 text-right font-semibold text-slate-700">
-                              AED {item.price.toFixed(2)}
-                            </td>
-                          )}
+                          <td className="px-4 py-4 text-right font-semibold text-slate-700">
+                            {currencySymbol} {item.price.toFixed(2)}
+                          </td>
                           <td className="px-2 py-4">
                             <input
                               type="number"
@@ -717,30 +657,44 @@ function NewQuoteForm() {
                             />
                           </td>
                           <td className="px-2 py-4">
-                            <div className="relative flex items-center w-28 mx-auto">
-                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">AED</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                inputMode="decimal"
-                                value={item.discount !== undefined && item.discount !== null ? item.discount : ""}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  if (raw === "") {
-                                    handleUpdateDiscount(idx, "");
-                                  } else {
-                                    const parsed = parseFloat(raw);
-                                    handleUpdateDiscount(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
-                                  }
-                                }}
-                                onFocus={(e) => e.target.select()}
-                                className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm focus:outline-none focus:border-accent text-slate-800 animate-none"
-                              />
+                            <div className="relative flex flex-col items-center w-32 mx-auto">
+                              <div className="relative flex items-center w-full">
+                                <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencySymbol}</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={item.price}
+                                  step="any"
+                                  inputMode="decimal"
+                                  placeholder="Optional"
+                                  value={item.discountPrice !== undefined && item.discountPrice !== null ? item.discountPrice : item.manualDiscount !== undefined ? item.manualDiscount : ""}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    if (raw === "") {
+                                      handleUpdateDiscount(idx, "");
+                                    } else {
+                                      const parsed = parseFloat(raw);
+                                      handleUpdateDiscount(idx, isNaN(parsed) ? "" : parsed);
+                                    }
+                                  }}
+                                  onFocus={(e) => e.target.select()}
+                                  className={`w-full pl-10 pr-2 py-1.5 border rounded-lg text-right font-bold text-sm focus:outline-none transition ${
+                                    (item.discountPrice !== undefined && item.discountPrice !== "" && Number(item.discountPrice) > item.price) ||
+                                    (item.manualDiscount !== undefined && item.manualDiscount !== "" && Number(item.manualDiscount) > item.price)
+                                      ? "border-rose-500 bg-rose-50 text-rose-800"
+                                      : "border-slate-200 text-slate-800 focus:border-accent"
+                                  }`}
+                                />
+                              </div>
+                              {item.discount > 0 && (
+                                <span className="text-[10px] font-bold text-emerald-600 mt-1">
+                                  Disc: {currencySymbol} {item.discount.toFixed(2)}/unit
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-4 text-right font-bold text-slate-800">
-                            AED {item.total.toFixed(2)}
+                            {currencySymbol} {item.total.toFixed(2)}
                           </td>
                           <td className="px-4 py-4 text-center">
                             <button
@@ -770,22 +724,22 @@ function NewQuoteForm() {
             <div className="space-y-3.5 text-sm font-semibold">
               <div className="flex justify-between text-slate-500">
                 <span>Items Count:</span>
-                <span>{quoteItems.reduce((acc, curr) => acc + curr.quantity, 0)} items</span>
+                <span>{quoteItems.reduce((acc, curr) => acc + (typeof curr.quantity === "number" ? curr.quantity : 0), 0)} items</span>
               </div>
               <div className="flex justify-between text-slate-500">
                 <span>Subtotal:</span>
-                <span>AED {subtotal.toFixed(2)}</span>
+                <span>{currencySymbol} {subtotal.toFixed(2)}</span>
               </div>
               {discountTotal > 0 && (
                 <div className="flex justify-between text-slate-500">
                   <span>Discount Total:</span>
-                  <span className="text-emerald-600">-{discountTotal.toFixed(2)}</span>
+                  <span className="text-emerald-600">-{currencySymbol} {discountTotal.toFixed(2)}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-lg font-bold text-slate-900 border-t border-slate-100 pt-4 mt-2">
                 <span>Grand Total:</span>
-                <span>AED {grandTotal.toFixed(2)}</span>
+                <span>{currencySymbol} {grandTotal.toFixed(2)}</span>
               </div>
             </div>
 

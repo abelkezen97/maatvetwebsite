@@ -13,7 +13,8 @@ import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 
 interface InvoiceItemWithManual extends QuoteItem {
-  manualDiscount?: number;
+  manualDiscount?: number | string;
+  discountPrice?: number | string;
 }
 
 function NewInvoiceForm() {
@@ -26,10 +27,12 @@ function NewInvoiceForm() {
   
   // Form states
   const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [isCustomInvoiceNumber, setIsCustomInvoiceNumber] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItemWithManual[]>([]);
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<"Paid" | "Credit">("Paid");
+  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Bank Transfer" | "Cheque" | "Other">("Cash");
   const [creditDays, setCreditDays] = useState<number | string>(30);
   
   // Data loading states
@@ -60,123 +63,88 @@ function NewInvoiceForm() {
 
   // Load products, customers, quotes and existing invoices on mount
   useEffect(() => {
-    // 1. Instant sync load from local storage to eliminate delay
-    try {
-      const localCusts = localStorage.getItem("maat_customers");
-      if (localCusts) setCustomers(JSON.parse(localCusts));
-
-      const localProds = localStorage.getItem("maat_products");
-      if (localProds) setProducts(JSON.parse(localProds));
-
-      const localQuotes = localStorage.getItem("maat_quotes");
-      if (localQuotes) setQuotesList(JSON.parse(localQuotes));
-
-      const localInvs = localStorage.getItem("maat_invoices");
-      if (localInvs) setInvoicesList(JSON.parse(localInvs));
-
-      if (localCusts && localProds) {
-        setIsPageLoading(false);
-      }
-    } catch (e) {}
-
-    // 2. Background fresh revalidation
     async function loadData() {
       try {
-        const [prodRes, custRes, quotesRes] = await Promise.all([
+        const [prodRes, custRes, quotesRes, invsRes] = await Promise.all([
           fetch("/api/products"),
           fetch("/api/customers"),
           fetch("/api/quotes"),
+          fetch("/api/invoices"),
         ]);
 
         const prodData = await prodRes.json();
         const custData = await custRes.json();
         const quotesData = await quotesRes.json();
+        const invsData = await invsRes.json();
 
         if (prodData.products) {
           setProducts(prodData.products);
-          localStorage.setItem("maat_products", JSON.stringify(prodData.products));
         }
 
         if (custData.customers) {
           setCustomers(custData.customers);
-          localStorage.setItem("maat_customers", JSON.stringify(custData.customers));
         }
 
-        if (Array.isArray(quotesData) && quotesData.length > 0) {
-          let localQ: Quote[] = [];
-          try {
-            const qStr = localStorage.getItem("maat_quotes");
-            if (qStr) localQ = JSON.parse(qStr);
-          } catch (e) {}
+        if (Array.isArray(quotesData)) {
+          setQuotesList(quotesData);
+        }
 
-          const mergedQ = [...quotesData];
-          localQ.forEach((lq) => {
-            if (lq.quoteNumber && !mergedQ.some((rq) => rq.quoteNumber === lq.quoteNumber)) {
-              mergedQ.unshift(lq);
+        if (Array.isArray(invsData)) {
+          const parsedInvoices = invsData.map((item: any) => {
+            if (item && Array.isArray(item.items)) {
+              return item;
             }
+            if (item.invoiceJson) {
+              try {
+                return JSON.parse(item.invoiceJson);
+              } catch (e) {}
+            }
+            return {
+              id: item.id || item.invoiceNumber || `inv-${Date.now()}`,
+              invoiceNumber: item.invoiceNumber || "",
+              customerId: item.customerId || "",
+              customerName: item.customerName || "",
+              companyName: item.companyName || "",
+              salesmanName: item.salesmanName || "",
+              date: item.date || "",
+              grandTotal: parseFloat(item.grandTotal) || 0,
+              status: item.status || "Paid",
+              items: item.items || [],
+              subtotal: parseFloat(item.subtotal ?? item.grandTotal) || 0,
+              discountTotal: parseFloat(item.discountTotal) || 0,
+              taxTotal: parseFloat(item.taxTotal) || 0,
+            };
           });
-          setQuotesList(mergedQ);
-          localStorage.setItem("maat_quotes", JSON.stringify(mergedQ));
+
+          setInvoicesList(parsedInvoices);
         }
-
-        try {
-          const invsRes = await fetch("/api/invoices");
-          const invsData = await invsRes.json();
-          if (Array.isArray(invsData) && invsData.length > 0) {
-            let localI: Invoice[] = [];
-            try {
-              const iStr = localStorage.getItem("maat_invoices");
-              if (iStr) localI = JSON.parse(iStr);
-            } catch (e) {}
-
-            const parsedInvoices = invsData.map((item: any) => {
-              if (item && Array.isArray(item.items)) {
-                return item;
-              }
-              if (item.invoiceJson) {
-                try {
-                  return JSON.parse(item.invoiceJson);
-                } catch (e) {}
-              }
-              return {
-                id: item.invoiceNumber || `inv-${Date.now()}`,
-                invoiceNumber: item.invoiceNumber || "",
-                customerName: item.customerName || "",
-                companyName: item.companyName || "",
-                salesmanName: item.salesmanName || "",
-                date: item.date || "",
-                grandTotal: parseFloat(item.grandTotal) || 0,
-                status: item.status || "Unpaid",
-                items: [],
-                subtotal: parseFloat(item.grandTotal) || 0,
-                discountTotal: 0,
-                taxTotal: 0,
-              };
-            });
-
-            const mergedI = [...parsedInvoices];
-            localI.forEach((li) => {
-              if (li.invoiceNumber && !mergedI.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
-                mergedI.unshift(li);
-              }
-            });
-
-            setInvoicesList(mergedI);
-            localStorage.setItem("maat_invoices", JSON.stringify(mergedI));
-          }
-        } catch (e) {}
       } catch (err) {
         console.error("Failed to load setup data:", err);
       } finally {
         setIsPageLoading(false);
       }
     }
+
     loadData();
   }, []);
 
+  const computeNextInvoiceNumber = (list: Invoice[]) => {
+    const dateSuffix = new Date().getFullYear();
+    let maxSeq = 0;
+    (list || []).forEach((inv) => {
+      if (!inv.invoiceNumber) return;
+      const match = inv.invoiceNumber.match(/INV-\d{4}-(\d+)/) || inv.invoiceNumber.match(/(\d+)$/);
+      if (match && match[1]) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    });
+    return `INV-${dateSuffix}-${String(maxSeq + 1).padStart(6, "0")}`;
+  };
+
   // Set default / prepopulated states once databases load
   useEffect(() => {
-    if (isPageLoading || customers.length === 0) return;
+    if (isPageLoading) return;
 
     // Mode A: EDIT EXISTING INVOICE
     if (editInvoiceNumber && invoicesList.length > 0) {
@@ -211,7 +179,10 @@ function NewInvoiceForm() {
     else if (fromQuoteNumber && quotesList.length > 0) {
       const quote = quotesList.find((q) => q.quoteNumber === fromQuoteNumber);
       if (quote) {
-        setInvoiceNumber(`INV-${quote.quoteNumber.replace("QT-", "")}`);
+        if (!isCustomInvoiceNumber) {
+          setInvoiceNumber(computeNextInvoiceNumber(invoicesList));
+        }
+
         setSelectedCustomerId(quote.customerId);
         setStatus("Paid");
         setCreditDays(30);
@@ -224,25 +195,34 @@ function NewInvoiceForm() {
           setCustomerSearchQuery(quote.companyName);
         }
 
-        setInvoiceItems(quote.items.map(item => ({
-          productId: item.productId,
-          productName: item.productName,
-          quantity: item.quantity,
-          price: item.price,
-          discount: item.discount,
-          total: item.total,
-          manualDiscount: item.discount < item.price ? item.discount : undefined,
-        })));
+        setInvoiceItems(quote.items.map(item => {
+          const unitPrice = Number(item.price) || 0;
+          const discPerUnit = Number(item.discount) || 0;
+          const effectivePrice = item.discountPrice !== undefined && item.discountPrice !== null && String(item.discountPrice).trim() !== ""
+            ? Number(item.discountPrice)
+            : Math.max(0, unitPrice - discPerUnit);
+          const discPriceVal = (item.discountPrice !== undefined && item.discountPrice !== null && String(item.discountPrice).trim() !== "")
+            ? item.discountPrice
+            : (discPerUnit > 0 ? effectivePrice : "");
+
+          return {
+            productId: item.productId,
+            productName: item.productName,
+            quantity: item.quantity,
+            price: unitPrice,
+            discount: Math.max(0, unitPrice - effectivePrice),
+            discountPrice: discPriceVal,
+            manualDiscount: discPriceVal,
+            total: (Number(item.quantity) || 0) * effectivePrice,
+          };
+        }));
       }
     }
     // Mode C: NEW INVOICE FROM SCRATCH
-    else if (!invoiceNumber) {
-      // Generate default unique invoice number
-      const count = invoicesList.length + 1;
-      const dateSuffix = new Date().getFullYear();
-      setInvoiceNumber(`INV-${dateSuffix}-0${String(count).padStart(3, "0")}`);
+    else if (!editInvoiceNumber && !isCustomInvoiceNumber) {
+      setInvoiceNumber(computeNextInvoiceNumber(invoicesList));
     }
-  }, [editInvoiceNumber, fromQuoteNumber, quotesList, invoicesList, customers, isPageLoading]);
+  }, [editInvoiceNumber, fromQuoteNumber, quotesList, invoicesList, customers, isPageLoading, isCustomInvoiceNumber]);
 
   // Selected customer object
   const selectedCustomer = useMemo(() => {
@@ -274,6 +254,7 @@ function NewInvoiceForm() {
   }, [searchQuery, products]);
 
   // Calculations
+  // Calculations
   const subtotal = useMemo(() => {
     return invoiceItems.reduce((acc, item) => {
       const q = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
@@ -282,17 +263,17 @@ function NewInvoiceForm() {
     }, 0);
   }, [invoiceItems]);
 
-  const grandTotal = useMemo(() => {
+  const discountTotal = useMemo(() => {
     return invoiceItems.reduce((acc, item) => {
       const q = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
       const d = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
-      return acc + d * q;
+      return acc + Math.max(0, d) * q;
     }, 0);
   }, [invoiceItems]);
 
-  const discountTotal = useMemo(() => {
-    return subtotal - grandTotal;
-  }, [subtotal, grandTotal]);
+  const grandTotal = useMemo(() => {
+    return Math.max(0, subtotal - discountTotal);
+  }, [subtotal, discountTotal]);
 
   const taxTotal = 0.00;
 
@@ -302,7 +283,7 @@ function NewInvoiceForm() {
 
     if (existingIndex > -1) {
       const updated = [...invoiceItems];
-      const newQty = updated[existingIndex].quantity + 1;
+      const newQty = (Number(updated[existingIndex].quantity) || 0) + 1;
       
       let tierPrice = product.price;
       if (newQty >= 100) {
@@ -313,14 +294,16 @@ function NewInvoiceForm() {
         tierPrice = product.price10 ?? tierPrice;
       }
 
-      const finalPrice = updated[existingIndex].manualDiscount !== undefined 
-        ? (updated[existingIndex].manualDiscount ?? tierPrice)
+      updated[existingIndex].quantity = newQty;
+      updated[existingIndex].price = tierPrice;
+
+      const rawDiscPrice = updated[existingIndex].discountPrice ?? updated[existingIndex].manualDiscount;
+      const effective = (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "")
+        ? Math.min(tierPrice, Math.max(0, Number(rawDiscPrice)))
         : tierPrice;
 
-      updated[existingIndex].quantity = newQty;
-      updated[existingIndex].price = product.price;
-      updated[existingIndex].discount = finalPrice;
-      updated[existingIndex].total = newQty * finalPrice;
+      updated[existingIndex].discount = Math.max(0, tierPrice - effective);
+      updated[existingIndex].total = newQty * effective;
       setInvoiceItems(updated);
     } else {
       setInvoiceItems([
@@ -330,8 +313,9 @@ function NewInvoiceForm() {
           productName: product.name,
           quantity: 1,
           price: product.price,
-          discount: product.price,
-          manualDiscount: undefined,
+          discount: 0,
+          discountPrice: "",
+          manualDiscount: "",
           total: product.price,
         },
       ]);
@@ -354,13 +338,16 @@ function NewInvoiceForm() {
       else if (numQty >= 10) tierPrice = product.price10 ?? tierPrice;
     }
 
-    const finalPrice = item.manualDiscount !== undefined ? item.manualDiscount : tierPrice;
-    const discNum = typeof finalPrice === "number" ? finalPrice : (parseFloat(finalPrice as any) || 0);
-
     updated[index].quantity = val as any;
-    updated[index].price = basePrice;
-    updated[index].discount = finalPrice;
-    updated[index].total = numQty * discNum;
+    updated[index].price = tierPrice;
+
+    const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
+    const effective = (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "")
+      ? Math.min(tierPrice, Math.max(0, Number(rawDiscPrice)))
+      : tierPrice;
+
+    updated[index].discount = Math.max(0, tierPrice - effective);
+    updated[index].total = numQty * effective;
     setInvoiceItems(updated);
   };
 
@@ -368,11 +355,29 @@ function NewInvoiceForm() {
     const updated = [...invoiceItems];
     const item = updated[index];
     const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
-    const discNum = typeof val === "number" ? val : (parseFloat(val as any) || 0);
 
-    updated[index].manualDiscount = val as any;
-    updated[index].discount = val as any;
-    updated[index].total = numQty * discNum;
+    const valStr = val !== undefined && val !== null ? String(val).trim() : "";
+    if (valStr === "") {
+      updated[index].discountPrice = "";
+      updated[index].manualDiscount = "";
+      updated[index].discount = 0;
+      updated[index].total = numQty * item.price;
+    } else {
+      const discPriceNum = parseFloat(valStr);
+      if (!isNaN(discPriceNum)) {
+        if (discPriceNum > item.price) {
+          setErrorMessage(`Discount Price (AED ${discPriceNum.toFixed(2)}) cannot be greater than Unit Price (AED ${item.price.toFixed(2)})`);
+        } else {
+          setErrorMessage(null);
+        }
+        const validPrice = Math.max(0, discPriceNum);
+        const effective = Math.min(item.price, validPrice);
+        updated[index].discountPrice = val as any;
+        updated[index].manualDiscount = val as any;
+        updated[index].discount = Math.max(0, item.price - effective);
+        updated[index].total = numQty * effective;
+      }
+    }
     setInvoiceItems(updated);
   };
 
@@ -385,18 +390,23 @@ function NewInvoiceForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCustomerId || invoiceItems.length === 0 || isSaving) return;
-    if (!invoiceNumber.trim()) {
-      setErrorMessage("Invoice Number is required");
-      return;
-    }
+    let finalInvoiceNum = invoiceNumber.trim();
 
     // Check for duplicate invoice number if creating or editing to a different one
-    const duplicate = invoicesList.some(
-      (inv) => inv.invoiceNumber.toLowerCase().trim() === invoiceNumber.toLowerCase().trim() && inv.invoiceNumber !== editInvoiceNumber
-    );
-    if (duplicate) {
-      setErrorMessage(`Invoice number ${invoiceNumber} already exists.`);
-      return;
+    if (!editInvoiceNumber) {
+      const duplicate = invoicesList.some(
+        (inv) => inv.invoiceNumber.toLowerCase().trim() === finalInvoiceNum.toLowerCase().trim()
+      );
+      if (duplicate) {
+        if (!isCustomInvoiceNumber) {
+          // Auto-recalculate to next available sequence if user didn't manually lock this number
+          finalInvoiceNum = computeNextInvoiceNumber(invoicesList);
+          setInvoiceNumber(finalInvoiceNum);
+        } else {
+          setErrorMessage(`Invoice number ${finalInvoiceNum} already exists. Please choose a different number or reset to auto-sequence.`);
+          return;
+        }
+      }
     }
 
     setIsSaving(true);
@@ -408,14 +418,14 @@ function NewInvoiceForm() {
       id: editInvoiceNumber
         ? (invoicesList.find((i) => i.invoiceNumber === editInvoiceNumber)?.id || `inv-mock-${Date.now()}`)
         : `inv-mock-${Date.now()}`,
-      invoiceNumber: invoiceNumber.trim(),
+      invoiceNumber: finalInvoiceNum,
       quoteNumber: fromQuoteNumber || undefined,
       customerId: selectedCustomerId || `cust-manual-${Date.now()}`,
       customerName: selectedCustomer?.name || "",
       companyName: selectedCustomer?.company || customerSearchQuery.replace(/\s*\([^)]*\)/, "").trim(),
-
       salesmanId: user?.id || "user-salesman",
       salesmanName: user?.name || "Dr. Kaleemullah M.",
+      country: selectedCustomer?.country || "UAE",
       date: dateStr,
       items: invoiceItems,
       subtotal,
@@ -423,151 +433,60 @@ function NewInvoiceForm() {
       taxTotal,
       grandTotal,
       status,
+      paymentMethod,
       creditDays: status === "Credit" ? (typeof creditDays === "number" ? creditDays : (parseInt(creditDays as string, 10) || 0)) : undefined,
       notes,
     };
 
-    // 1. Instant local persistence & UI redirect
-    let updatedInvoices = [...invoicesList];
-    if (editInvoiceNumber) {
-      const idx = updatedInvoices.findIndex((i) => i.invoiceNumber === editInvoiceNumber);
-      if (idx > -1) {
-        updatedInvoices[idx] = newInvoice;
-      } else {
-        updatedInvoices.unshift(newInvoice);
+    const payload = {
+      invoiceNumber: newInvoice.invoiceNumber,
+      quoteNumber: newInvoice.quoteNumber,
+      customerId: newInvoice.customerId,
+      customerName: newInvoice.customerName,
+      companyName: newInvoice.companyName,
+      salesmanId: user?.id || newInvoice.salesmanId,
+      salesmanName: newInvoice.salesmanName,
+      date: newInvoice.date,
+      subtotal: newInvoice.subtotal,
+      discountTotal: newInvoice.discountTotal,
+      taxTotal: newInvoice.taxTotal,
+      grandTotal: newInvoice.grandTotal,
+      status: newInvoice.status,
+      paymentMethod,
+      creditDays: newInvoice.creditDays,
+      notes: newInvoice.notes,
+      items: invoiceItems,
+    };
+
+    try {
+      const endpoint = editInvoiceNumber ? `/api/invoices/${newInvoice.id}` : "/api/invoices";
+      const method = editInvoiceNumber ? "PATCH" : "POST";
+      const res = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to save invoice");
       }
-    } else {
-      updatedInvoices.unshift(newInvoice);
+
+      setSuccessMessage(
+        language === "en"
+          ? `Invoice ${newInvoice.invoiceNumber} successfully saved!`
+          : `تم حفظ الفاتورة ${newInvoice.invoiceNumber} بنجاح!`
+      );
+      setIsSaving(false);
+
+      setTimeout(() => {
+        router.push("/invoices");
+      }, 800);
+    } catch (err: any) {
+      console.error("Invoice save error:", err);
+      setErrorMessage(err.message || "Failed to save invoice to database.");
+      setIsSaving(false);
     }
-
-    localStorage.setItem("maat_invoices", JSON.stringify(updatedInvoices));
-
-    const mockIdx = mockInvoices.findIndex((i) => i.invoiceNumber === newInvoice.invoiceNumber);
-    if (mockIdx > -1) {
-      mockInvoices[mockIdx] = newInvoice;
-    } else {
-      mockInvoices.unshift(newInvoice);
-    }
-
-    setSuccessMessage(
-      language === "en"
-        ? `Invoice ${newInvoice.invoiceNumber} successfully saved!`
-        : `تم حفظ الفاتورة ${newInvoice.invoiceNumber} بنجاح!`
-    );
-    setIsSaving(false);
-
-    setTimeout(() => {
-      router.push("/invoices");
-    }, 800);
-
-    // 2. Non-blocking Background API Cloud Save, PDF Generation, and Auto Receipt creation
-    (async () => {
-      try {
-        const doc = buildInvoicePDF(newInvoice);
-        const pdfBase64 = doc.output("datauristring").split(",")[1];
-
-        const productsSummary = invoiceItems
-          .map((item) => `${item.quantity} x ${item.productName} (@ AED ${item.discount.toFixed(2)})`)
-          .join(", ");
-
-        const payload = {
-          invoiceNumber: newInvoice.invoiceNumber,
-          customerName: newInvoice.customerName,
-          companyName: newInvoice.companyName,
-          salesmanName: newInvoice.salesmanName,
-          date: newInvoice.date,
-          grandTotal: newInvoice.grandTotal,
-          status: newInvoice.status === "Credit" ? `Credit (${creditDays} Days)` : newInvoice.status,
-          fileName: `MAAT-INVOICE-${newInvoice.invoiceNumber}.pdf`,
-          pdfBase64: pdfBase64,
-          productsListText: productsSummary,
-          invoiceJson: JSON.stringify(newInvoice),
-        };
-
-        await fetch("/api/invoices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      } catch (err) {
-        console.error("Background invoice save error:", err);
-      }
-
-      // Auto-create receipt voucher if payment status is 'Paid'
-      if (status === "Paid") {
-        try {
-          const localRecsStr = localStorage.getItem("maat_receipts");
-          const localRecs: Receipt[] = localRecsStr ? JSON.parse(localRecsStr) : [];
-          const recCount = localRecs.length + 1;
-          const year = new Date().getFullYear();
-          const autoRecNum = `REC-${year}-0${String(recCount).padStart(3, "0")}`;
-
-          const autoReceipt: Receipt = {
-            id: `rec-${Date.now()}`,
-            receiptNumber: autoRecNum,
-            customerId: newInvoice.customerId,
-            customerName: newInvoice.customerName,
-            companyName: newInvoice.companyName,
-            amountPaid: newInvoice.grandTotal,
-            remainingPendingAmount: 0,
-            paymentDate: newInvoice.date,
-            paymentMethod: "Cash",
-            referenceNo: `Auto-Paid for ${newInvoice.invoiceNumber}`,
-            notes: `Auto-generated receipt voucher for Paid Invoice ${newInvoice.invoiceNumber}`,
-            createdBy: user?.name || "Admin",
-          };
-
-          const updatedRecs = [autoReceipt, ...localRecs];
-          localStorage.setItem("maat_receipts", JSON.stringify(updatedRecs));
-
-          const recDoc = buildReceiptPDF(autoReceipt);
-          const recPdfBase64 = recDoc.output("datauristring").split(",")[1];
-
-          const recParams = new URLSearchParams();
-          recParams.append("receiptNumber", autoReceipt.receiptNumber);
-          recParams.append("companyName", autoReceipt.companyName);
-          recParams.append("customerName", autoReceipt.customerName || "");
-          recParams.append("amountPaid", autoReceipt.amountPaid.toString());
-          recParams.append("paymentDate", autoReceipt.paymentDate);
-          recParams.append("paymentMethod", autoReceipt.paymentMethod);
-          recParams.append("referenceNo", autoReceipt.referenceNo || "");
-
-          await fetch(`/api/receipts?${recParams.toString()}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              receiptNumber: autoReceipt.receiptNumber,
-              customerName: autoReceipt.customerName,
-              companyName: autoReceipt.companyName,
-              amountPaid: autoReceipt.amountPaid,
-              paymentDate: autoReceipt.paymentDate,
-              paymentMethod: autoReceipt.paymentMethod,
-              referenceNo: autoReceipt.referenceNo,
-              fileName: `MAAT-RECEIPT-${autoReceipt.receiptNumber}.pdf`,
-              pdfBase64: recPdfBase64,
-            }),
-          });
-        } catch (recErr) {
-          console.error("Failed to auto-create receipt for paid invoice:", recErr);
-        }
-      }
-
-      if (status === "Credit" && newInvoice.companyName) {
-        try {
-          await fetch("/api/customers", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              companyName: newInvoice.companyName,
-              customerId: newInvoice.customerId,
-              amountToAdd: newInvoice.grandTotal,
-            }),
-          });
-        } catch (custErr) {
-          console.error("Background pending update error:", custErr);
-        }
-      }
-    })();
   };
 
   const handleAddNewCustomer = async (e: React.FormEvent) => {
@@ -654,14 +573,31 @@ function NewInvoiceForm() {
           {/* Metadata: Invoice Number & Status */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Invoice Number (Editable)
-              </label>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Invoice Number (Editable)
+                </label>
+                {isCustomInvoiceNumber && !editInvoiceNumber && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomInvoiceNumber(false);
+                      setInvoiceNumber(computeNextInvoiceNumber(invoicesList));
+                    }}
+                    className="text-[11px] font-bold text-[#61989B] hover:underline cursor-pointer"
+                  >
+                    Reset to Auto-Sequence
+                  </button>
+                )}
+              </div>
               <input
                 type="text"
                 required
                 value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
+                onChange={(e) => {
+                  setInvoiceNumber(e.target.value);
+                  setIsCustomInvoiceNumber(true);
+                }}
                 className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
               />
             </div>
@@ -679,6 +615,24 @@ function NewInvoiceForm() {
                   <option value="Credit">Credit</option>
                 </select>
               </div>
+
+              {status === "Paid" && (
+                <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Payment Method
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as any)}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-850 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
+                  >
+                    <option value="Cash">Cash (Contributes to Cash in Hand)</option>
+                    <option value="Bank Transfer">Bank Transfer (Receipt only - No Cash in Hand)</option>
+                    <option value="Cheque">Cheque (Receipt only - No Cash in Hand)</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              )}
 
               {status === "Credit" && (
                 <div className="animate-in fade-in slide-in-from-top-2 duration-200">
@@ -905,26 +859,40 @@ function NewInvoiceForm() {
                             />
                           </td>
                           <td className="px-2 py-4">
-                            <div className="relative flex items-center w-28 mx-auto">
-                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">AED</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                inputMode="decimal"
-                                value={item.discount !== undefined && item.discount !== null ? item.discount : ""}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  if (raw === "") {
-                                    handleUpdateDiscount(idx, "");
-                                  } else {
-                                    const parsed = parseFloat(raw);
-                                    handleUpdateDiscount(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
-                                  }
-                                }}
-                                onFocus={(e) => e.target.select()}
-                                className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm focus:outline-none focus:border-accent text-slate-800"
-                              />
+                            <div className="relative flex flex-col items-center w-32 mx-auto">
+                              <div className="relative flex items-center w-full">
+                                <span className="absolute left-2.5 text-xs font-bold text-slate-400">AED</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={item.price}
+                                  step="any"
+                                  inputMode="decimal"
+                                  placeholder="Optional"
+                                  value={item.discountPrice !== undefined && item.discountPrice !== null ? item.discountPrice : item.manualDiscount !== undefined ? item.manualDiscount : ""}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    if (raw === "") {
+                                      handleUpdateDiscount(idx, "");
+                                    } else {
+                                      const parsed = parseFloat(raw);
+                                      handleUpdateDiscount(idx, isNaN(parsed) ? "" : parsed);
+                                    }
+                                  }}
+                                  onFocus={(e) => e.target.select()}
+                                  className={`w-full pl-10 pr-2 py-1.5 border rounded-lg text-right font-bold text-sm focus:outline-none transition ${
+                                    (item.discountPrice !== undefined && item.discountPrice !== null && String(item.discountPrice).trim() !== "" && Number(item.discountPrice) > item.price) ||
+                                    (item.manualDiscount !== undefined && item.manualDiscount !== null && String(item.manualDiscount).trim() !== "" && Number(item.manualDiscount) > item.price)
+                                      ? "border-rose-500 bg-rose-50 text-rose-800"
+                                      : "border-slate-200 text-slate-800 focus:border-accent"
+                                  }`}
+                                />
+                              </div>
+                              {item.discount > 0 && (
+                                <span className="text-[10px] font-bold text-emerald-600 mt-1">
+                                  Disc: AED {item.discount.toFixed(2)}/unit
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-4 text-right font-bold text-slate-800">AED {item.total.toFixed(2)}</td>

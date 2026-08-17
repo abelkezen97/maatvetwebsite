@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { FileText, Plus, Eye, Download, X, MessageCircle, Pencil, Trash2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
@@ -45,74 +45,49 @@ function formatDisplayDate(dateStr: string): string {
 
 export default function InvoicesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const customerIdParam = searchParams.get("customerId");
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadInvoices = () => {
+  const loadInvoices = async () => {
     setIsLoading(true);
-    let localInvoices: Invoice[] = [];
     try {
-      const localData = localStorage.getItem("maat_invoices");
-      localInvoices = localData ? JSON.parse(localData) : mockInvoices;
-      if (localInvoices.length > 0) {
-        setInvoices(localInvoices);
-      }
-    } catch (e) {}
-
-    fetch("/api/invoices")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          const parsedInvoices = data.map((item: any) => {
-            if (item && Array.isArray(item.items)) {
-              return item;
-            }
-            if (item.invoiceJson) {
-              try {
-                return JSON.parse(item.invoiceJson);
-              } catch (e) {}
-            }
-            return {
-              id: item.invoiceNumber || `inv-${Date.now()}`,
-              invoiceNumber: item.invoiceNumber || "",
-              customerName: item.customerName || "",
-              companyName: item.companyName || "",
-              salesmanName: item.salesmanName || "",
-              date: item.date || "",
-              grandTotal: parseFloat(item.grandTotal) || 0,
-              status: item.status || "Unpaid",
-              items: [],
-              subtotal: parseFloat(item.grandTotal) || 0,
-              discountTotal: 0,
-              taxTotal: 0,
-            };
-          });
-
-          const merged = data.length === 0 ? [] : [...parsedInvoices];
-          if (data.length > 0) {
-            localInvoices.forEach((li) => {
-              if (li.invoiceNumber && !merged.some((ri) => ri.invoiceNumber === li.invoiceNumber)) {
-                merged.unshift(li);
-              }
-            });
-          }
-
-          setInvoices(merged);
-          localStorage.setItem("maat_invoices", JSON.stringify(merged));
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to load invoices from API:", err);
-      })
-      .finally(() => setIsLoading(false));
+      const url = customerIdParam
+        ? `/api/invoices?customerId=${customerIdParam}&t=${Date.now()}`
+        : `/api/invoices?t=${Date.now()}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      setInvoices(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Failed to load invoices from API:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
     loadInvoices();
-  }, []);
+  }, [customerIdParam]);
+
+  const handleDelete = async (invoice: Invoice) => {
+    if (!confirm(`Are you sure you want to delete invoice ${invoice.invoiceNumber}?`)) return;
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}`, { method: "DELETE" });
+      if (res.ok) {
+        setInvoices((prev) => prev.filter((i) => i.id !== invoice.id));
+        if (selectedInvoice?.id === invoice.id) setSelectedInvoice(null);
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed to delete invoice");
+      }
+    } catch (err) {
+      console.error("Error deleting invoice:", err);
+    }
+  };
 
   const saveInvoicesToStateAndStorage = (updatedList: Invoice[]) => {
     setInvoices(updatedList);
@@ -204,9 +179,6 @@ export default function InvoicesPage() {
 
   const filteredInvoices = useMemo(() => {
     let list = invoices;
-    if (user && user.role === "Salesman") {
-      list = invoices.filter((i) => i.salesmanName.toLowerCase().trim() === user.name.toLowerCase().trim());
-    }
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -216,7 +188,7 @@ export default function InvoicesPage() {
           (i.quoteNumber && i.quoteNumber.toLowerCase().includes(query)) ||
           i.customerName.toLowerCase().includes(query) ||
           i.companyName.toLowerCase().includes(query) ||
-          i.salesmanName.toLowerCase().includes(query)
+          (i.salesmanName && i.salesmanName.toLowerCase().includes(query))
       );
     }
 
@@ -226,21 +198,11 @@ export default function InvoicesPage() {
       if (timeA !== timeB) return timeB - timeA;
       return b.invoiceNumber.localeCompare(a.invoiceNumber);
     });
-  }, [invoices, searchQuery, user]);
+  }, [invoices, searchQuery]);
 
   const generatePDF = (invoice: Invoice) => {
     const doc = buildInvoicePDF(invoice);
     doc.save(`MAAT-INVOICE-${invoice.invoiceNumber}.pdf`);
-  };
-
-  const handleDelete = (invoiceNo: string) => {
-    if (confirm(`Are you sure you want to delete invoice ${invoiceNo}?`)) {
-      const updated = invoices.filter((i) => i.invoiceNumber !== invoiceNo);
-      saveInvoicesToStateAndStorage(updated);
-      if (selectedInvoice?.invoiceNumber === invoiceNo) {
-        setSelectedInvoice(null);
-      }
-    }
   };
 
   const handleUpdateStatus = async (invoiceNo: string, newStatus: "Paid" | "Credit") => {
@@ -287,6 +249,7 @@ export default function InvoicesPage() {
           referenceNo: `Auto-Paid for ${currentInv.invoiceNumber}`,
           notes: `Auto-generated receipt voucher for Paid Invoice ${currentInv.invoiceNumber}`,
           createdBy: user?.name || "Admin",
+          country: currentInv.country || "UAE",
         };
 
         const updatedRecs = [autoReceipt, ...localRecs];
@@ -356,33 +319,35 @@ export default function InvoicesPage() {
           )}
         </div>
       ),
-      className: "w-44",
+      className: "w-40",
     },
     {
-      header: "Client / Company",
+      header: "Customer",
       accessor: (row: Invoice) => (
         <div>
           <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
           {row.companyName && row.customerName && (
-            <div className="text-xs text-slate-400 font-medium">{row.customerName}</div>
+            <div className="text-xs text-slate-400 font-medium">Dr: {row.customerName}</div>
           )}
         </div>
       ),
     },
     {
-      header: "Date",
-      accessor: (row: Invoice) => formatDisplayDate(row.date),
-      className: "w-40",
+      header: "Salesperson",
+      accessor: (row: Invoice) => (
+        <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2 py-0.5 rounded border border-slate-200/50 inline-block">
+          {row.salesmanName || "Salesperson"}
+        </span>
+      ),
+      className: "w-44",
     },
     {
-      header: "Grand Total",
-      accessor: (row: Invoice) => (
-        <span className="font-bold text-slate-900">AED {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-      ),
+      header: "Invoice Date",
+      accessor: (row: Invoice) => formatDisplayDate(row.date),
       className: "w-36",
     },
     {
-      header: "Status",
+      header: "Payment Status",
       accessor: (row: Invoice) => {
         let badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
         if (row.status === "Paid") badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -392,12 +357,21 @@ export default function InvoicesPage() {
           : row.status;
 
         return (
-          <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold border ${badgeColor}`}>
+          <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${badgeColor}`}>
             {label}
           </span>
         );
       },
       className: "w-36 text-center",
+    },
+    {
+      header: "Grand Total",
+      accessor: (row: Invoice) => (
+        <span className="font-extrabold text-slate-900">
+          {row.country === "Oman" ? "OMR" : "AED"} {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+        </span>
+      ),
+      className: "w-36 text-right",
     },
     {
       header: "Actions",
@@ -411,10 +385,10 @@ export default function InvoicesPage() {
         if (row.status === "Paid") {
           options.push({ label: "Share Receipt via WhatsApp", onClick: () => shareReceiptToWhatsApp(row) });
         }
-        options.push({ label: "Delete Invoice", onClick: () => handleDelete(row.invoiceNumber), danger: true });
+        options.push({ label: "Delete Invoice", onClick: () => handleDelete(row), danger: true });
         return <ActionDropdown options={options} />;
       },
-      className: "w-32 text-center",
+      className: "w-28 text-center",
     },
   ];
 
@@ -481,12 +455,12 @@ export default function InvoicesPage() {
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Invoice Details</h3>
-                <span className="text-xs font-semibold text-slate-400">Ref: {selectedInvoice.invoiceNumber}</span>
+                <h3 className="text-lg font-bold text-slate-900">INVOICE Details</h3>
+                <span className="text-xs font-mono font-bold text-slate-500">Ref: {selectedInvoice.invoiceNumber}</span>
               </div>
               <button
                 onClick={() => setSelectedInvoice(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition"
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -494,47 +468,54 @@ export default function InvoicesPage() {
 
             {/* Modal Body */}
             <div className="space-y-6">
-              {/* Status and Action banner */}
-              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Invoice Status</span>
-                  <div className="mt-1 flex items-center gap-2">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold border ${
-                      selectedInvoice.status === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                      "bg-amber-50 text-amber-700 border-amber-200"
+              {/* Contextual Sales Information Area (Compact) */}
+              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
+                <div className="text-[10px] font-black text-[#61989B] uppercase tracking-wider pb-2 border-b border-slate-200/60">
+                  SALES INFORMATION
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs font-semibold">
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Salesperson</span>
+                    <span className="font-extrabold text-[#1B2A4A] mt-0.5 block">{selectedInvoice.salesmanName || "Salesperson"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Customer</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{selectedInvoice.companyName || selectedInvoice.customerName}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Country</span>
+                    <span className="font-bold text-slate-800 mt-0.5 block">{selectedInvoice.country || "UAE"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Created Date</span>
+                    <span className="font-bold text-slate-700 mt-0.5 block">{formatDisplayDate(selectedInvoice.createdAt || selectedInvoice.date)}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Created By</span>
+                    <span className="font-bold text-slate-700 mt-0.5 block">{selectedInvoice.createdByName || selectedInvoice.salesmanName || "System"}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Billing Status</span>
+                    <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-bold mt-0.5 border ${
+                      selectedInvoice.status === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"
                     }`}>
-                      {selectedInvoice.status === "Credit" && selectedInvoice.creditDays
-                        ? `Credit (${selectedInvoice.creditDays} Days)`
-                        : selectedInvoice.status}
+                      {selectedInvoice.status}
                     </span>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500">Update Status:</span>
-                  <select
-                    value={selectedInvoice.status}
-                    onChange={(e) => handleUpdateStatus(selectedInvoice.invoiceNumber, e.target.value as any)}
-                    className="text-xs font-bold bg-white border border-slate-200 rounded-lg p-1 px-2 focus:outline-none focus:border-accent"
-                  >
-                    <option value="Paid">Paid</option>
-                    <option value="Credit">Credit</option>
-                  </select>
-                </div>
               </div>
 
-              {/* Top metadata grid */}
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm border border-slate-100">
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Customer</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{selectedInvoice.customerName}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{selectedInvoice.companyName}</span>
-                </div>
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Date & Agent</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{formatDisplayDate(selectedInvoice.date)}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{selectedInvoice.salesmanName}</span>
-                </div>
+              {/* Status Update Control Bar */}
+              <div className="flex items-center justify-between bg-slate-100/70 p-3 rounded-xl border border-slate-200/80">
+                <span className="text-xs font-bold text-slate-600">Quick Status Adjustment:</span>
+                <select
+                  value={selectedInvoice.status}
+                  onChange={(e) => handleUpdateStatus(selectedInvoice.invoiceNumber, e.target.value as any)}
+                  className="text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 px-3 focus:outline-none focus:border-accent cursor-pointer"
+                >
+                  <option value="Paid">Paid</option>
+                  <option value="Credit">Credit</option>
+                </select>
               </div>
 
               {/* Items List */}
@@ -608,6 +589,14 @@ export default function InvoicesPage() {
                 >
                   Close
                 </button>
+
+                <Link
+                  href={`/receipts/new?invoiceId=${selectedInvoice.id}`}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 text-amber-600" />
+                  Collect Payment / Issue Receipt
+                </Link>
 
                 {selectedInvoice.status === "Paid" && (
                   <button

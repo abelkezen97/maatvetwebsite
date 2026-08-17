@@ -2,19 +2,21 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getClientSession } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function RootPage() {
   const router = useRouter();
+  const { user, loading } = useAuth();
 
   useEffect(() => {
-    const session = getClientSession();
-    if (session) {
-      router.replace("/dashboard");
-    } else {
-      router.replace("/login");
+    if (!loading) {
+      if (user) {
+        router.replace("/dashboard");
+      } else {
+        router.replace("/login");
+      }
     }
-  }, [router]);
+  }, [user, loading, router]);
 
   return (
     <div className="flex h-screen w-screen items-center justify-center bg-[#F8FAFC]">
@@ -25,3 +27,4 @@ export default function RootPage() {
     </div>
   );
 }
+

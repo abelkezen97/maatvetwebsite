@@ -1,21 +1,5 @@
 import { Product, Customer, Quote, User, Invoice } from "../types";
 
-export const demoUsers: User[] = [
-  {
-    id: "user-admin",
-    email: "admin@maatvet.com",
-    name: "Dr. Salem Al-Mansouri",
-    role: "Admin",
-    avatarUrl: "https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=150&q=80"
-  },
-  {
-    id: "user-salesman",
-    email: "kaleem@maatvet.com",
-    name: "Dr. Kaleemullah M.",
-    role: "Salesman",
-    avatarUrl: "/kaleem.png"
-  }
-];
 
 export const mockProducts: Product[] = [
   {
@@ -90,7 +74,8 @@ export const mockCustomers: Customer[] = [
     company: "Green Valley Veterinary Clinic",
     email: "fatima@greenvalleyvet.com",
     phone: "+971 50 123 4567",
-    address: "Al Khawaneej, Sector 3, Dubai, UAE"
+    address: "Al Khawaneej, Sector 3, Dubai, UAE",
+    country: "UAE"
   },
   {
     id: "cust-2",
@@ -98,7 +83,8 @@ export const mockCustomers: Customer[] = [
     company: "Al-Mansoori Dairy & Livestock Farm",
     email: "saeed@mansooridairy.ae",
     phone: "+971 52 987 6543",
-    address: "Al Ain Highway, Abu Dhabi, UAE"
+    address: "Al Ain Highway, Abu Dhabi, UAE",
+    country: "UAE"
   },
   {
     id: "cust-3",
@@ -106,7 +92,8 @@ export const mockCustomers: Customer[] = [
     company: "Desert Breeze Equine Center",
     email: "jdavies@desertbreeze.ae",
     phone: "+971 55 555 1234",
-    address: "Meydan Road, Nad Al Sheba, Dubai, UAE"
+    address: "Meydan Road, Nad Al Sheba, Dubai, UAE",
+    country: "UAE"
   },
   {
     id: "cust-4",
@@ -114,7 +101,8 @@ export const mockCustomers: Customer[] = [
     company: "RAK Camel Veterinary Care",
     email: "ahmed@rakcamels.com",
     phone: "+971 7 244 5566",
-    address: "Al Diqdaqah, Ras Al Khaimah, UAE"
+    address: "Al Diqdaqah, Ras Al Khaimah, UAE",
+    country: "UAE"
   }
 ];
 
@@ -123,4 +111,3 @@ export const mockQuotes: Quote[] = [];
 export const mockInvoices: Invoice[] = [];
 
 export const mockActivity: { id: string; user: string; action: string; target: string; time: string; }[] = [];
-

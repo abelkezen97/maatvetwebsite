@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { Navbar } from "@/components/Navbar";
+import { PageGuard } from "@/components/PageGuard";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/context/LanguageContext";
 
@@ -45,7 +46,9 @@ export default function DashboardLayout({
         {/* View Scrollport */}
         <main className="flex-1 overflow-y-auto px-6 py-8 md:px-8">
           <div className="mx-auto max-w-7xl">
-            {children}
+            <PageGuard>
+              {children}
+            </PageGuard>
           </div>
         </main>
       </div>

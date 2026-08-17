@@ -1,91 +1,127 @@
 import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/utils/supabase/server";
-import { createClient as createBrowserClient } from "@/utils/supabase/client";
-import { cookies } from "next/headers";
-import { Product } from "@/types";
+import { requireAuth, AuthError } from "@/lib/auth/guard";
+import { Permissions } from "@/lib/auth/permissions";
+import { mapProductFromDb, mapProductToDb } from "@/lib/db/mappers";
+import { createAdminClient } from "@/utils/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-async function getSupabase() {
-  try {
-    const cookieStore = await cookies();
-    return createServerClient(cookieStore);
-  } catch {
-    return createBrowserClient();
-  }
-}
-
 export async function GET() {
   try {
-    const supabase = await getSupabase();
-    const { data, error } = await supabase
-      .from("products")
-      .select("*, product_categories(name)")
-      .order("created_at", { ascending: false });
+    const { profile, supabase: userClient } = await requireAuth();
+
+    if (!Permissions.canViewProducts(profile)) {
+      return NextResponse.json({ error: "Forbidden: Cannot view products" }, { status: 403 });
+    }
+
+    const queryClient = createAdminClient() || userClient;
+
+    const [prodRes, catRes] = await Promise.all([
+      queryClient
+        .from("products")
+        .select("*, product_categories!left(id, name)")
+        .order("created_at", { ascending: false }),
+      queryClient.from("product_categories").select("id, name"),
+    ]);
+
+    const data = prodRes.data;
+    const error = prodRes.error;
 
     if (error) {
       console.error("Failed to load Supabase products:", error);
-      return NextResponse.json({ 
-        products: [], 
-        source: "error", 
-        error: error.message 
-      });
+      return NextResponse.json({ products: [], source: "error", error: error.message }, { status: 500 });
     }
 
-    const products: Product[] = (data || []).map((row: any) => ({
-      id: row.id ? String(row.id) : `prod-${Date.now()}`,
-      sku: row.sku || "",
-      name: row.name || "",
-      category: row.product_categories?.name || "General",
-      price: typeof row.selling_price === "number" ? row.selling_price : parseFloat(row.selling_price) || 0,
-      price10: row.price_10 !== null && row.price_10 !== undefined ? Number(row.price_10) : undefined,
-      price50: row.price_50 !== null && row.price_50 !== undefined ? Number(row.price_50) : undefined,
-      price100: row.price_100 !== null && row.price_100 !== undefined ? Number(row.price_100) : undefined,
-      unit: row.unit || "Item",
-      description: row.description || "",
-      isAvailable: row.is_active !== false,
-    }));
+    const categoryMap = new Map<string, string>();
+    (catRes.data || []).forEach((c: any) => {
+      if (c.id && c.name) categoryMap.set(c.id, c.name);
+    });
 
-    return NextResponse.json({ 
-      products, 
-      source: "supabase" 
-    });
-  } catch (error) {
+    const products = (data || []).map((row: any) => mapProductFromDb(row, categoryMap));
+    return NextResponse.json({ products, source: "supabase" });
+  } catch (error: any) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Failed to load products from Supabase:", error);
-    return NextResponse.json({ 
-      products: [], 
-      source: "error", 
-      error: "Failed to load Supabase products" 
-    });
+    return NextResponse.json({ error: "Failed to load products" }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const name = (formData.get("name") as string) || "";
-    const priceStr = (formData.get("price") as string) || "0";
-    const categoryName = (formData.get("category") as string) || "General";
-    const sku = (formData.get("sku") as string) || "";
-    const unit = (formData.get("unit") as string) || "Item";
-    const description = (formData.get("description") as string) || "Added directly from Sales Portal.";
-    const price10Str = formData.get("price10") as string | null;
-    const price50Str = formData.get("price50") as string | null;
-    const price100Str = formData.get("price100") as string | null;
+    const { profile, supabase } = await requireAuth();
+
+    if (!Permissions.canManageProducts(profile)) {
+      return NextResponse.json({ error: "Forbidden: Only super_admin can manage products" }, { status: 403 });
+    }
+
+    let name = "";
+    let sku = "";
+    let barcode = "";
+    let categoryName = "General";
+    let categoryId: string | null = null;
+    let unit = "Item";
+    let brand = "";
+    let manufacturer = "";
+    let description = "";
+    let costPriceStr: string | null = null;
+    let priceStr = "0";
+    let price10Str: string | null = null;
+    let price50Str: string | null = null;
+    let price100Str: string | null = null;
+    let isActive = true;
+
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const json = await request.json();
+      name = json.name || "";
+      sku = json.sku || "";
+      barcode = json.barcode || "";
+      categoryName = json.category || "General";
+      categoryId = json.categoryId || json.category_id || null;
+      unit = json.unit || "Item";
+      brand = json.brand || "";
+      manufacturer = json.manufacturer || "";
+      description = json.description || "";
+      priceStr = String(json.sellingPrice ?? json.price ?? 0);
+      if (json.costPrice !== undefined && json.costPrice !== null && json.costPrice !== "") costPriceStr = String(json.costPrice);
+      if (json.price10 !== undefined && json.price10 !== null && json.price10 !== "") price10Str = String(json.price10);
+      if (json.price50 !== undefined && json.price50 !== null && json.price50 !== "") price50Str = String(json.price50);
+      if (json.price100 !== undefined && json.price100 !== null && json.price100 !== "") price100Str = String(json.price100);
+      if (json.isAvailable !== undefined) isActive = Boolean(json.isAvailable);
+      if (json.isActive !== undefined) isActive = Boolean(json.isActive);
+    } else {
+      const formData = await request.formData();
+      name = (formData.get("name") as string) || "";
+      sku = (formData.get("sku") as string) || "";
+      barcode = (formData.get("barcode") as string) || "";
+      categoryName = (formData.get("category") as string) || "General";
+      categoryId = (formData.get("categoryId") as string) || (formData.get("category_id") as string) || null;
+      unit = (formData.get("unit") as string) || "Item";
+      brand = (formData.get("brand") as string) || "";
+      manufacturer = (formData.get("manufacturer") as string) || "";
+      description = (formData.get("description") as string) || "";
+      priceStr = (formData.get("sellingPrice") as string) || (formData.get("price") as string) || "0";
+      costPriceStr = formData.get("costPrice") as string | null;
+      price10Str = formData.get("price10") as string | null;
+      price50Str = formData.get("price50") as string | null;
+      price100Str = formData.get("price100") as string | null;
+      const isActiveRaw = formData.get("isActive") ?? formData.get("isAvailable");
+      if (isActiveRaw !== null) isActive = isActiveRaw === "true" || isActiveRaw === "1";
+    }
 
     if (!name.trim()) {
       return NextResponse.json({ error: "Product Name is required" }, { status: 400 });
     }
 
     const price = parseFloat(priceStr) || 0.0;
+    const costPrice = costPriceStr ? parseFloat(costPriceStr) : undefined;
     const price10 = price10Str ? parseFloat(price10Str) : undefined;
     const price50 = price50Str ? parseFloat(price50Str) : undefined;
     const price100 = price100Str ? parseFloat(price100Str) : undefined;
 
-    const supabase = await getSupabase();
-
-    let categoryId: string | null = null;
-    if (categoryName) {
+    if (!categoryId && categoryName) {
       const { data: catData } = await supabase
         .from("product_categories")
         .select("id")
@@ -97,57 +133,46 @@ export async function POST(request: Request) {
       }
     }
 
-    const insertPayload: Record<string, any> = {
-      name: name.trim(),
-      selling_price: price,
-      unit: unit,
-      description: description,
-      is_active: true,
-    };
+    const finalSku = sku.trim() || `SKU-${Date.now().toString().slice(-6)}`;
 
-    if (categoryId) {
-      insertPayload.category_id = categoryId;
-    }
-    if (sku) {
-      insertPayload.sku = sku;
-    }
-    if (price10 !== undefined && !isNaN(price10)) {
-      insertPayload.price_10 = price10;
-    }
-    if (price50 !== undefined && !isNaN(price50)) {
-      insertPayload.price_50 = price50;
-    }
-    if (price100 !== undefined && !isNaN(price100)) {
-      insertPayload.price_100 = price100;
-    }
+    const insertPayload = mapProductToDb({
+      name: name.trim(),
+      sku: finalSku,
+      barcode: barcode.trim(),
+      categoryId: categoryId || undefined,
+      price: price,
+      costPrice: costPrice,
+      price10: price10,
+      price50: price50,
+      price100: price100,
+      unit: unit.trim(),
+      brand: brand.trim(),
+      manufacturer: manufacturer.trim(),
+      description: description.trim(),
+      isAvailable: isActive,
+    });
+
+    insertPayload.created_by = profile.id;
+    insertPayload.updated_by = profile.id;
 
     const { data, error } = await supabase
       .from("products")
       .insert([insertPayload])
-      .select("*, product_categories(name)")
+      .select("*, product_categories!left(id, name)")
       .single();
 
     if (error) {
       console.error("Supabase product insert error:", error);
+      return NextResponse.json({ error: error.message || "Failed to insert product" }, { status: 500 });
     }
 
-    const newProduct: Product = {
-      id: data?.id ? String(data.id) : `prod-${Date.now()}`,
-      sku: data?.sku || sku || "",
-      name: data?.name || name.trim(),
-      category: data?.product_categories?.name || categoryName || "General",
-      price: data?.selling_price !== undefined ? Number(data.selling_price) : price,
-      price10: data?.price_10 !== undefined && data?.price_10 !== null ? Number(data.price_10) : price10,
-      price50: data?.price_50 !== undefined && data?.price_50 !== null ? Number(data.price_50) : price50,
-      price100: data?.price_100 !== undefined && data?.price_100 !== null ? Number(data.price_100) : price100,
-      unit: data?.unit || unit || "Item",
-      description: data?.description || description,
-      isAvailable: data?.is_active !== false,
-    };
-
+    const newProduct = mapProductFromDb(data);
     return NextResponse.json({ success: true, product: newProduct });
-  } catch (error) {
+  } catch (error: any) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("Error creating product:", error);
-    return NextResponse.json({ error: "Failed to create product" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Failed to create product" }, { status: 500 });
   }
 }

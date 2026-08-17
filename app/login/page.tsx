@@ -17,7 +17,7 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { loginWithPassword } = useAuth();
   const { language, setLanguage, isRtl } = useLanguage();
   const dir = isRtl ? "rtl" : "ltr";
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -76,28 +76,9 @@ export default function LoginPage() {
     setIsSubmitting(true);
     setErrorMsg(null);
 
-    let determinedRole: UserRole = "Salesman";
-    if (data.email.toLowerCase() === "admin@maatvet.com") {
-      determinedRole = "Admin";
-    }
-
-    const isValidAdmin =
-      determinedRole === "Admin" &&
-      data.email.toLowerCase() === "admin@maatvet.com" &&
-      data.password === "admin123";
-
-    const isValidSalesman =
-      determinedRole === "Salesman" &&
-      data.email.toLowerCase() === "kaleem@maatvet.com" &&
-      data.password === "sales123";
-
-    if (isValidAdmin || isValidSalesman) {
-      const success = await login(data.email, determinedRole);
-      if (!success) {
-        setErrorMsg(t.authFailed);
-      }
-    } else {
-      setErrorMsg(t.incorrectCreds);
+    const result = await loginWithPassword(data.email, data.password);
+    if (!result.success) {
+      setErrorMsg(result.error || t.incorrectCreds);
     }
     setIsSubmitting(false);
   };
