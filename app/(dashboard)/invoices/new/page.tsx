@@ -23,7 +23,7 @@ function NewInvoiceForm() {
   const { language } = useLanguage();
   const editInvoiceNumber = searchParams.get("edit");
   const fromQuoteNumber = searchParams.get("fromQuote");
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   
   // Form states
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -40,6 +40,7 @@ function NewInvoiceForm() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [quotesList, setQuotesList] = useState<Quote[]>([]);
   const [invoicesList, setInvoicesList] = useState<Invoice[]>([]);
+  const [stockMap, setStockMap] = useState<Map<string, { uae: number; oman: number; total: number }>>(new Map());
   
   // UI states
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
@@ -65,11 +66,12 @@ function NewInvoiceForm() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [prodRes, custRes, quotesRes, invsRes] = await Promise.all([
+        const [prodRes, custRes, quotesRes, invsRes, invenRes] = await Promise.all([
           fetch("/api/products"),
           fetch("/api/customers"),
           fetch("/api/quotes"),
           fetch("/api/invoices"),
+          fetch("/api/inventory"),
         ]);
 
         const prodData = await prodRes.json();
@@ -117,6 +119,15 @@ function NewInvoiceForm() {
           });
 
           setInvoicesList(parsedInvoices);
+        }
+
+        if (invenRes.ok) {
+          const invenData = await invenRes.json();
+          const map = new Map<string, { uae: number; oman: number; total: number }>();
+          (invenData.summaries || []).forEach((s: any) => {
+            map.set(String(s.productId), { uae: s.uaeStock, oman: s.omanStock, total: s.totalStock });
+          });
+          setStockMap(map);
         }
       } catch (err) {
         console.error("Failed to load setup data:", err);
@@ -324,30 +335,57 @@ function NewInvoiceForm() {
     setShowProductDropdown(false);
   };
 
+  const handleUpdateUnitPrice = (index: number, val: number | string) => {
+    const updated = [...invoiceItems];
+    const item = updated[index];
+    const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
+
+    const newUnitPrice = typeof val === "number" ? val : (val === "" ? 0 : parseFloat(val) || 0);
+    updated[index].price = val as any;
+
+    const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
+    let discountVal = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
+
+    if (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "") {
+      const discPriceNum = parseFloat(String(rawDiscPrice));
+      if (!isNaN(discPriceNum)) {
+        const effective = Math.min(newUnitPrice, Math.max(0, discPriceNum));
+        discountVal = Math.max(0, newUnitPrice - effective);
+      }
+    } else {
+      discountVal = Math.min(newUnitPrice, Math.max(0, discountVal));
+    }
+
+    updated[index].discount = discountVal;
+    const effectiveUnitPrice = Math.max(0, newUnitPrice - discountVal);
+    updated[index].total = Math.max(0, numQty * effectiveUnitPrice);
+    setInvoiceItems(updated);
+  };
+
   const handleUpdateQuantity = (index: number, val: number | string) => {
     const updated = [...invoiceItems];
     const item = updated[index];
-    const product = products.find((p) => p.id === item.productId);
-    const basePrice = product ? product.price : item.price;
-
-    const numQty = typeof val === "number" ? val : (parseInt(val, 10) || 0);
-    let tierPrice = basePrice;
-    if (product && numQty > 0) {
-      if (numQty >= 100) tierPrice = product.price100 ?? tierPrice;
-      else if (numQty >= 50) tierPrice = product.price50 ?? tierPrice;
-      else if (numQty >= 10) tierPrice = product.price10 ?? tierPrice;
-    }
+    const numQty = typeof val === "number" ? val : (parseInt(val as any, 10) || 0);
+    const unitPrice = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
 
     updated[index].quantity = val as any;
-    updated[index].price = tierPrice;
 
     const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
-    const effective = (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "")
-      ? Math.min(tierPrice, Math.max(0, Number(rawDiscPrice)))
-      : tierPrice;
+    let discountVal = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
 
-    updated[index].discount = Math.max(0, tierPrice - effective);
-    updated[index].total = numQty * effective;
+    if (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "") {
+      const discPriceNum = parseFloat(String(rawDiscPrice));
+      if (!isNaN(discPriceNum)) {
+        const effective = Math.min(unitPrice, Math.max(0, discPriceNum));
+        discountVal = Math.max(0, unitPrice - effective);
+      }
+    } else {
+      discountVal = Math.min(unitPrice, Math.max(0, discountVal));
+    }
+
+    updated[index].discount = discountVal;
+    const effective = Math.max(0, unitPrice - discountVal);
+    updated[index].total = Math.max(0, numQty * effective);
     setInvoiceItems(updated);
   };
 
@@ -355,27 +393,28 @@ function NewInvoiceForm() {
     const updated = [...invoiceItems];
     const item = updated[index];
     const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
+    const unitPrice = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
 
     const valStr = val !== undefined && val !== null ? String(val).trim() : "";
     if (valStr === "") {
       updated[index].discountPrice = "";
       updated[index].manualDiscount = "";
       updated[index].discount = 0;
-      updated[index].total = numQty * item.price;
+      updated[index].total = Math.max(0, numQty * unitPrice);
     } else {
       const discPriceNum = parseFloat(valStr);
       if (!isNaN(discPriceNum)) {
-        if (discPriceNum > item.price) {
-          setErrorMessage(`Discount Price (AED ${discPriceNum.toFixed(2)}) cannot be greater than Unit Price (AED ${item.price.toFixed(2)})`);
+        if (discPriceNum > unitPrice) {
+          setErrorMessage(`Discount Price (AED ${discPriceNum.toFixed(2)}) cannot be greater than Unit Price (AED ${unitPrice.toFixed(2)})`);
         } else {
           setErrorMessage(null);
         }
         const validPrice = Math.max(0, discPriceNum);
-        const effective = Math.min(item.price, validPrice);
+        const effective = Math.min(unitPrice, validPrice);
         updated[index].discountPrice = val as any;
         updated[index].manualDiscount = val as any;
-        updated[index].discount = Math.max(0, item.price - effective);
-        updated[index].total = numQty * effective;
+        updated[index].discount = Math.max(0, unitPrice - effective);
+        updated[index].total = Math.max(0, numQty * effective);
       }
     }
     setInvoiceItems(updated);
@@ -390,6 +429,21 @@ function NewInvoiceForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedCustomerId || invoiceItems.length === 0 || isSaving) return;
+
+    // Validate available stock before posting invoice
+    const targetCountry = selectedCustomer?.country || user?.country || "UAE";
+    for (const item of invoiceItems) {
+      if (item.productId) {
+        const stocks = stockMap.get(String(item.productId));
+        const available = targetCountry === "Oman" ? (stocks?.oman ?? 0) : (stocks?.uae ?? 0);
+        const requested = Number(item.quantity) || 0;
+        if (requested > available) {
+          setErrorMessage(`Insufficient stock for ${item.productName}. Available quantity: ${available}.`);
+          return;
+        }
+      }
+    }
+
     let finalInvoiceNum = invoiceNumber.trim();
 
     // Check for duplicate invoice number if creating or editing to a different one
@@ -782,6 +836,13 @@ function NewInvoiceForm() {
                     const isOutOfStock = p.isAvailable === false;
                     const isAlreadyAdded = invoiceItems.some((item) => item.productId === p.id);
                     const isDisabled = isOutOfStock || isAlreadyAdded;
+                    const stockInfo = stockMap.get(p.id);
+                    const userCountry = profile?.country || "UAE";
+                    const isSalesperson = profile?.role === "salesperson";
+                    const stockVal = isSalesperson
+                      ? (userCountry === "Oman" ? (stockInfo?.oman ?? 0) : (stockInfo?.uae ?? 0))
+                      : (stockInfo?.total ?? 0);
+
                     return (
                       <button
                         key={p.id}
@@ -794,7 +855,9 @@ function NewInvoiceForm() {
                       >
                         <div>
                           <div className="font-semibold text-slate-800 text-sm">{p.name}</div>
-                          <div className="text-xs text-slate-400 font-medium">Unit: {p.unit}</div>
+                          <div className="text-xs text-slate-400 font-medium">
+                            Unit: {p.unit} • Stock: <strong className="text-slate-700">{stockVal}</strong>
+                          </div>
                         </div>
                         <div className="flex items-center gap-3">
                           {isOutOfStock && (
@@ -835,10 +898,48 @@ function NewInvoiceForm() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {invoiceItems.map((item, idx) => (
-                        <tr key={item.productId} className="align-middle">
-                          <td className="px-4 py-4 font-bold text-slate-700">{item.productName}</td>
-                          <td className="px-4 py-4 text-right font-semibold text-slate-700">AED {item.price.toFixed(2)}</td>
+                      {invoiceItems.map((item, idx) => {
+                        const itemCountry = selectedCustomer?.country || user?.country || "UAE";
+                        const stocks = stockMap.get(String(item.productId));
+                        const availableStock = itemCountry === "Oman" ? (stocks?.oman ?? 0) : (stocks?.uae ?? 0);
+                        const isInsufficient = (Number(item.quantity) || 0) > availableStock;
+
+                        return (
+                          <tr key={item.productId} className="align-middle">
+                            <td className="px-4 py-4">
+                              <span className="font-bold text-slate-700 block">{item.productName}</span>
+                              <span className="text-[11px] font-medium text-slate-400">
+                                Available Stock ({itemCountry}): <span className="font-bold text-slate-700">{availableStock}</span>
+                              </span>
+                              {isInsufficient && (
+                                <div className="text-[11px] font-bold text-rose-600 mt-0.5">
+                                  Insufficient stock. Available quantity: {availableStock}.
+                                </div>
+                              )}
+                            </td>
+                          <td className="px-2 py-4">
+                            <div className="relative flex items-center w-28 mx-auto">
+                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">AED</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                inputMode="decimal"
+                                value={item.price !== undefined && item.price !== null ? item.price : ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  if (raw === "") {
+                                    handleUpdateUnitPrice(idx, "");
+                                  } else {
+                                    const parsed = parseFloat(raw);
+                                    handleUpdateUnitPrice(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
+                                  }
+                                }}
+                                onFocus={(e) => e.target.select()}
+                                className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm text-slate-800 focus:outline-none focus:border-accent"
+                              />
+                            </div>
+                          </td>
                           <td className="px-2 py-4">
                             <input
                               type="number"
@@ -906,7 +1007,8 @@ function NewInvoiceForm() {
                             </button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

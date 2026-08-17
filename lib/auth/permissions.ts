@@ -59,4 +59,9 @@ export const Permissions = {
   canCreateHandover: (p: ProfileContext): boolean => p.is_active,
   canApproveHandover: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
   canSetOpeningBalance: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
+
+  // Inventory & Stock Management
+  canViewInventory: (p: ProfileContext): boolean => p.is_active,
+  canManageInventory: (p: ProfileContext): boolean => p.is_active && p.role === "super_admin",
+  canViewInventoryMovements: (p: ProfileContext): boolean => p.is_active,
 };

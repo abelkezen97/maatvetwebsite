@@ -24,8 +24,11 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function ProductsPage() {
+  const router = useRouter();
   const { language } = useLanguage();
   const { isSuperAdmin, isAccountant, isSalesperson } = useAuth();
 
@@ -210,11 +213,8 @@ export default function ProductsPage() {
 
     setIsSubmitting(true);
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         name: formName.trim(),
-        productCode: formProductCode.trim() || undefined,
-        sku: formSku.trim(),
-        barcode: formBarcode.trim(),
         category: formCategory.trim() || "General",
         categoryId: formCategoryId || undefined,
         brand: formBrand.trim(),
@@ -228,6 +228,11 @@ export default function ProductsPage() {
         isActive: formIsActive,
         isAvailable: formIsActive,
       };
+
+      if (editingProduct) {
+        if (editingProduct.sku) payload.sku = editingProduct.sku;
+        if (editingProduct.barcode) payload.barcode = editingProduct.barcode;
+      }
 
       let res: Response;
       if (editingProduct) {
@@ -362,12 +367,12 @@ export default function ProductsPage() {
             <Package className="w-5 h-5 stroke-[1.5]" />
           </div>
           <div>
-            <div
+            <Link
+              href={`/products/${row.id}`}
               className="font-bold text-slate-900 line-clamp-1 hover:text-accent transition cursor-pointer"
-              onClick={() => setSelectedProductDetails(row)}
             >
               {row.name}
-            </div>
+            </Link>
             {row.description && (
               <div className="text-xs text-slate-400 line-clamp-1 mt-0.5">{row.description}</div>
             )}
@@ -439,14 +444,14 @@ export default function ProductsPage() {
       header: "Actions",
       accessor: (row: Product) => (
         <div className="flex items-center gap-1.5 justify-end">
-          {/* View Details Drawer (All Roles) */}
-          <button
-            onClick={() => setSelectedProductDetails(row)}
-            title="View Details"
+          {/* View Product Intelligence Detail Page (All Roles) */}
+          <Link
+            href={`/products/${row.id}`}
+            title="View Product Intelligence"
             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
           >
             <Eye className="w-4 h-4" />
-          </button>
+          </Link>
 
           {/* Super Admin Full Edit */}
           {isSuperAdmin && (
@@ -699,32 +704,6 @@ export default function ProductsPage() {
                       </option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    SKU Code
-                  </label>
-                  <input
-                    type="text"
-                    value={formSku}
-                    onChange={(e) => setFormSku(e.target.value)}
-                    placeholder="e.g. SKU-1001"
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Barcode
-                  </label>
-                  <input
-                    type="text"
-                    value={formBarcode}
-                    onChange={(e) => setFormBarcode(e.target.value)}
-                    placeholder="e.g. 6291000123456"
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15"
-                  />
                 </div>
 
                 <div>

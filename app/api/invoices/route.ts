@@ -6,6 +6,7 @@ import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
 import { QuoteItem } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { validateAndProcessInvoiceInventory, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -401,6 +402,44 @@ export async function POST(request: Request) {
 
       if (itemsErr) {
         console.error("Supabase invoice items insert error:", itemsErr);
+      }
+    }
+
+    // INVENTORY DEDUCTION & RECONCILIATION FOR CONFIRMED INVOICES
+    if (status !== "Draft" && invoiceId) {
+      const inventoryItems = items.map((it) => ({
+        productId: it.productId || "",
+        quantity: Number(it.quantity) || 0,
+        productName: it.productName || "Product",
+      }));
+
+      try {
+        if (isEditMode) {
+          await reconcileInvoiceInventoryOnEdit(
+            supabase,
+            invoiceId,
+            invoiceNumber,
+            inventoryItems,
+            profile.country,
+            profile.id
+          );
+        } else {
+          await validateAndProcessInvoiceInventory(
+            supabase,
+            inventoryItems,
+            profile.country,
+            invoiceId,
+            invoiceNumber,
+            profile.id
+          );
+        }
+      } catch (invErr: any) {
+        // Rollback created invoice if stock validation fails on new creation
+        if (!isEditMode && invoiceId) {
+          await supabase.from("invoice_items").delete().eq("invoice_id", invoiceId);
+          await supabase.from("invoices").delete().eq("id", invoiceId);
+        }
+        return NextResponse.json({ error: invErr.message || "Insufficient stock" }, { status: 400 });
       }
     }
 

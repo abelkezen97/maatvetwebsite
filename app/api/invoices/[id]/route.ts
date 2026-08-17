@@ -4,6 +4,7 @@ import { Permissions } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { QuoteItem } from "@/types";
+import { reverseInvoiceInventoryOnCancel, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -249,6 +250,37 @@ export async function PATCH(
         .eq("id", existingReceipt.id);
     }
 
+    // RECONCILE INVENTORY ON INVOICE UPDATE / CANCELLATION
+    try {
+      if (newStatus === "Cancelled") {
+        await reverseInvoiceInventoryOnCancel(
+          supabase,
+          id,
+          existing.invoice_number || id,
+          existing.country || profile.country,
+          profile.id
+        );
+      } else if (payload.items && Array.isArray(payload.items)) {
+        const inventoryItems = payload.items.map((it: any) => ({
+          productId: it.productId || "",
+          quantity: Number(it.quantity) || 0,
+          productName: it.productName || "Product",
+        }));
+
+        await reconcileInvoiceInventoryOnEdit(
+          supabase,
+          id,
+          existing.invoice_number || id,
+          inventoryItems,
+          existing.country || profile.country,
+          profile.id
+        );
+      }
+    } catch (invErr: any) {
+      console.error("Failed to reconcile inventory on invoice PATCH:", invErr);
+      return NextResponse.json({ error: invErr.message || "Failed to reconcile inventory" }, { status: 400 });
+    }
+
     const newCustomerId = updatedHeader?.customer_id || oldCustomerId;
     if (newCustomerId) {
       try {
@@ -301,7 +333,7 @@ export async function DELETE(
 
     const { data: existing } = await supabase
       .from("invoices")
-      .select("id, customer_id, is_deleted")
+      .select("id, invoice_number, country, customer_id, is_deleted")
       .eq("id", id)
       .maybeSingle();
 
@@ -329,6 +361,19 @@ export async function DELETE(
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Reverse inventory deduction for deleted invoice
+    try {
+      await reverseInvoiceInventoryOnCancel(
+        supabase,
+        id,
+        existing.invoice_number || id,
+        existing.country || profile.country,
+        profile.id
+      );
+    } catch (invErr: any) {
+      console.error("Failed to reverse inventory on invoice delete:", invErr);
     }
 
     if (targetCustomerId) {

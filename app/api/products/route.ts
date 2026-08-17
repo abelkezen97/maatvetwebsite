@@ -133,12 +133,13 @@ export async function POST(request: Request) {
       }
     }
 
-    const finalSku = sku.trim() || `SKU-${Date.now().toString().slice(-6)}`;
+    const finalSku = sku.trim() ? sku.trim() : undefined;
+    const finalBarcode = barcode.trim() ? barcode.trim() : undefined;
 
     const insertPayload = mapProductToDb({
       name: name.trim(),
       sku: finalSku,
-      barcode: barcode.trim(),
+      barcode: finalBarcode,
       categoryId: categoryId || undefined,
       price: price,
       costPrice: costPrice,
@@ -146,15 +147,12 @@ export async function POST(request: Request) {
       price50: price50,
       price100: price100,
       unit: unit.trim(),
+      packSize: unit.trim() || "1",
       brand: brand.trim(),
       manufacturer: manufacturer.trim(),
       description: description.trim(),
       isAvailable: isActive,
     });
-
-    insertPayload.created_by = profile.id;
-    insertPayload.updated_by = profile.id;
-
     const { data, error } = await supabase
       .from("products")
       .insert([insertPayload])

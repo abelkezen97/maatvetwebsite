@@ -62,9 +62,10 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       ]
     },
     {
-      title: "Catalog",
+      title: "Catalog & Operations",
       items: [
         { name: t("products") || "Products", href: "/products", icon: Package, visible: permissions ? permissions.canViewProducts : true },
+        { name: "Inventory", href: "/inventory", icon: Package, visible: permissions ? permissions.canViewInventory : true },
       ]
     },
     {

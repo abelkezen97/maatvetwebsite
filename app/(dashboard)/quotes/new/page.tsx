@@ -241,30 +241,57 @@ function NewQuoteForm() {
     setShowProductDropdown(false);
   };
 
+  const handleUpdateUnitPrice = (index: number, val: number | string) => {
+    const updated = [...quoteItems];
+    const item = updated[index];
+    const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
+
+    const newUnitPrice = typeof val === "number" ? val : (val === "" ? 0 : parseFloat(val) || 0);
+    updated[index].price = val as any;
+
+    const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
+    let discountVal = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
+
+    if (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "") {
+      const discPriceNum = parseFloat(String(rawDiscPrice));
+      if (!isNaN(discPriceNum)) {
+        const effective = Math.min(newUnitPrice, Math.max(0, discPriceNum));
+        discountVal = Math.max(0, newUnitPrice - effective);
+      }
+    } else {
+      discountVal = Math.min(newUnitPrice, Math.max(0, discountVal));
+    }
+
+    updated[index].discount = discountVal;
+    const effectiveUnitPrice = Math.max(0, newUnitPrice - discountVal);
+    updated[index].total = Math.max(0, numQty * effectiveUnitPrice);
+    setQuoteItems(updated);
+  };
+
   const handleUpdateQuantity = (index: number, val: number | string) => {
     const updated = [...quoteItems];
     const item = updated[index];
-    const product = products.find((p) => p.id === item.productId);
-    const basePrice = product ? product.price : item.price;
-
     const numQty = typeof val === "number" ? val : (parseInt(val as any, 10) || 0);
-    let tierPrice = basePrice;
-    if (product && numQty > 0) {
-      if (numQty >= 100) tierPrice = product.price100 ?? tierPrice;
-      else if (numQty >= 50) tierPrice = product.price50 ?? tierPrice;
-      else if (numQty >= 10) tierPrice = product.price10 ?? tierPrice;
-    }
+    const unitPrice = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
 
     updated[index].quantity = val as any;
-    updated[index].price = tierPrice;
 
     const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
-    const effective = (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "")
-      ? Math.min(tierPrice, Math.max(0, Number(rawDiscPrice)))
-      : tierPrice;
+    let discountVal = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
 
-    updated[index].discount = Math.max(0, tierPrice - effective);
-    updated[index].total = numQty * effective;
+    if (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "") {
+      const discPriceNum = parseFloat(String(rawDiscPrice));
+      if (!isNaN(discPriceNum)) {
+        const effective = Math.min(unitPrice, Math.max(0, discPriceNum));
+        discountVal = Math.max(0, unitPrice - effective);
+      }
+    } else {
+      discountVal = Math.min(unitPrice, Math.max(0, discountVal));
+    }
+
+    updated[index].discount = discountVal;
+    const effective = Math.max(0, unitPrice - discountVal);
+    updated[index].total = Math.max(0, numQty * effective);
     setQuoteItems(updated);
   };
 
@@ -272,27 +299,28 @@ function NewQuoteForm() {
     const updated = [...quoteItems];
     const item = updated[index];
     const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
+    const unitPrice = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
 
     const valStr = val !== undefined && val !== null ? String(val).trim() : "";
     if (valStr === "") {
       updated[index].discountPrice = "";
       updated[index].manualDiscount = "";
       updated[index].discount = 0;
-      updated[index].total = numQty * item.price;
+      updated[index].total = Math.max(0, numQty * unitPrice);
     } else {
       const discPriceNum = parseFloat(valStr);
       if (!isNaN(discPriceNum)) {
-        if (discPriceNum > item.price) {
-          setErrorMessage(`Discount Price (${currencySymbol} ${discPriceNum.toFixed(2)}) cannot be greater than Unit Price (${currencySymbol} ${item.price.toFixed(2)})`);
+        if (discPriceNum > unitPrice) {
+          setErrorMessage(`Discount Price (${currencySymbol} ${discPriceNum.toFixed(2)}) cannot be greater than Unit Price (${currencySymbol} ${unitPrice.toFixed(2)})`);
         } else {
           setErrorMessage(null);
         }
         const validPrice = Math.max(0, discPriceNum);
-        const effective = Math.min(item.price, validPrice);
+        const effective = Math.min(unitPrice, validPrice);
         updated[index].discountPrice = val as any;
         updated[index].manualDiscount = val as any;
-        updated[index].discount = Math.max(0, item.price - effective);
-        updated[index].total = numQty * effective;
+        updated[index].discount = Math.max(0, unitPrice - effective);
+        updated[index].total = Math.max(0, numQty * effective);
       }
     }
     setQuoteItems(updated);
@@ -634,8 +662,28 @@ function NewQuoteForm() {
                           <td className="px-4 py-4 font-bold text-slate-700">
                             {item.productName}
                           </td>
-                          <td className="px-4 py-4 text-right font-semibold text-slate-700">
-                            {currencySymbol} {item.price.toFixed(2)}
+                          <td className="px-2 py-4">
+                            <div className="relative flex items-center w-28 mx-auto">
+                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencySymbol}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                inputMode="decimal"
+                                value={item.price !== undefined && item.price !== null ? item.price : ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  if (raw === "") {
+                                    handleUpdateUnitPrice(idx, "");
+                                  } else {
+                                    const parsed = parseFloat(raw);
+                                    handleUpdateUnitPrice(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
+                                  }
+                                }}
+                                onFocus={(e) => e.target.select()}
+                                className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm text-slate-800 focus:outline-none focus:border-accent"
+                              />
+                            </div>
                           </td>
                           <td className="px-2 py-4">
                             <input

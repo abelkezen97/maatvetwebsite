@@ -45,6 +45,7 @@ export interface Product {
   price50?: number;
   price100?: number;
   unit: string;
+  packSize?: string;
   brand?: string;
   manufacturer?: string;
   description?: string;
@@ -303,17 +304,53 @@ export interface CollectionLedgerSummary {
   pendingHandoversCount: number;
 }
 
-export interface InventoryTransaction {
+export type InventoryMovementType =
+  | "OPENING_STOCK"
+  | "STOCK_RECEIVED"
+  | "SALE"
+  | "SALE_RETURN"
+  | "ADJUSTMENT_IN"
+  | "ADJUSTMENT_OUT"
+  | "DAMAGE"
+  | "EXPIRY"
+  | "TRANSFER_IN"
+  | "TRANSFER_OUT";
+
+export interface InventoryMovement {
   id: string;
   productId: string;
   productName?: string;
-  transactionType: "IN" | "OUT" | "ADJUSTMENT";
+  productCode?: string;
+  country: UserCountry;
+  movementType: InventoryMovementType;
   quantity: number;
   referenceType?: string;
   referenceId?: string;
+  reason?: string;
   notes?: string;
   createdBy?: string;
-  createdAt?: string;
+  createdByName?: string;
+  createdAt: string;
+}
+
+export interface ProductStockSummary {
+  productId: string;
+  productCode?: string;
+  productName: string;
+  category: string;
+  uaeStock: number;
+  omanStock: number;
+  totalStock: number;
+  status: "IN STOCK" | "LOW STOCK" | "OUT OF STOCK";
+  masterPrice: number;
+  unit: string;
+}
+
+export interface InventoryDashboardMetrics {
+  totalProducts: number;
+  totalStockUnits: number;
+  lowStockProducts: number;
+  outOfStockProducts: number;
 }
 
 export interface Settings {

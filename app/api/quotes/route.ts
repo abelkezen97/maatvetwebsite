@@ -182,7 +182,7 @@ export async function POST(request: Request) {
 
     for (const item of items) {
       const qty = Math.max(0, Number(item.quantity) || 0);
-      const unitPrice = Math.max(0, Number(item.price) || 0);
+      const unitPrice = Math.max(0, Number(item.unitPrice ?? item.price) || 0);
 
       let effectiveUnitPrice = unitPrice;
       const rawDiscPrice = item.discountPrice ?? item.manualDiscount;

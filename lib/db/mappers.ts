@@ -13,7 +13,8 @@ import {
   ApprovalStatus,
   CashHandover,
   SalespersonOpeningBalance,
-  InventoryTransaction,
+  InventoryMovement,
+  InventoryMovementType,
   Settings,
   DocumentSettings,
   UserCountry,
@@ -131,7 +132,7 @@ export function mapProductFromDb(row: any, categoryMap?: Map<string, string>): P
 
   return {
     id: row.id ? String(row.id) : `prod-${Date.now()}`,
-    productCode: row.product_code || undefined,
+    productCode: row.sku || row.product_code || undefined,
     sku: row.sku || "",
     barcode: row.barcode || "",
     name: row.name || "",
@@ -159,9 +160,14 @@ export function mapProductFromDb(row: any, categoryMap?: Map<string, string>): P
 
 export function mapProductToDb(product: Partial<Product>): Record<string, any> {
   const payload: Record<string, any> = {};
-  if (product.productCode !== undefined) payload.product_code = product.productCode;
-  if (product.sku !== undefined) payload.sku = product.sku;
-  if (product.barcode !== undefined) payload.barcode = product.barcode;
+  if (product.sku !== undefined || product.productCode !== undefined) {
+    const rawSku = (product.sku ?? product.productCode);
+    payload.sku = (rawSku && String(rawSku).trim()) ? String(rawSku).trim() : null;
+  }
+  if (product.barcode !== undefined) {
+    const rawBarcode = product.barcode;
+    payload.barcode = (rawBarcode && String(rawBarcode).trim()) ? String(rawBarcode).trim() : null;
+  }
   if (product.name !== undefined) payload.name = product.name;
   if (product.categoryId !== undefined) payload.category_id = product.categoryId;
   if (product.price !== undefined || product.sellingPrice !== undefined) {
@@ -172,12 +178,13 @@ export function mapProductToDb(product: Partial<Product>): Record<string, any> {
   if (product.price50 !== undefined) payload.price_50 = product.price50;
   if (product.price100 !== undefined) payload.price_100 = product.price100;
   if (product.unit !== undefined) payload.unit = product.unit;
+  if (product.packSize !== undefined || product.unit !== undefined) {
+    payload.pack_size = product.packSize ?? product.unit ?? "1";
+  }
   if (product.brand !== undefined) payload.brand = product.brand;
   if (product.manufacturer !== undefined) payload.manufacturer = product.manufacturer;
   if (product.description !== undefined) payload.description = product.description;
   if (product.isAvailable !== undefined) payload.is_active = product.isAvailable;
-  if (product.createdBy !== undefined) payload.created_by = product.createdBy;
-  if (product.updatedBy !== undefined) payload.updated_by = product.updatedBy;
   return payload;
 }
 
@@ -653,32 +660,47 @@ export function mapOpeningBalanceToDb(ob: Partial<SalespersonOpeningBalance>): R
 }
 
 /**
- * INVENTORY TRANSACTION MAPPERS
- * Database columns: id, product_id, transaction_type, quantity, reference_type, reference_id, notes, created_by, created_at
+ * INVENTORY MOVEMENT MAPPERS
+ * Database columns: id, product_id, country, movement_type, quantity, reference_type, reference_id, reason, notes, created_by, created_at
+ * Relational joins: products(name, product_code), profiles(full_name)
  */
-export function mapInventoryTransactionFromDb(row: any): InventoryTransaction {
+export function mapInventoryMovementFromDb(row: any, userMap?: Map<string, string>): InventoryMovement {
+  const countryVal: UserCountry = row.country === "Oman" ? "Oman" : "UAE";
+  const rawProd = Array.isArray(row.products) ? row.products[0] : row.products;
+  const rawCreator = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+  const createdByName =
+    rawCreator?.full_name ||
+    (row.created_by && userMap?.get(row.created_by)) ||
+    undefined;
+
   return {
-    id: row.id ? String(row.id) : `it-${Date.now()}`,
+    id: row.id ? String(row.id) : `im-${Date.now()}`,
     productId: row.product_id ? String(row.product_id) : "",
-    productName: row.products?.name || "",
-    transactionType: (row.transaction_type || "ADJUSTMENT") as any,
+    productName: rawProd?.name || row.product_name || "",
+    productCode: rawProd?.sku || rawProd?.product_code || row.product_code || undefined,
+    country: countryVal,
+    movementType: (row.movement_type || "ADJUSTMENT_IN") as InventoryMovementType,
     quantity: Number(row.quantity) || 0,
-    referenceType: row.reference_type || "",
-    referenceId: row.reference_id || "",
-    notes: row.notes || "",
-    createdBy: row.created_by || "",
+    referenceType: row.reference_type || undefined,
+    referenceId: row.reference_id || undefined,
+    reason: row.reason || undefined,
+    notes: row.notes || undefined,
+    createdBy: row.created_by || undefined,
+    createdByName,
     createdAt: row.created_at || "",
   };
 }
 
-export function mapInventoryTransactionToDb(tx: Partial<InventoryTransaction>): Record<string, any> {
+export function mapInventoryMovementToDb(mv: Partial<InventoryMovement>): Record<string, any> {
   const payload: Record<string, any> = {};
-  if (tx.productId !== undefined) payload.product_id = tx.productId;
-  if (tx.transactionType !== undefined) payload.transaction_type = tx.transactionType;
-  if (tx.quantity !== undefined) payload.quantity = Number(tx.quantity);
-  if (tx.referenceType !== undefined) payload.reference_type = tx.referenceType;
-  if (tx.referenceId !== undefined) payload.reference_id = tx.referenceId;
-  if (tx.notes !== undefined) payload.notes = tx.notes;
-  if (tx.createdBy !== undefined) payload.created_by = tx.createdBy;
+  if (mv.productId !== undefined) payload.product_id = mv.productId;
+  if (mv.country !== undefined) payload.country = mv.country === "Oman" ? "Oman" : "UAE";
+  if (mv.movementType !== undefined) payload.movement_type = mv.movementType;
+  if (mv.quantity !== undefined) payload.quantity = Number(mv.quantity);
+  if (mv.referenceType !== undefined) payload.reference_type = mv.referenceType;
+  if (mv.referenceId !== undefined) payload.reference_id = mv.referenceId;
+  if (mv.reason !== undefined) payload.reason = mv.reason;
+  if (mv.notes !== undefined) payload.notes = mv.notes;
+  if (mv.createdBy !== undefined) payload.created_by = mv.createdBy;
   return payload;
 }
