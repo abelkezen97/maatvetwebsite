@@ -1,4 +1,7 @@
+"use client";
+
 import React from "react";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface Column<T> {
   header: string;
@@ -19,31 +22,36 @@ export function DataTable<T>({
   data,
   columns,
   keyExtractor,
-  emptyTitle = "No data found",
-  emptyDescription = "There are no records to display.",
+  emptyTitle,
+  emptyDescription,
   onRowClick,
 }: DataTableProps<T>) {
+  const { t, translateBusinessText } = useLanguage();
+
+  const defaultEmptyTitle = emptyTitle ? translateBusinessText(emptyTitle) : t("noRecordsFound");
+  const defaultEmptyDesc = emptyDescription ? translateBusinessText(emptyDescription) : "";
+
   if (data.length === 0) {
     return (
       <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-xs">
-        <h4 className="text-base font-bold text-slate-800">{emptyTitle}</h4>
-        <p className="text-sm text-slate-500 mt-1">{emptyDescription}</p>
+        <h4 className="text-base font-bold text-slate-800">{defaultEmptyTitle}</h4>
+        {defaultEmptyDesc && <p className="text-sm text-slate-500 mt-1">{defaultEmptyDesc}</p>}
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden bg-white border border-slate-200 rounded-2xl shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+    <div className="overflow-hidden bg-white border border-slate-200/80 rounded-2xl shadow-sm">
+      <div className="overflow-x-auto touch-pan-x" style={{ WebkitOverflowScrolling: "touch" }}>
+        <table className="w-full text-start border-collapse min-w-[640px]">
           <thead>
-            <tr className="border-b border-slate-200 bg-slate-50/50">
+            <tr className="border-b border-slate-200 bg-slate-50/90 backdrop-blur-xs">
               {columns.map((col, idx) => (
                 <th
                   key={idx}
-                  className={`px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-400 ${col.className || ""}`}
+                  className={`px-5 md:px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500 sticky top-0 bg-slate-50/90 backdrop-blur-xs z-10 text-start ${col.className || ""}`}
                 >
-                  {col.header}
+                  {translateBusinessText(col.header)}
                 </th>
               ))}
             </tr>
@@ -53,8 +61,8 @@ export function DataTable<T>({
               <tr
                 key={keyExtractor(row, idx)}
                 onClick={() => onRowClick && onRowClick(row)}
-                className={`transition-colors duration-150 ${
-                  onRowClick ? "cursor-pointer hover:bg-slate-50/70" : "hover:bg-slate-50/30"
+                className={`transition-colors duration-150 min-h-[52px] ${
+                  onRowClick ? "cursor-pointer hover:bg-slate-50/80 active:bg-slate-100/60" : "hover:bg-slate-50/40"
                 }`}
               >
                 {columns.map((col, colIdx) => {
@@ -65,7 +73,7 @@ export function DataTable<T>({
                   return (
                     <td
                       key={colIdx}
-                      className={`px-6 py-4 text-sm text-slate-700 font-medium ${col.className || ""}`}
+                      className={`px-5 md:px-6 py-4 text-xs md:text-sm text-slate-700 font-medium align-middle text-start ${col.className || ""}`}
                     >
                       {content}
                     </td>

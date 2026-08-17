@@ -9,45 +9,17 @@ import { DataTable } from "@/components/DataTable";
 import { SearchInput } from "@/components/SearchInput";
 import { Invoice, Customer } from "@/types";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
-import { mockInvoices } from "@/lib/mockData";
 import { useAuth } from "@/hooks/useAuth";
 import { ActionDropdown, ActionOption } from "@/components/ActionDropdown";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
-
-function formatDisplayDate(dateStr: string): string {
-  if (!dateStr) return "";
-  try {
-    const cleanStr = dateStr.trim();
-    const hasTime = cleanStr.includes("T") || /\s+\d+/.test(cleanStr);
-    const d = new Date(cleanStr);
-    if (isNaN(d.getTime())) return dateStr;
-
-    const day = String(d.getDate()).padStart(2, "0");
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const month = months[d.getMonth()];
-    const year = d.getFullYear();
-    const formattedDate = `${day} ${month} ${year}`;
-
-    if (hasTime) {
-      let hours = d.getHours();
-      const minutes = String(d.getMinutes()).padStart(2, "0");
-      const ampm = hours >= 12 ? "PM" : "AM";
-      hours = hours % 12;
-      hours = hours ? hours : 12;
-      const formattedHours = String(hours).padStart(2, "0");
-      return `${formattedDate} ${formattedHours}:${minutes} ${ampm}`;
-    }
-    return formattedDate;
-  } catch (e) {
-    return dateStr;
-  }
-}
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function InvoicesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const customerIdParam = searchParams.get("customerId");
   const { user } = useAuth();
+  const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -120,63 +92,6 @@ export default function InvoicesPage() {
     }
   };
 
-  const shareReceiptToWhatsApp = async (invoice: Invoice) => {
-    const localRecsStr = localStorage.getItem("maat_receipts");
-    const localRecs: any[] = localRecsStr ? JSON.parse(localRecsStr) : [];
-    let matchedReceipt = localRecs.find(
-      (r) =>
-        r.referenceNo?.includes(invoice.invoiceNumber) ||
-        r.notes?.includes(invoice.invoiceNumber) ||
-        (r.companyName === invoice.companyName && Math.abs(r.amountPaid - invoice.grandTotal) < 0.01)
-    );
-
-    if (!matchedReceipt) {
-      const year = new Date().getFullYear();
-      const count = localRecs.length + 1;
-      matchedReceipt = {
-        id: `rec-${Date.now()}`,
-        receiptNumber: `REC-${year}-0${String(count).padStart(3, "0")}`,
-        customerId: invoice.customerId,
-        customerName: invoice.customerName,
-        companyName: invoice.companyName,
-        amountPaid: invoice.grandTotal,
-        remainingPendingAmount: 0,
-        paymentDate: invoice.date || new Date().toISOString().split("T")[0],
-        paymentMethod: "Cash",
-        referenceNo: `Auto-Paid for ${invoice.invoiceNumber}`,
-        notes: `Auto-generated receipt voucher for Paid Invoice ${invoice.invoiceNumber}`,
-        createdBy: user?.name || "Admin",
-      };
-      const updatedRecs = [matchedReceipt, ...localRecs];
-      localStorage.setItem("maat_receipts", JSON.stringify(updatedRecs));
-    }
-
-    const { buildReceiptPDF } = await import("@/lib/pdfReceiptHelper");
-    const doc = buildReceiptPDF(matchedReceipt);
-    const pdfBlob = doc.output("blob");
-    const fileName = `MAAT-RECEIPT-${matchedReceipt.receiptNumber}.pdf`;
-    const pdfFile = new File([pdfBlob], fileName, { type: "application/pdf" });
-
-    if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
-      try {
-        await navigator.share({
-          files: [pdfFile],
-          title: `Receipt ${matchedReceipt.receiptNumber}`,
-          text: `Please find attached Payment Receipt Ref: ${matchedReceipt.receiptNumber} for Invoice ${invoice.invoiceNumber}. Thank you!`,
-        });
-      } catch (err) {
-        if ((err as Error).name !== "AbortError") {
-          console.error("Error sharing Receipt PDF:", err);
-        }
-      }
-    } else {
-      doc.save(fileName);
-      const message = `Please find attached Payment Receipt Ref: ${matchedReceipt.receiptNumber} for Invoice ${invoice.invoiceNumber}. Thank you!`;
-      const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
-      window.open(whatsappUrl, "_blank");
-    }
-  };
-
   const filteredInvoices = useMemo(() => {
     let list = invoices;
 
@@ -205,112 +120,9 @@ export default function InvoicesPage() {
     doc.save(`MAAT-INVOICE-${invoice.invoiceNumber}.pdf`);
   };
 
-  const handleUpdateStatus = async (invoiceNo: string, newStatus: "Paid" | "Credit") => {
-    const currentInv = invoices.find((i) => i.invoiceNumber === invoiceNo);
-    const oldStatus = currentInv?.status;
-
-    const updated = invoices.map((i) => {
-      if (i.invoiceNumber === invoiceNo) {
-        return {
-          ...i,
-          status: newStatus,
-          creditDays: newStatus === "Credit" ? (i.creditDays || 30) : undefined
-        };
-      }
-      return i;
-    });
-    saveInvoicesToStateAndStorage(updated);
-    if (selectedInvoice && selectedInvoice.invoiceNumber === invoiceNo) {
-      setSelectedInvoice({
-        ...selectedInvoice,
-        status: newStatus,
-        creditDays: newStatus === "Credit" ? (selectedInvoice.creditDays || 30) : undefined
-      });
-    }
-
-    // Auto-create receipt voucher when marked as Paid
-    if (currentInv && newStatus === "Paid") {
-      try {
-        const localRecsStr = localStorage.getItem("maat_receipts");
-        const localRecs: any[] = localRecsStr ? JSON.parse(localRecsStr) : [];
-        const year = new Date().getFullYear();
-        const autoRecNum = `REC-${year}-0${String(localRecs.length + 1).padStart(3, "0")}`;
-
-        const autoReceipt = {
-          id: `rec-${Date.now()}`,
-          receiptNumber: autoRecNum,
-          customerId: currentInv.customerId,
-          customerName: currentInv.customerName,
-          companyName: currentInv.companyName,
-          amountPaid: currentInv.grandTotal,
-          remainingPendingAmount: 0,
-          paymentDate: currentInv.date || new Date().toISOString().split("T")[0],
-          paymentMethod: "Cash" as const,
-          referenceNo: `Auto-Paid for ${currentInv.invoiceNumber}`,
-          notes: `Auto-generated receipt voucher for Paid Invoice ${currentInv.invoiceNumber}`,
-          createdBy: user?.name || "Admin",
-          country: currentInv.country || "UAE",
-        };
-
-        const updatedRecs = [autoReceipt, ...localRecs];
-        localStorage.setItem("maat_receipts", JSON.stringify(updatedRecs));
-
-        const { buildReceiptPDF } = await import("@/lib/pdfReceiptHelper");
-        const recDoc = buildReceiptPDF(autoReceipt);
-        const recPdfBase64 = recDoc.output("datauristring").split(",")[1];
-
-        const recParams = new URLSearchParams();
-        recParams.append("receiptNumber", autoReceipt.receiptNumber);
-        recParams.append("companyName", autoReceipt.companyName);
-        recParams.append("customerName", autoReceipt.customerName || "");
-        recParams.append("amountPaid", autoReceipt.amountPaid.toString());
-        recParams.append("paymentDate", autoReceipt.paymentDate);
-        recParams.append("paymentMethod", autoReceipt.paymentMethod);
-        recParams.append("referenceNo", autoReceipt.referenceNo || "");
-
-        await fetch(`/api/receipts?${recParams.toString()}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            receiptNumber: autoReceipt.receiptNumber,
-            customerName: autoReceipt.customerName,
-            companyName: autoReceipt.companyName,
-            amountPaid: autoReceipt.amountPaid,
-            paymentDate: autoReceipt.paymentDate,
-            paymentMethod: autoReceipt.paymentMethod,
-            referenceNo: autoReceipt.referenceNo,
-            fileName: `MAAT-RECEIPT-${autoReceipt.receiptNumber}.pdf`,
-            pdfBase64: recPdfBase64,
-          }),
-        });
-      } catch (recErr) {
-        console.error("Failed to auto-create receipt on status change:", recErr);
-      }
-    }
-
-    // Adjust pending balance if status changed
-    if (currentInv && oldStatus !== newStatus && currentInv.companyName) {
-      const amountToAdd = newStatus === "Credit" ? currentInv.grandTotal : -currentInv.grandTotal;
-      try {
-        await fetch("/api/customers", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            companyName: currentInv.companyName,
-            customerId: currentInv.customerId,
-            amountToAdd,
-          }),
-        });
-      } catch (err) {
-        console.error("Failed to update pending balance on status change:", err);
-      }
-    }
-  };
-
-
   const columns = [
     {
-      header: "Invoice Number",
+      header: t("invoiceNo") || "Invoice Number",
       accessor: (row: Invoice) => (
         <div className="flex flex-col">
           <span className="font-bold text-[#1B2A4A]">{row.invoiceNumber}</span>
@@ -322,70 +134,62 @@ export default function InvoicesPage() {
       className: "w-40",
     },
     {
-      header: "Customer",
+      header: t("clientCompany") || "Customer",
       accessor: (row: Invoice) => (
         <div>
-          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          <div className="font-bold text-slate-800">{translateBusinessText(row.companyName || row.customerName)}</div>
           {row.companyName && row.customerName && (
-            <div className="text-xs text-slate-400 font-medium">Dr: {row.customerName}</div>
+            <div className="text-xs text-slate-400 font-medium">{translateBusinessText(row.customerName)}</div>
           )}
         </div>
       ),
     },
     {
-      header: "Salesperson",
+      header: t("salespersonCol") || "Salesperson",
       accessor: (row: Invoice) => (
         <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2 py-0.5 rounded border border-slate-200/50 inline-block">
-          {row.salesmanName || "Salesperson"}
+          {translateBusinessText(row.salesmanName || "Salesperson")}
         </span>
       ),
       className: "w-44",
     },
     {
-      header: "Invoice Date",
-      accessor: (row: Invoice) => formatDisplayDate(row.date),
+      header: t("dateCol") || "Invoice Date",
+      accessor: (row: Invoice) => formatDate(row.date),
       className: "w-36",
     },
     {
-      header: "Payment Status",
+      header: t("statusCol") || "Payment Status",
       accessor: (row: Invoice) => {
         let badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
         if (row.status === "Paid") badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
 
-        const label = row.status === "Credit" && row.creditDays
-          ? `Credit (${row.creditDays} Days)`
-          : row.status;
-
         return (
           <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${badgeColor}`}>
-            {label}
+            {translateBusinessText(row.status)}
           </span>
         );
       },
       className: "w-36 text-center",
     },
     {
-      header: "Grand Total",
+      header: t("grandTotalCol") || "Grand Total",
       accessor: (row: Invoice) => (
         <span className="font-extrabold text-slate-900">
-          {row.country === "Oman" ? "OMR" : "AED"} {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {formatCurrency(row.grandTotal)}
         </span>
       ),
-      className: "w-36 text-right",
+      className: "w-36 text-start",
     },
     {
-      header: "Actions",
+      header: t("actionsCol") || "Actions",
       accessor: (row: Invoice) => {
         const options: ActionOption[] = [
-          { label: "View Details", onClick: () => setSelectedInvoice(row) },
-          { label: "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
+          { label: t("view") || "View Details", onClick: () => setSelectedInvoice(row) },
+          { label: t("print") || "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
           { label: "Download PDF", onClick: () => generatePDF(row) },
           { label: "Share Invoice via WhatsApp", onClick: () => shareToWhatsApp(row) },
         ];
-        if (row.status === "Paid") {
-          options.push({ label: "Share Receipt via WhatsApp", onClick: () => shareReceiptToWhatsApp(row) });
-        }
-        options.push({ label: "Delete Invoice", onClick: () => handleDelete(row), danger: true });
         return <ActionDropdown options={options} />;
       },
       className: "w-28 text-center",
@@ -393,70 +197,67 @@ export default function InvoicesPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="w-full">
       <PageHeader
-        title="Invoices Manager"
-        description="View and issue tax-compliant invoices, track billing statuses, or share digital prints via WhatsApp."
+        title={t("invoicesTitle")}
+        description={t("invoicesDesc")}
         action={
-          <div className="flex gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={loadInvoices}
               disabled={isLoading}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm transition focus:outline-none focus:ring-2 focus:ring-accent/15 cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-accent/15 cursor-pointer disabled:opacity-50 backdrop-blur-xs"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-              Sync Invoices
+              {t("syncCatalog")}
             </button>
             <Link
               href="/invoices/new"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-white text-[#1B2A4A] font-extrabold hover:bg-slate-100 transition shadow-md text-sm"
             >
-              <Plus className="w-4.5 h-4.5" />
-              New Invoice
+              <Plus className="w-5 h-5" />
+              {t("createInvoice")}
             </Link>
           </div>
         }
       />
 
-      {/* Filter and Actions Bar */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <SearchInput
-          placeholder="Search by invoice number, doctor name, or clinic..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onClear={() => setSearchQuery("")}
-        />
-        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-          Showing {filteredInvoices.length} Invoices
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 text-start">
+        {/* Filter and Actions Bar */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <SearchInput
+            placeholder={t("searchProductsPlaceholder")}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onClear={() => setSearchQuery("")}
+          />
         </div>
-      </div>
 
-      {/* Invoices Table */}
-      {isLoading ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-4" />
-          <p className="text-sm font-semibold text-slate-500">Loading invoices...</p>
-        </div>
-      ) : (
-        <DataTable
-          data={filteredInvoices}
-          columns={columns}
-          keyExtractor={(row, idx) => row.id || row.invoiceNumber || `inv-${idx}`}
-          onRowClick={(row) => setSelectedInvoice(row)}
-          emptyTitle="No invoices found"
-          emptyDescription="Create an invoice from scratch or convert an approved quotation to invoice."
-        />
-      )}
+        {/* Invoices Table */}
+        {isLoading ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-4" />
+            <p className="text-sm font-semibold text-slate-500">{t("loadingData")}</p>
+          </div>
+        ) : (
+          <DataTable
+            data={filteredInvoices}
+            columns={columns}
+            keyExtractor={(row, idx) => row.id || row.invoiceNumber || `inv-${idx}`}
+            onRowClick={(row) => setSelectedInvoice(row)}
+          />
+        )}
+      </div>
 
       {/* Invoice Detail Modal */}
       {selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto text-start">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">INVOICE Details</h3>
-                <span className="text-xs font-mono font-bold text-slate-500">Ref: {selectedInvoice.invoiceNumber}</span>
+                <h3 className="text-lg font-bold text-slate-900">{t("invoicesTitle")}</h3>
+                <span className="text-xs font-semibold text-slate-400">Ref: {selectedInvoice.invoiceNumber}</span>
               </div>
               <button
                 onClick={() => setSelectedInvoice(null)}
@@ -468,162 +269,52 @@ export default function InvoicesPage() {
 
             {/* Modal Body */}
             <div className="space-y-6">
-              {/* Contextual Sales Information Area (Compact) */}
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-3">
-                <div className="text-[10px] font-black text-[#61989B] uppercase tracking-wider pb-2 border-b border-slate-200/60">
-                  SALES INFORMATION
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs font-semibold">
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Salesperson</span>
-                    <span className="font-extrabold text-[#1B2A4A] mt-0.5 block">{selectedInvoice.salesmanName || "Salesperson"}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Customer</span>
-                    <span className="font-bold text-slate-800 mt-0.5 block">{selectedInvoice.companyName || selectedInvoice.customerName}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Country</span>
-                    <span className="font-bold text-slate-800 mt-0.5 block">{selectedInvoice.country || "UAE"}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Created Date</span>
-                    <span className="font-bold text-slate-700 mt-0.5 block">{formatDisplayDate(selectedInvoice.createdAt || selectedInvoice.date)}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Created By</span>
-                    <span className="font-bold text-slate-700 mt-0.5 block">{selectedInvoice.createdByName || selectedInvoice.salesmanName || "System"}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase">Billing Status</span>
-                    <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-bold mt-0.5 border ${
-                      selectedInvoice.status === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"
+              {/* Status banner */}
+              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("statusCol")}</span>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                      selectedInvoice.status === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                      "bg-amber-50 text-amber-700 border-amber-200"
                     }`}>
-                      {selectedInvoice.status}
+                      {translateBusinessText(selectedInvoice.status)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Status Update Control Bar */}
-              <div className="flex items-center justify-between bg-slate-100/70 p-3 rounded-xl border border-slate-200/80">
-                <span className="text-xs font-bold text-slate-600">Quick Status Adjustment:</span>
-                <select
-                  value={selectedInvoice.status}
-                  onChange={(e) => handleUpdateStatus(selectedInvoice.invoiceNumber, e.target.value as any)}
-                  className="text-xs font-bold bg-white border border-slate-300 rounded-lg p-1.5 px-3 focus:outline-none focus:border-accent cursor-pointer"
-                >
-                  <option value="Paid">Paid</option>
-                  <option value="Credit">Credit</option>
-                </select>
-              </div>
-
-              {/* Items List */}
-              <div className="space-y-2">
-                <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Invoice Items</span>
-                <div className="border border-slate-100 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-100">
-                      <tr>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase">Product</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-center">Qty</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Price</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                       {selectedInvoice.items.map((item, idx) => (
-                        <tr key={idx}>
-                          <td className="px-4 py-3 font-semibold text-slate-700">
-                            {item.productName}
-                            {item.discount < item.price && (
-                              <span className="ml-2 text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
-                                (Base: AED {(item.price ?? 0).toFixed(2)})
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 text-center font-medium">{item.quantity}</td>
-                          <td className="px-4 py-3 text-slate-500 text-right font-medium">AED {(item.discount ?? 0).toFixed(2)}</td>
-                          <td className="px-4 py-3 text-slate-800 text-right font-bold">AED {(item.total ?? 0).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* Top metadata grid */}
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm border border-slate-100">
+                <div>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("clientCompany")}</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{translateBusinessText(selectedInvoice.customerName)}</span>
+                  <span className="block text-slate-500 text-xs mt-0.5">{translateBusinessText(selectedInvoice.companyName)}</span>
+                </div>
+                <div>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("dateCol")} & {t("salespersonCol")}</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{formatDate(selectedInvoice.date)}</span>
+                  <span className="block text-slate-500 text-xs mt-0.5">{translateBusinessText(selectedInvoice.salesmanName)}</span>
                 </div>
               </div>
 
               {/* Cost Calculation summary */}
               <div className="flex flex-col items-end gap-1.5 border-t border-slate-100 pt-4 text-sm font-semibold">
-                <div className="flex w-64 justify-between text-slate-500">
-                  <span>Subtotal:</span>
-                  <span>AED {(selectedInvoice.subtotal ?? 0).toFixed(2)}</span>
-                </div>
-                {(selectedInvoice.discountTotal ?? 0) > 0 && (
-                  <div className="flex w-64 justify-between text-slate-500">
-                    <span>Discount Total:</span>
-                    <span className="text-emerald-600">-AED {(selectedInvoice.discountTotal ?? 0).toFixed(2)}</span>
-                  </div>
-                )}
-
                 <div className="flex w-64 justify-between text-base font-bold text-slate-900 border-t border-slate-100 pt-2 mt-1">
-                  <span>Grand Total:</span>
-                  <span>AED {(selectedInvoice.grandTotal ?? 0).toFixed(2)}</span>
+                  <span>{t("grandTotalCol")}:</span>
+                  <span>{formatCurrency(selectedInvoice.grandTotal)}</span>
                 </div>
               </div>
-
-              {/* Notes */}
-              {selectedInvoice.notes && (
-                <div className="border-l-4 border-accent bg-[#61989B]/5 p-3.5 rounded-r-xl">
-                  <span className="block text-xs font-bold text-[#61989B] uppercase tracking-wider mb-1">Remarks</span>
-                  <p className="text-sm text-slate-600 italic font-medium">"{selectedInvoice.notes}"</p>
-                </div>
-              )}
             </div>
 
             {/* Modal Footer */}
             <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6">
-              <div className="flex flex-wrap gap-3">
-                <button
-                  onClick={() => setSelectedInvoice(null)}
-                  className="px-4 py-2.5 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none cursor-pointer"
-                >
-                  Close
-                </button>
-
-                <Link
-                  href={`/receipts/new?invoiceId=${selectedInvoice.id}`}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-slate-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl transition cursor-pointer"
-                >
-                  <Plus className="w-4 h-4 text-amber-600" />
-                  Collect Payment / Issue Receipt
-                </Link>
-
-                {selectedInvoice.status === "Paid" && (
-                  <button
-                    onClick={() => shareReceiptToWhatsApp(selectedInvoice)}
-                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl transition shadow-md shadow-teal-600/10 cursor-pointer"
-                  >
-                    <FileText className="w-4 h-4" />
-                    Share Receipt
-                  </button>
-                )}
-
-                <button
-                  onClick={() => shareToWhatsApp(selectedInvoice)}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-md shadow-emerald-600/10 cursor-pointer"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Share Invoice
-                </button>
-
-                <button
-                  onClick={() => generatePDF(selectedInvoice)}
-                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-primary hover:bg-[#15223c] rounded-xl transition shadow-md shadow-primary/10 cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  Download PDF
-                </button>
-              </div>
+              <button
+                onClick={() => setSelectedInvoice(null)}
+                className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none cursor-pointer"
+              >
+                {t("close")}
+              </button>
             </div>
           </div>
         </div>

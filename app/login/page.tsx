@@ -89,7 +89,7 @@ export default function LoginPage() {
       <div className="hidden lg:block lg:w-1/2 relative bg-[#0B1528] overflow-hidden">
         <div 
           className="absolute inset-0 bg-cover bg-center opacity-95 animate-none" 
-          style={{ backgroundImage: `url('/bluebgmaatveb.png')` }}
+          style={{ backgroundImage: `url('/header-bg.png')` }}
         />
         
         {/* Decorative dark navy blue overlay gradient from the left side */}

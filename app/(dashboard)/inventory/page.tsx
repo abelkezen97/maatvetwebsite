@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { ProductStockSummary, InventoryDashboardMetrics, UserCountry } from "@/types";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function InventoryDashboardPage() {
   const { profile, permissions } = useAuth();
@@ -149,67 +150,61 @@ export default function InventoryDashboardPage() {
   };
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="w-full">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-              <Boxes className="w-6 h-6" />
-            </span>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Inventory & Stock Master</h1>
+      <PageHeader
+        title="Inventory & Stock Master"
+        description="Real-time stock control, multi-country warehouse isolation & movement history."
+        action={
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/inventory/movements"
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold transition cursor-pointer backdrop-blur-xs"
+            >
+              <History className="w-4 h-4" />
+              Stock Movements Log
+            </Link>
+
+            {isSuperAdmin && (
+              <>
+                <Link
+                  href="/inventory/adjustments"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold transition cursor-pointer backdrop-blur-xs"
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                  Stock Adjustment
+                </Link>
+
+                <button
+                  onClick={() => {
+                    setSelectedProductId(summaries[0]?.productId || "");
+                    setModalError(null);
+                    setShowReceivingModal(true);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition shadow-md shadow-emerald-600/20 cursor-pointer"
+                >
+                  <Plus className="w-5 h-5" />
+                  + Stock Received
+                </button>
+
+                <button
+                  onClick={() => {
+                    setSelectedProductId(summaries[0]?.productId || "");
+                    setModalError(null);
+                    setShowOpeningModal(true);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-[#61989B] hover:bg-[#4e7d80] text-white font-extrabold text-sm transition shadow-md shadow-[#61989B]/20 cursor-pointer"
+                >
+                  <Plus className="w-5 h-5" />
+                  + Opening Stock
+                </button>
+              </>
+            )}
           </div>
-          <p className="text-slate-500 text-sm mt-1">
-            Real-time stock control, multi-country warehouse isolation & movement history.
-          </p>
-        </div>
+        }
+      />
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Link
-            href="/inventory/movements"
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 font-semibold rounded-xl hover:bg-slate-200 transition duration-150 text-sm"
-          >
-            <History className="w-4 h-4" />
-            Stock Movements Log
-          </Link>
-
-          {isSuperAdmin && (
-            <>
-              <Link
-                href="/inventory/adjustments"
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-50 text-indigo-700 font-semibold rounded-xl hover:bg-indigo-100 transition duration-150 text-sm"
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-                Stock Adjustment
-              </Link>
-
-              <button
-                onClick={() => {
-                  setSelectedProductId(summaries[0]?.productId || "");
-                  setModalError(null);
-                  setShowReceivingModal(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition duration-150 text-sm shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                + Stock Received
-              </button>
-
-              <button
-                onClick={() => {
-                  setSelectedProductId(summaries[0]?.productId || "");
-                  setModalError(null);
-                  setShowOpeningModal(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition duration-150 text-sm shadow-sm"
-              >
-                <Plus className="w-4 h-4" />
-                + Opening Stock
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 pb-12">
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -573,6 +568,7 @@ export default function InventoryDashboardPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

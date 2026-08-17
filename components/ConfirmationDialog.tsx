@@ -57,14 +57,14 @@ export function ConfirmationDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="px-5 py-3 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="px-5 py-3 text-sm font-bold min-h-[44px] text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer"
           >
             {cancelText}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`px-5 py-3 text-sm font-semibold rounded-xl transition-all duration-150 focus:outline-none focus:ring-2 ${selected.btnBg}`}
+            className={`px-5 py-3 text-sm font-bold min-h-[44px] rounded-xl transition-all duration-150 focus:outline-none focus:ring-2 cursor-pointer ${selected.btnBg}`}
           >
             {confirmText}
           </button>

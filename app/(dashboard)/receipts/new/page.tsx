@@ -315,34 +315,32 @@ export default function NewReceiptPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-[#61989B]">
-        <Link href="/receipts" className="hover:text-[#4e7d80] transition flex items-center gap-1 text-sm font-bold">
-          <ArrowLeft className="w-4.5 h-4.5" />
-          Back to Receipts
-        </Link>
-      </div>
-
+    <div className="w-full">
       <PageHeader
         title="Issue Customer Receipt"
         description="Record payback amount received from customer and deduct it directly from their pending billwise balance."
+        breadcrumbs={[
+          { label: "Receipts", href: "/receipts" },
+          { label: "New Receipt" }
+        ]}
       />
 
-      {errorMessage && (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700">
-          <span className="font-semibold">{errorMessage}</span>
-          <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6">
+        {errorMessage && (
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700">
+            <span className="font-semibold">{errorMessage}</span>
+            <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-      {successMessage && (
-        <div className="flex items-center gap-3 rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-800 font-bold">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span>{successMessage}</span>
-        </div>
-      )}
+        {successMessage && (
+          <div className="flex items-center gap-3 rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-800 font-bold">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{successMessage}</span>
+          </div>
+        )}
 
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Details (2/3) */}
@@ -679,6 +677,7 @@ export default function NewReceiptPage() {
           </div>
         </div>
       </form>
+      </div>
 
       {/* Add Customer Modal */}
       {isCustModalOpen && (

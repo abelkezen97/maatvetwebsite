@@ -594,14 +594,7 @@ function NewInvoiceForm() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-[#61989B]">
-        <Link href="/invoices" className="hover:text-[#4e7d80] transition flex items-center gap-1 text-sm font-bold">
-          <ArrowLeft className="w-4.5 h-4.5" />
-          Back to Invoices
-        </Link>
-      </div>
-
+    <div className="w-full">
       <PageHeader
         title={editInvoiceNumber ? `Edit Invoice` : `New Invoice`}
         description={
@@ -609,18 +602,23 @@ function NewInvoiceForm() {
             ? `Modify billing items, payment status, or adjust notes for Ref: ${editInvoiceNumber}.`
             : `Draft a new invoice, set custom billing rates, or compile from an existing quotation.`
         }
+        breadcrumbs={[
+          { label: "Invoices", href: "/invoices" },
+          { label: editInvoiceNumber ? "Edit Invoice" : "New Invoice" }
+        ]}
       />
 
-      {errorMessage && (
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700">
-          <span className="font-semibold">{errorMessage}</span>
-          <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6">
+        {errorMessage && (
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700">
+            <span className="font-semibold">{errorMessage}</span>
+            <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Builder Details (2/3 width) */}
         <div className="lg:col-span-2 space-y-6">
           
@@ -1076,6 +1074,7 @@ function NewInvoiceForm() {
           </div>
         </div>
       </form>
+      </div>
 
       {showProductDropdown && (
         <div className="fixed inset-0 z-10" onClick={() => setShowProductDropdown(false)} />

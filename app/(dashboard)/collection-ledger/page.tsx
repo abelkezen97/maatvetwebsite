@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { buildCollectionLedgerPDF } from "@/lib/pdfCollectionLedgerHelper";
 import { getNormalizedDateRange, PeriodType, formatDateToISOString } from "@/lib/dateUtils";
+import { PageHeader } from "@/components/PageHeader";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -436,49 +437,43 @@ export default function CollectionLedgerPage() {
   const currencySymbol = summary?.country === "Oman" ? "OMR" : "AED";
 
   return (
-    <div className="space-y-6 pb-12 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="w-full">
       {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pt-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl text-white shadow-md">
-              <Wallet className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Collection Ledger</h1>
-              <p className="text-xs font-medium text-slate-500 mt-0.5">
-                Physical cash control, collections & expense management
-              </p>
-            </div>
+      <PageHeader
+        title={t("collectionLedgerTitle") || "Collection Ledger"}
+        description={t("collectionLedgerDesc") || "Physical cash control, collections & expense management"}
+        action={
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              disabled={!summary || loading}
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold disabled:opacity-50 transition cursor-pointer backdrop-blur-xs"
+            >
+              <FileDown className="w-4 h-4 text-white" />
+              <span>Export PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowExpenseModal(true)}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition shadow-md shadow-emerald-600/20 cursor-pointer"
+            >
+              <Plus className="w-5 h-5" />
+              <span>{t("addExpense") || "Add Expense"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHandoverModal(true)}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-[#61989B] hover:bg-[#4e7d80] text-white font-extrabold text-sm transition shadow-md shadow-[#61989B]/20 cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+              <span>{t("cashHandover") || "Cash Handover"}</span>
+            </button>
           </div>
-        </div>
+        }
+      />
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleDownloadPDF}
-            disabled={!summary || loading}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-xl shadow-xs transition-all duration-150 border border-slate-200 cursor-pointer disabled:opacity-50"
-          >
-            <FileDown className="w-4 h-4 text-slate-600" />
-            <span>Download PDF</span>
-          </button>
-          <button
-            onClick={() => setShowExpenseModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all duration-150 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Expense</span>
-          </button>
-          <button
-            onClick={() => setShowHandoverModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#1B2A4A] hover:bg-[#253963] text-white font-semibold text-xs rounded-xl shadow-sm transition-all duration-150 cursor-pointer"
-          >
-            <Send className="w-4 h-4" />
-            <span>Cash Handover</span>
-          </button>
-        </div>
-      </div>
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 pb-12 text-start">
 
       {/* Filter Toolbar: Salesperson Selector + Period Presets + Year/Month Navigation */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">
@@ -1072,6 +1067,7 @@ export default function CollectionLedgerPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

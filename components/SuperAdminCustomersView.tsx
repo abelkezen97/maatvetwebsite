@@ -362,20 +362,20 @@ export function SuperAdminCustomersView({
         title="Customers"
         description="Manage customers, accounts, credit exposure and sales assignments."
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={onRefresh}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition cursor-pointer shadow-2xs"
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold disabled:opacity-50 transition cursor-pointer backdrop-blur-xs"
             >
-              <RotateCw className={`w-4 h-4 text-slate-500 ${loading ? "animate-spin" : ""}`} />
+              <RotateCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
               <span>Sync Customers</span>
             </button>
             <button
               onClick={openAddModal}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1B2A4A] text-white font-bold hover:bg-[#15223c] transition shadow-md shadow-[#1B2A4A]/20 cursor-pointer text-sm"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-[#61989B] text-white font-extrabold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/20 cursor-pointer text-sm"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-5 h-5" />
               <span>Add Customer</span>
             </button>
           </div>

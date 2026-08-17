@@ -52,11 +52,13 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="w-full">
       <PageHeader
         title="Administration & Settings Console"
         description="Configure enterprise organization parameters, user roles, country governance, document sequences, and financial parameters."
       />
+
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-8 pb-12">
 
       {/* Alert Messages */}
       {errorMsg && (
@@ -359,6 +361,7 @@ export default function SettingsPage() {
           </form>
         </div>
       )}
+      </div>
     </div>
   );
 }

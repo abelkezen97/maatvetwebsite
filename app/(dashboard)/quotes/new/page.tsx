@@ -441,15 +441,7 @@ function NewQuoteForm() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Page header with back button */}
-      <div className="flex items-center gap-2 text-[#61989B]">
-        <Link href="/quotes" className="hover:text-[#4e7d80] transition flex items-center gap-1 text-sm font-bold">
-          <ArrowLeft className="w-4.5 h-4.5" />
-          Back to Quotations
-        </Link>
-      </div>
-
+    <div className="w-full">
       <PageHeader
         title={editQuoteNumber ? `Edit Quotation` : `New Quotation`}
         description={
@@ -457,9 +449,14 @@ function NewQuoteForm() {
             ? `Modify items, customize price tiers, or write remarks for Ref: ${editQuoteNumber}.`
             : `Select a clinic/client, add medications from inventory, and set custom discounts.`
         }
+        breadcrumbs={[
+          { label: "Quotations", href: "/quotes" },
+          { label: editQuoteNumber ? "Edit Quote" : "New Quote" }
+        ]}
       />
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* Left Side: Builder Details (2/3 width) */}
         <div className="lg:col-span-2 space-y-6">
@@ -663,14 +660,14 @@ function NewQuoteForm() {
                             {item.productName}
                           </td>
                           <td className="px-2 py-4">
-                            <div className="relative flex items-center w-28 mx-auto">
+                            <div className="relative flex items-center w-32 ml-auto">
                               <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencySymbol}</span>
                               <input
                                 type="number"
                                 min="0"
                                 step="any"
                                 inputMode="decimal"
-                                value={item.price !== undefined && item.price !== null ? item.price : ""}
+                                value={item.manualUnitPrice !== undefined ? item.manualUnitPrice : item.price}
                                 onChange={(e) => {
                                   const raw = e.target.value;
                                   if (raw === "") {
@@ -681,7 +678,7 @@ function NewQuoteForm() {
                                   }
                                 }}
                                 onFocus={(e) => e.target.select()}
-                                className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm text-slate-800 focus:outline-none focus:border-accent"
+                                className="w-full pl-10 pr-2 py-2.5 min-h-[44px] border border-slate-200 rounded-xl text-right font-bold text-sm text-slate-800 focus:outline-none focus:border-accent"
                               />
                             </div>
                           </td>
@@ -701,7 +698,7 @@ function NewQuoteForm() {
                                 }
                               }}
                               onFocus={(e) => e.target.select()}
-                              className="w-16 mx-auto px-2 py-1.5 border border-slate-200 rounded-lg text-center font-bold focus:outline-none focus:border-accent"
+                              className="w-20 mx-auto px-2 py-2.5 min-h-[44px] border border-slate-200 rounded-xl text-center font-bold text-sm focus:outline-none focus:border-accent"
                             />
                           </td>
                           <td className="px-2 py-4">
@@ -726,7 +723,7 @@ function NewQuoteForm() {
                                     }
                                   }}
                                   onFocus={(e) => e.target.select()}
-                                  className={`w-full pl-10 pr-2 py-1.5 border rounded-lg text-right font-bold text-sm focus:outline-none transition ${
+                                  className={`w-full pl-10 pr-2 py-2.5 min-h-[44px] border rounded-xl text-right font-bold text-sm focus:outline-none transition ${
                                     (item.discountPrice !== undefined && item.discountPrice !== "" && Number(item.discountPrice) > item.price) ||
                                     (item.manualDiscount !== undefined && item.manualDiscount !== "" && Number(item.manualDiscount) > item.price)
                                       ? "border-rose-500 bg-rose-50 text-rose-800"
@@ -741,16 +738,16 @@ function NewQuoteForm() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-right font-bold text-slate-800">
+                          <td className="px-4 py-4 text-right font-extrabold text-slate-900 text-sm">
                             {currencySymbol} {item.total.toFixed(2)}
                           </td>
                           <td className="px-4 py-4 text-center">
                             <button
                               type="button"
                               onClick={() => handleRemoveItem(idx)}
-                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition"
+                              className="p-2.5 min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl text-rose-500 hover:bg-rose-50 transition cursor-pointer"
                             >
-                              <Trash2 className="w-4.5 h-4.5" />
+                              <Trash2 className="w-5 h-5" />
                             </button>
                           </td>
                         </tr>
@@ -846,6 +843,7 @@ function NewQuoteForm() {
         </div>
 
       </form>
+      </div>
 
       {/* Click backdrop to close product selector dropdown */}
       {showProductDropdown && (

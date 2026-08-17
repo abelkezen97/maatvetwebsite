@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   LayoutDashboard, 
   Package, 
-  FilePlus2, 
   FileText, 
   Receipt as ReceiptIcon,
   Users, 
@@ -40,47 +39,47 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
 
   const navigationSections = [
     {
-      title: "MAIN",
+      title: t("navMain"),
       items: [
-        { name: t("dashboard") || "Dashboard", href: "/dashboard", icon: LayoutDashboard, visible: permissions ? permissions.canViewDashboard : true },
+        { name: t("dashboard"), href: "/dashboard", icon: LayoutDashboard, visible: permissions ? permissions.canViewDashboard : true },
       ]
     },
     {
-      title: "Sales",
+      title: t("navSales"),
       items: [
-        { name: t("customers") || "Customers", href: "/customers", icon: Users, visible: permissions ? permissions.canViewCustomers : true },
-        { name: t("quotes") || "Quotations", href: "/quotes", icon: FileText, visible: permissions ? permissions.canViewQuotations : true },
-        { name: t("invoices") || "Invoices", href: "/invoices", icon: FileText, visible: permissions ? permissions.canViewInvoices : true },
-        { name: t("receipts") || "Receipts", href: "/receipts", icon: ReceiptIcon, visible: permissions ? permissions.canViewReceipts : true },
+        { name: t("customers"), href: "/customers", icon: Users, visible: permissions ? permissions.canViewCustomers : true },
+        { name: t("quotes"), href: "/quotes", icon: FileText, visible: permissions ? permissions.canViewQuotations : true },
+        { name: t("invoices"), href: "/invoices", icon: FileText, visible: permissions ? permissions.canViewInvoices : true },
+        { name: t("receipts"), href: "/receipts", icon: ReceiptIcon, visible: permissions ? permissions.canViewReceipts : true },
       ]
     },
     {
-      title: "Financial Control",
+      title: t("navFinancialControl"),
       items: [
-        { name: "Collection Ledger", href: "/collection-ledger", icon: Wallet, visible: permissions ? permissions.canViewCollectionLedger : true },
-        { name: "Expenses", href: "/expenses", icon: CreditCard, visible: permissions ? permissions.canViewExpenses : true },
+        { name: t("collectionLedger"), href: "/collection-ledger", icon: Wallet, visible: permissions ? permissions.canViewCollectionLedger : true },
+        { name: t("expenses"), href: "/expenses", icon: CreditCard, visible: permissions ? permissions.canViewExpenses : true },
       ]
     },
     {
-      title: "Catalog & Operations",
+      title: t("navCatalogOperations"),
       items: [
-        { name: t("products") || "Products", href: "/products", icon: Package, visible: permissions ? permissions.canViewProducts : true },
-        { name: "Inventory", href: "/inventory", icon: Package, visible: permissions ? permissions.canViewInventory : true },
+        { name: t("products"), href: "/products", icon: Package, visible: permissions ? permissions.canViewProducts : true },
+        { name: t("inventory"), href: "/inventory", icon: Package, visible: permissions ? permissions.canViewInventory : true },
       ]
     },
     {
-      title: "Administration",
+      title: t("navAdministration"),
       visible: !isSalesperson && (isSuperAdmin || isAccountant),
       items: [
-        { name: "Salespersons / Users", href: "/users", icon: Users, visible: isSuperAdmin },
-        { name: "Categories", href: "/settings/categories", icon: Package, visible: isSuperAdmin || isAccountant },
-        { name: t("settings") || "Settings", href: "/settings", icon: Settings, visible: isSuperAdmin || isAccountant },
+        { name: t("salespersonsUsers"), href: "/users", icon: Users, visible: isSuperAdmin },
+        { name: t("categories"), href: "/settings/categories", icon: Package, visible: isSuperAdmin || isAccountant },
+        { name: t("settings"), href: "/settings", icon: Settings, visible: isSuperAdmin || isAccountant },
       ]
     }
   ];
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-[#1B2A4A] text-white select-none">
+    <div className="flex flex-col h-full bg-[#06101E] text-white select-none">
       {/* Header */}
       <div className={`flex items-center justify-between px-4 py-4 border-b border-white/10 h-20 ${isCollapsed ? "justify-center" : ""}`}>
         {isCollapsed ? (
@@ -101,7 +100,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
                 <span className="font-extrabold text-base tracking-wider text-white leading-none">
                   {t("maatGroup")}
                 </span>
-                <span className="text-[9px] uppercase font-bold tracking-widest text-[#61989B] mt-1.5 leading-none">
+                <span className="text-[9px] uppercase font-bold tracking-widest text-[#5294A5] mt-1.5 leading-none">
                   {t("vetMedicine")}
                 </span>
               </div>
@@ -112,7 +111,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
               onClick={onCollapseToggle}
               className="hidden md:flex items-center justify-center p-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition focus:outline-none cursor-pointer"
             >
-              <ChevronLeft className="w-4 h-4" />
+              {isRtl ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
           </>
         )}
@@ -129,16 +128,16 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       </div>
 
       {/* Navigation items grouped by sections */}
-      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+      <nav className="flex-1 px-3.5 py-4 space-y-6 overflow-y-auto">
         {navigationSections.map((section) => {
           if (section.visible === false) return null;
           const activeItems = section.items.filter((item) => item.visible !== false);
           if (activeItems.length === 0) return null;
 
           return (
-            <div key={section.title} className="space-y-1">
+            <div key={section.title} className="space-y-1.5">
               {!isCollapsed && (
-                <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-[#61989B]/80">
+                <div className="px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[#5294A5]">
                   {section.title}
                 </div>
               )}
@@ -157,13 +156,13 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
                     key={item.href}
                     href={item.href}
                     title={isCollapsed ? item.name : undefined}
-                    className={`flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all duration-200 group ${
+                    className={`flex items-center gap-3.5 px-4 py-3 rounded-2xl font-bold text-sm min-h-[46px] transition-all duration-200 group ${
                       isActive
-                        ? "bg-[#61989B] text-white shadow-md shadow-[#61989B]/20"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
+                        ? "bg-gradient-to-r from-[#174D58] to-[#256874] text-white border border-teal-500/25 shadow-lg shadow-teal-950/40"
+                        : "text-slate-200 hover:bg-white/5 hover:text-white"
                     } ${isCollapsed ? "justify-center" : ""}`}
                   >
-                    <Icon className="w-5 h-5 stroke-[2] shrink-0" />
+                    <Icon className={`w-5 h-5 stroke-[2] shrink-0 ${isActive ? "text-white" : "text-slate-200 group-hover:text-white"}`} />
                     {!isCollapsed && <span className="truncate">{item.name}</span>}
                   </Link>
                 );
@@ -174,15 +173,15 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       </nav>
 
       {/* Footer logout */}
-      <div className="p-3 border-t border-white/10">
+      <div className="p-3.5 border-t border-white/10">
         <button
           onClick={() => logout()}
-          className={`flex w-full items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-bold text-xs text-rose-300 hover:bg-rose-950/30 hover:text-rose-200 transition-colors duration-200 cursor-pointer ${
+          className={`flex w-full items-center gap-3.5 px-4 py-3 rounded-2xl font-bold text-sm min-h-[46px] text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors duration-200 cursor-pointer ${
             isCollapsed ? "justify-center" : ""
           }`}
-          title={isCollapsed ? t("logout") || "Logout" : undefined}
+          title={isCollapsed ? t("logout") : undefined}
         >
-          <LogOut className="w-5 h-5 stroke-[2] shrink-0" />
+          <LogOut className="w-5 h-5 stroke-[2] shrink-0 text-rose-400" />
           {!isCollapsed && <span>{t("logout")}</span>}
         </button>
       </div>
@@ -221,7 +220,9 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
 
       {/* Tablet / Desktop Sidebar (Over 768px) */}
       <div
-        className={`hidden md:block h-screen shrink-0 transition-all duration-300 border-r border-slate-200 bg-[#1B2A4A] ${
+        className={`hidden md:block h-screen shrink-0 transition-all duration-300 ${
+          isRtl ? "border-l" : "border-r"
+        } border-slate-900/80 bg-[#06101E] ${
           isCollapsed ? "w-20" : "w-64"
         }`}
       >

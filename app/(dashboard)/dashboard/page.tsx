@@ -30,37 +30,8 @@ import { DataTable } from "@/components/DataTable";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 
-function formatDisplayDate(dateStr: string): string {
-  if (!dateStr) return "";
-  try {
-    const cleanStr = dateStr.trim();
-    const hasTime = cleanStr.includes("T") || /\s+\d+/.test(cleanStr);
-    const d = new Date(cleanStr);
-    if (isNaN(d.getTime())) return dateStr;
-
-    const day = String(d.getDate()).padStart(2, "0");
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const month = months[d.getMonth()];
-    const year = d.getFullYear();
-    const formattedDate = `${day} ${month} ${year}`;
-
-    if (hasTime) {
-      let hours = d.getHours();
-      const minutes = String(d.getMinutes()).padStart(2, "0");
-      const ampm = hours >= 12 ? "PM" : "AM";
-      hours = hours % 12;
-      hours = hours ? hours : 12;
-      const formattedHours = String(hours).padStart(2, "0");
-      return `${formattedDate} ${formattedHours}:${minutes} ${ampm}`;
-    }
-    return formattedDate;
-  } catch (e) {
-    return dateStr;
-  }
-}
-
 export default function DashboardPage() {
-  const { t } = useLanguage();
+  const { t, translateBusinessText, formatCurrency, formatDate, isRtl } = useLanguage();
   const { user, profile } = useAuth();
   const router = useRouter();
 
@@ -76,7 +47,6 @@ export default function DashboardPage() {
 
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [selectedReceipt, setSelectedReceipt] = useState<any | null>(null);
 
   useEffect(() => {
     async function loadDashboardData() {
@@ -286,7 +256,7 @@ export default function DashboardPage() {
   // Operational Invoice Columns with ownership
   const invoiceColumns = [
     {
-      header: "Invoice Ref",
+      header: t("invoiceNo") || "Invoice Ref",
       accessor: (row: Invoice) => (
         <div className="flex flex-col">
           <span className="font-bold text-[#1B2A4A]">{row.invoiceNumber}</span>
@@ -298,57 +268,57 @@ export default function DashboardPage() {
       className: "w-36",
     },
     {
-      header: "Customer",
+      header: t("clientCompany") || "Customer",
       accessor: (row: Invoice) => (
         <div>
-          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          <div className="font-bold text-slate-800">{translateBusinessText(row.companyName || row.customerName)}</div>
           {row.customerName && row.companyName && (
-            <div className="text-xs text-slate-400 font-medium">Dr: {row.customerName}</div>
+            <div className="text-xs text-slate-400 font-medium">{translateBusinessText(row.customerName)}</div>
           )}
         </div>
       ),
     },
     {
-      header: "Salesperson",
+      header: t("salespersonCol") || "Salesperson",
       accessor: (row: Invoice) => (
         <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2.5 py-1 rounded-lg border border-slate-200/60 inline-block">
-          {row.salesmanName || "Salesperson"}
+          {translateBusinessText(row.salesmanName || "Salesperson")}
         </span>
       ),
       className: "w-44",
     },
     {
-      header: "Grand Total",
+      header: t("grandTotalCol") || "Grand Total",
       accessor: (row: Invoice) => (
         <span className="font-extrabold text-slate-900">
-          {row.country === "Oman" ? "OMR" : "AED"} {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {formatCurrency(row.grandTotal)}
         </span>
       ),
-      className: "w-36 text-right",
+      className: "w-36 text-start",
     },
     {
-      header: "Status",
+      header: t("statusCol") || "Status",
       accessor: (row: Invoice) => (
         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${
           row.status === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200"
         }`}>
-          {row.status}
+          {translateBusinessText(row.status)}
         </span>
       ),
       className: "w-28 text-center",
     },
     {
-      header: "Date",
-      accessor: (row: Invoice) => formatDisplayDate(row.date),
+      header: t("dateCol") || "Date",
+      accessor: (row: Invoice) => formatDate(row.date),
       className: "w-32",
     },
     {
-      header: "Actions",
+      header: t("actionsCol") || "Actions",
       accessor: (row: Invoice) => (
         <ActionDropdown
           options={[
-            { label: "View Details", onClick: () => setSelectedInvoice(row) },
-            { label: "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
+            { label: t("view") || "View Details", onClick: () => setSelectedInvoice(row) },
+            { label: t("print") || "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
             { label: "Download PDF", onClick: () => generateInvoicePDF(row) },
             { label: "Share via WhatsApp", onClick: () => shareInvoiceToWhatsApp(row) },
           ]}
@@ -361,61 +331,61 @@ export default function DashboardPage() {
   // Operational Quote Columns with ownership
   const quoteColumns = [
     {
-      header: "Quote Ref",
+      header: t("quoteNo") || "Quote Ref",
       accessor: (row: Quote) => (
         <span className="font-bold text-[#1B2A4A]">{row.quoteNumber}</span>
       ),
       className: "w-36",
     },
     {
-      header: "Customer",
+      header: t("clientCompany") || "Customer",
       accessor: (row: Quote) => (
         <div>
-          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          <div className="font-bold text-slate-800">{translateBusinessText(row.companyName || row.customerName)}</div>
           {row.customerName && row.companyName && (
-            <div className="text-xs text-slate-400 font-medium">Dr: {row.customerName}</div>
+            <div className="text-xs text-slate-400 font-medium">{translateBusinessText(row.customerName)}</div>
           )}
         </div>
       ),
     },
     {
-      header: "Salesperson",
+      header: t("salespersonCol") || "Salesperson",
       accessor: (row: Quote) => (
         <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2.5 py-1 rounded-lg border border-slate-200/60 inline-block">
-          {row.salesmanName || "Salesperson"}
+          {translateBusinessText(row.salesmanName || "Salesperson")}
         </span>
       ),
       className: "w-44",
     },
     {
-      header: "Grand Total",
+      header: t("grandTotalCol") || "Grand Total",
       accessor: (row: Quote) => (
         <span className="font-bold text-slate-900">
-          {row.country === "Oman" ? "OMR" : "AED"} {row.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {formatCurrency(row.grandTotal)}
         </span>
       ),
-      className: "w-36 text-right",
+      className: "w-36 text-start",
     },
     {
-      header: "Status",
+      header: t("statusCol") || "Status",
       accessor: (row: Quote) => (
         <span className="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
-          {row.status}
+          {translateBusinessText(row.status)}
         </span>
       ),
       className: "w-28 text-center",
     },
     {
-      header: "Date",
-      accessor: (row: Quote) => formatDisplayDate(row.date),
+      header: t("dateCol") || "Date",
+      accessor: (row: Quote) => formatDate(row.date),
       className: "w-32",
     },
     {
-      header: "Actions",
+      header: t("actionsCol") || "Actions",
       accessor: (row: Quote) => (
         <ActionDropdown
           options={[
-            { label: "View Details", onClick: () => setSelectedQuote(row) },
+            { label: t("view") || "View Details", onClick: () => setSelectedQuote(row) },
             { label: "Download PDF", onClick: () => generateQuotePDF(row) },
             { label: "Share via WhatsApp", onClick: () => shareQuoteToWhatsApp(row) },
           ]}
@@ -428,75 +398,75 @@ export default function DashboardPage() {
   // Operational Receipt Columns with ownership
   const receiptColumns = [
     {
-      header: "Receipt Ref",
+      header: t("receiptNo") || "Receipt Ref",
       accessor: (row: any) => (
         <span className="font-bold text-emerald-700">{row.receiptNumber}</span>
       ),
       className: "w-36",
     },
     {
-      header: "Customer",
+      header: t("clientCompany") || "Customer",
       accessor: (row: any) => (
         <div>
-          <div className="font-bold text-slate-800">{row.companyName || row.customerName}</div>
+          <div className="font-bold text-slate-800">{translateBusinessText(row.companyName || row.customerName)}</div>
         </div>
       ),
     },
     {
-      header: "Salesperson",
+      header: t("salespersonCol") || "Salesperson",
       accessor: (row: any) => (
         <span className="text-xs font-bold text-slate-700 bg-slate-100/70 px-2.5 py-1 rounded-lg border border-slate-200/60 inline-block">
-          {row.createdByName || row.salesmanName || "Salesperson"}
+          {translateBusinessText(row.createdByName || row.salesmanName || "Salesperson")}
         </span>
       ),
       className: "w-44",
     },
     {
-      header: "Amount Paid",
+      header: t("paidCol") || "Amount Paid",
       accessor: (row: any) => (
         <span className="font-extrabold text-emerald-600">
-          {row.country === "Oman" ? "OMR" : "AED"} {(Number(row.amountPaid) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {formatCurrency(row.amountPaid)}
         </span>
       ),
-      className: "w-36 text-right",
+      className: "w-36 text-start",
     },
     {
-      header: "Method",
+      header: t("paymentMethodCol") || "Method",
       accessor: (row: any) => (
         <span className="text-xs font-bold text-slate-700">
-          {row.paymentMethod || "Cash"}
+          {translateBusinessText(row.paymentMethod || "Cash")}
         </span>
       ),
       className: "w-28 text-center",
     },
     {
-      header: "Date",
-      accessor: (row: any) => formatDisplayDate(row.paymentDate || row.createdAt),
+      header: t("dateCol") || "Date",
+      accessor: (row: any) => formatDate(row.paymentDate || row.createdAt),
       className: "w-32",
     },
   ];
 
   return (
-    <div className="space-y-8">
-      {/* Dashboard Page Header */}
+    <div className="w-full">
+      {/* Dashboard Full-Width Page Header */}
       <PageHeader 
-        title="Dashboard" 
+        title={t("dashboardTitle")} 
         description={
           isAdminOrAccountant
-            ? "High-level operational metrics, credit exposure, and cross-salesperson business overview."
+            ? t("dashboardDesc")
             : t("dashboardDesc")
         }
         action={
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/invoices/new"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-[#1B2A4A] text-white font-bold hover:bg-[#15223c] transition shadow-md shadow-[#1B2A4A]/15 cursor-pointer text-sm"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-white text-[#1B2A4A] font-extrabold hover:bg-slate-100 transition-all duration-150 shadow-md cursor-pointer text-sm shrink-0"
             >
-              {t("createInvoice") || "Create Invoice"}
+              {t("createInvoice")}
             </Link>
             <Link
               href="/quotes/new"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent text-white font-bold hover:bg-[#4e7d80] transition shadow-md shadow-[#61989B]/15 cursor-pointer text-sm"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-[#165B66] text-white font-extrabold hover:bg-[#124750] transition-all duration-150 shadow-md shadow-[#165B66]/20 cursor-pointer text-sm shrink-0"
             >
               {t("createQuote")}
             </Link>
@@ -504,63 +474,72 @@ export default function DashboardPage() {
         }
       />
 
-      {/* SUPER ADMIN / ACCOUNTANT 4-KPI OPERATIONS BANNER */}
-      {isAdminOrAccountant ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <DashboardCard
-            title="TODAY'S SALES"
-            value={loading ? "..." : `AED ${metrics.todaySalesSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            description="Issued invoices today"
-            icon={TrendingUp}
-          />
-          <DashboardCard
-            title="MONTHLY SALES"
-            value={loading ? "..." : `AED ${metrics.monthlySalesSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            description="Running month invoice sales"
-            icon={TrendingUp}
-          />
-          <DashboardCard
-            title="OUTSTANDING RECEIVABLES"
-            value={loading ? "..." : `AED ${metrics.outstandingSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            description="Net customer credit balance"
-            icon={CreditCard}
-          />
-          <DashboardCard
-            title="PAYMENTS RECEIVED"
-            value={loading ? "..." : `AED ${metrics.totalPaymentsReceived.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            description="Total collected receipts"
-            icon={DollarSign}
-          />
-        </div>
-      ) : (
-        /* SALESPERSON SIMPLE FOCUSED KPIS */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <DashboardCard
-            title="MY SALES TODAY"
-            value={loading ? "..." : `AED ${metrics.todaySalesSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            description="Tax invoices issued today"
-            icon={TrendingUp}
-          />
-          <DashboardCard
-            title="MY COLLECTION TODAY"
-            value={loading ? "..." : `AED ${metrics.todayCollectionSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            description="Payment receipts collected today"
-            icon={DollarSign}
-          />
-          <DashboardCard
-            title="MONTHLY SALE"
-            value={loading ? "..." : `AED ${metrics.monthlySalesSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            description="Running month invoice sales"
-            icon={TrendingUp}
-          />
-          <DashboardCard
-            title="OUTSTANDING"
-            value={loading ? "..." : `AED ${metrics.outstandingSum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            description="Net pending balance to collect"
-            icon={CreditCard}
-          />
-        </div>
-      )}
+      {/* Main Dashboard Content Area */}
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-8">
+        {/* SUPER ADMIN / ACCOUNTANT 4-KPI OPERATIONS BANNER */}
+        {isAdminOrAccountant ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <DashboardCard
+              title={t("todaysSales")}
+              value={loading ? "..." : formatCurrency(metrics.todaySalesSum)}
+              description={t("currentMonthSalesDesc")}
+              icon={TrendingUp}
+              theme="teal"
+            />
+            <DashboardCard
+              title={t("thisMonthSales")}
+              value={loading ? "..." : formatCurrency(metrics.monthlySalesSum)}
+              description={t("currentMonthSalesDesc")}
+              icon={Activity}
+              theme="indigo"
+            />
+            <DashboardCard
+              title={t("todaysCollections")}
+              value={loading ? "..." : formatCurrency(metrics.totalPaymentsReceived)}
+              description={t("totalPendingBalanceDesc")}
+              icon={DollarSign}
+              theme="emerald"
+            />
+            <DashboardCard
+              title={t("pendingCreditAmount")}
+              value={loading ? "..." : formatCurrency(metrics.outstandingSum)}
+              description={t("totalPendingBalanceDesc")}
+              icon={CreditCard}
+              theme="rose"
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <DashboardCard
+              title={t("todaysSales")}
+              value={loading ? "..." : formatCurrency(metrics.todaySalesSum)}
+              description={t("currentMonthSalesDesc")}
+              icon={TrendingUp}
+              theme="teal"
+            />
+            <DashboardCard
+              title={t("todaysCollections")}
+              value={loading ? "..." : formatCurrency(metrics.todayCollectionSum)}
+              description={t("totalPendingBalanceDesc")}
+              icon={DollarSign}
+              theme="emerald"
+            />
+            <DashboardCard
+              title={t("thisMonthSales")}
+              value={loading ? "..." : formatCurrency(metrics.monthlySalesSum)}
+              description={t("currentMonthSalesDesc")}
+              icon={Activity}
+              theme="indigo"
+            />
+            <DashboardCard
+              title={t("pendingCreditAmount")}
+              value={loading ? "..." : formatCurrency(metrics.outstandingSum)}
+              description={t("totalPendingBalanceDesc")}
+              icon={CreditCard}
+              theme="amber"
+            />
+          </div>
+        )}
 
       {/* OPERATIONAL TABLES SECTION */}
       {isAdminOrAccountant ? (
@@ -571,17 +550,14 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-base font-extrabold text-[#1B2A4A] flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-accent" />
-                  Recent Invoices
+                  {t("recentInvoices")}
                 </h2>
-                <p className="text-xs text-slate-400 font-semibold mt-0.5">
-                  Latest tax invoices issued across assigned territories and salespersons
-                </p>
               </div>
               <Link
                 href="/invoices"
                 className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
               >
-                View All Invoices &rarr;
+                {t("viewAllInvoices")} &rarr;
               </Link>
             </div>
             <DataTable
@@ -589,8 +565,6 @@ export default function DashboardPage() {
               columns={invoiceColumns}
               keyExtractor={(row, idx) => row.id || row.invoiceNumber || `inv-${idx}`}
               onRowClick={(row) => setSelectedInvoice(row)}
-              emptyTitle="No recent invoices found"
-              emptyDescription="No invoice records available in the business system."
             />
           </div>
 
@@ -600,17 +574,14 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-base font-extrabold text-[#1B2A4A] flex items-center gap-2">
                   <FileText className="w-5 h-5 text-accent" />
-                  Recent Quotations
+                  {t("recentQuotations")}
                 </h2>
-                <p className="text-xs text-slate-400 font-semibold mt-0.5">
-                  Active price quotes and proposals issued to customers
-                </p>
               </div>
               <Link
                 href="/quotes"
                 className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
               >
-                View All Quotations &rarr;
+                {t("viewAllQuotes")} &rarr;
               </Link>
             </div>
             <DataTable
@@ -618,8 +589,6 @@ export default function DashboardPage() {
               columns={quoteColumns}
               keyExtractor={(row, idx) => row.id || row.quoteNumber || `q-${idx}`}
               onRowClick={(row) => setSelectedQuote(row)}
-              emptyTitle="No recent quotations"
-              emptyDescription="No quotation records available."
             />
           </div>
 
@@ -629,25 +598,20 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-base font-extrabold text-[#1B2A4A] flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-emerald-600" />
-                  Recent Receipts & Payments
+                  {t("recentReceipts")}
                 </h2>
-                <p className="text-xs text-slate-400 font-semibold mt-0.5">
-                  Latest customer repayments and cash/bank collections
-                </p>
               </div>
               <Link
                 href="/receipts"
                 className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
               >
-                View All Receipts &rarr;
+                {t("viewAllReceipts")} &rarr;
               </Link>
             </div>
             <DataTable
               data={recentReceiptsList}
               columns={receiptColumns}
               keyExtractor={(row, idx) => row.id || row.receiptNumber || `rec-${idx}`}
-              emptyTitle="No recent receipts"
-              emptyDescription="No payment receipt records logged yet."
             />
           </div>
         </div>
@@ -658,13 +622,13 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <CreditCard className="w-5 h-5 text-primary" />
-                My Recent Invoices
+                {t("recentInvoices")}
               </h2>
               <Link
                 href="/invoices"
                 className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
               >
-                View All &rarr;
+                {t("viewAllInvoices")} &rarr;
               </Link>
             </div>
             <DataTable
@@ -679,13 +643,13 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-primary" />
-                My Recent Quotations
+                {t("recentQuotations")}
               </h2>
               <Link
                 href="/quotes"
                 className="text-xs font-bold text-accent hover:text-[#4e7d80] flex items-center gap-1 transition"
               >
-                View All &rarr;
+                {t("viewAllQuotes")} &rarr;
               </Link>
             </div>
             <DataTable
@@ -697,16 +661,16 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-
+      </div>
 
       {/* Quote Detail Modal */}
       {selectedQuote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto text-start">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Quotation Details</h3>
+                <h3 className="text-lg font-bold text-slate-900">{t("summaryHeader")}</h3>
                 <span className="text-xs font-semibold text-slate-400">Ref: {selectedQuote.quoteNumber}</span>
               </div>
               <button
@@ -722,44 +686,39 @@ export default function DashboardPage() {
               {/* Top metadata grid */}
               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm border border-slate-100">
                 <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Customer</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{selectedQuote.customerName}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{selectedQuote.companyName}</span>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("clientCompany")}</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{translateBusinessText(selectedQuote.customerName)}</span>
+                  <span className="block text-slate-500 text-xs mt-0.5">{translateBusinessText(selectedQuote.companyName)}</span>
                 </div>
                 <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Date & Agent</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{formatDisplayDate(selectedQuote.date)}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{selectedQuote.salesmanName}</span>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("dateCol")} & {t("salespersonCol")}</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{formatDate(selectedQuote.date)}</span>
+                  <span className="block text-slate-500 text-xs mt-0.5">{translateBusinessText(selectedQuote.salesmanName)}</span>
                 </div>
               </div>
 
               {/* Items List */}
               <div className="space-y-2">
-                <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Quote Items</span>
+                <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest">{t("itemsHeader")}</span>
                 <div className="border border-slate-100 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-sm">
+                  <table className="w-full text-start text-sm">
                     <thead className="bg-slate-50 border-b border-slate-100">
                       <tr>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase">Product</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-center">Qty</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Price</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Total</th>
+                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-start">{t("medName")}</th>
+                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-center">{t("qtyHeader")}</th>
+                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-start">{t("unitPrice")}</th>
+                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-start">{t("subtotalHeader")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                        {selectedQuote.items.map((item, idx) => (
                         <tr key={idx}>
-                          <td className="px-4 py-3 font-semibold text-slate-700">
-                            {item.productName}
-                            {item.discount < item.price && (
-                              <span className="ml-2 text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
-                                (Base: AED {(item.price ?? 0).toFixed(2)})
-                              </span>
-                            )}
+                          <td className="px-4 py-3 font-semibold text-slate-700 text-start">
+                            {translateBusinessText(item.productName)}
                           </td>
                           <td className="px-4 py-3 text-slate-500 text-center font-medium">{item.quantity}</td>
-                          <td className="px-4 py-3 text-slate-500 text-right font-medium">AED {(item.discount ?? 0).toFixed(2)}</td>
-                          <td className="px-4 py-3 text-slate-800 text-right font-bold">AED {(item.total ?? 0).toFixed(2)}</td>
+                          <td className="px-4 py-3 text-slate-500 text-start font-medium">{formatCurrency(item.discount || item.price)}</td>
+                          <td className="px-4 py-3 text-slate-800 text-start font-bold">{formatCurrency(item.total)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -770,29 +729,20 @@ export default function DashboardPage() {
               {/* Cost Calculation summary */}
               <div className="flex flex-col items-end gap-1.5 border-t border-slate-100 pt-4 text-sm font-semibold">
                 <div className="flex w-64 justify-between text-slate-500">
-                  <span>Subtotal:</span>
-                  <span>AED {(selectedQuote.subtotal ?? 0).toFixed(2)}</span>
+                  <span>{t("subtotalHeader")}:</span>
+                  <span>{formatCurrency(selectedQuote.subtotal)}</span>
                 </div>
                 {(selectedQuote.discountTotal ?? 0) > 0 && (
                   <div className="flex w-64 justify-between text-slate-500">
-                    <span>Discount Total:</span>
-                    <span className="text-emerald-600">-AED {(selectedQuote.discountTotal ?? 0).toFixed(2)}</span>
+                    <span>{t("discountTotalLabel")}:</span>
+                    <span className="text-emerald-600">-{formatCurrency(selectedQuote.discountTotal)}</span>
                   </div>
                 )}
-
                 <div className="flex w-64 justify-between text-base font-bold text-slate-900 border-t border-slate-100 pt-2 mt-1">
-                  <span>Grand Total:</span>
-                  <span>AED {(selectedQuote.grandTotal ?? 0).toFixed(2)}</span>
+                  <span>{t("grandTotalCol")}:</span>
+                  <span>{formatCurrency(selectedQuote.grandTotal)}</span>
                 </div>
               </div>
-
-              {/* Notes */}
-              {selectedQuote.notes && (
-                <div className="border-l-4 border-accent bg-[#61989B]/5 p-3.5 rounded-r-xl">
-                  <span className="block text-xs font-bold text-[#61989B] uppercase tracking-wider mb-1">Remarks / Remarks</span>
-                  <p className="text-sm text-slate-600 italic font-medium">"{selectedQuote.notes}"</p>
-                </div>
-              )}
             </div>
 
             {/* Modal Footer */}
@@ -800,23 +750,9 @@ export default function DashboardPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setSelectedQuote(null)}
-                  className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none"
+                  className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none cursor-pointer"
                 >
-                  Close
-                </button>
-                <button
-                  onClick={() => shareQuoteToWhatsApp(selectedQuote)}
-                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-md shadow-emerald-600/10 cursor-pointer"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Share via WhatsApp
-                </button>
-                <button
-                  onClick={() => generateQuotePDF(selectedQuote)}
-                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-primary hover:bg-[#15223c] rounded-xl transition shadow-md shadow-primary/10"
-                >
-                  <Download className="w-4 h-4" />
-                  Download PDF
+                  {t("close")}
                 </button>
               </div>
             </div>
@@ -827,11 +763,11 @@ export default function DashboardPage() {
       {/* Invoice Detail Modal */}
       {selectedInvoice && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto text-start">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Invoice Details</h3>
+                <h3 className="text-lg font-bold text-slate-900">{t("invoicesTitle")}</h3>
                 <span className="text-xs font-semibold text-slate-400">Ref: {selectedInvoice.invoiceNumber}</span>
               </div>
               <button
@@ -847,15 +783,13 @@ export default function DashboardPage() {
               {/* Status banner */}
               <div className="flex items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
                 <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Invoice Status</span>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("statusCol")}</span>
                   <div className="mt-1 flex items-center gap-2">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold border ${
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                       selectedInvoice.status === "Paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
                       "bg-amber-50 text-amber-700 border-amber-200"
                     }`}>
-                      {selectedInvoice.status === "Credit" && selectedInvoice.creditDays
-                        ? `Credit (${selectedInvoice.creditDays} Days)`
-                        : selectedInvoice.status}
+                      {translateBusinessText(selectedInvoice.status)}
                     </span>
                   </div>
                 </div>
@@ -864,103 +798,34 @@ export default function DashboardPage() {
               {/* Top metadata grid */}
               <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm border border-slate-100">
                 <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Customer</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{selectedInvoice.customerName}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{selectedInvoice.companyName}</span>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("clientCompany")}</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{translateBusinessText(selectedInvoice.customerName)}</span>
+                  <span className="block text-slate-500 text-xs mt-0.5">{translateBusinessText(selectedInvoice.companyName)}</span>
                 </div>
                 <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Date & Agent</span>
-                  <span className="block font-bold text-slate-800 mt-0.5">{formatDisplayDate(selectedInvoice.date)}</span>
-                  <span className="block text-slate-500 text-xs mt-0.5">{selectedInvoice.salesmanName}</span>
-                </div>
-              </div>
-
-              {/* Items List */}
-              <div className="space-y-2">
-                <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest">Invoice Items</span>
-                <div className="border border-slate-100 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-100">
-                      <tr>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase">Product</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-center">Qty</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Price</th>
-                        <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                       {selectedInvoice.items.map((item, idx) => (
-                        <tr key={idx}>
-                          <td className="px-4 py-3 font-semibold text-slate-700">
-                            {item.productName}
-                            {item.discount < item.price && (
-                              <span className="ml-2 text-[10px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
-                                (Base: AED {(item.price ?? 0).toFixed(2)})
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 text-center font-medium">{item.quantity}</td>
-                          <td className="px-4 py-3 text-slate-500 text-right font-medium">AED {(item.discount ?? 0).toFixed(2)}</td>
-                          <td className="px-4 py-3 text-slate-800 text-right font-bold">AED {(item.total ?? 0).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("dateCol")} & {t("salespersonCol")}</span>
+                  <span className="block font-bold text-slate-800 mt-0.5">{formatDate(selectedInvoice.date)}</span>
+                  <span className="block text-slate-500 text-xs mt-0.5">{translateBusinessText(selectedInvoice.salesmanName)}</span>
                 </div>
               </div>
 
               {/* Cost Calculation summary */}
               <div className="flex flex-col items-end gap-1.5 border-t border-slate-100 pt-4 text-sm font-semibold">
-                <div className="flex w-64 justify-between text-slate-500">
-                  <span>Subtotal:</span>
-                  <span>AED {(selectedInvoice.subtotal ?? 0).toFixed(2)}</span>
-                </div>
-                {(selectedInvoice.discountTotal ?? 0) > 0 && (
-                  <div className="flex w-64 justify-between text-slate-500">
-                    <span>Discount Total:</span>
-                    <span className="text-emerald-600">-AED {(selectedInvoice.discountTotal ?? 0).toFixed(2)}</span>
-                  </div>
-                )}
-
                 <div className="flex w-64 justify-between text-base font-bold text-slate-900 border-t border-slate-100 pt-2 mt-1">
-                  <span>Grand Total:</span>
-                  <span>AED {(selectedInvoice.grandTotal ?? 0).toFixed(2)}</span>
+                  <span>{t("grandTotalCol")}:</span>
+                  <span>{formatCurrency(selectedInvoice.grandTotal)}</span>
                 </div>
               </div>
-
-              {/* Notes */}
-              {selectedInvoice.notes && (
-                <div className="border-l-4 border-accent bg-[#61989B]/5 p-3.5 rounded-r-xl">
-                  <span className="block text-xs font-bold text-[#61989B] uppercase tracking-wider mb-1">Remarks</span>
-                  <p className="text-sm text-slate-600 italic font-medium">"{selectedInvoice.notes}"</p>
-                </div>
-              )}
             </div>
 
             {/* Modal Footer */}
             <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6">
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setSelectedInvoice(null)}
-                  className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={() => shareInvoiceToWhatsApp(selectedInvoice)}
-                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition shadow-md shadow-emerald-600/10 cursor-pointer"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Share via WhatsApp
-                </button>
-                <button
-                  onClick={() => generateInvoicePDF(selectedInvoice)}
-                  className="flex items-center gap-2 px-5 py-3 text-sm font-bold text-white bg-primary hover:bg-[#15223c] rounded-xl transition shadow-md shadow-primary/10"
-                >
-                  <Download className="w-4 h-4" />
-                  Download PDF
-                </button>
-              </div>
+              <button
+                onClick={() => setSelectedInvoice(null)}
+                className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none cursor-pointer"
+              >
+                {t("close")}
+              </button>
             </div>
           </div>
         </div>
@@ -968,4 +833,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

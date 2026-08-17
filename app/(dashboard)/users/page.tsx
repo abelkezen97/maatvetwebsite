@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Profile, UserRole, UserCountry } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
+import { PageHeader } from "@/components/PageHeader";
 
 interface UserStats extends Profile {
   customersCount?: number;
@@ -98,27 +99,23 @@ export default function UsersManagementPage() {
   if (authLoading) return null;
 
   return (
-    <div className="space-y-6">
+    <div className="w-full">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1B2A4A] tracking-tight flex items-center gap-3">
-            <Users className="w-7 h-7 text-accent" />
-            Salespersons / Users
-          </h1>
-          <p className="text-sm font-semibold text-slate-500 mt-1">
-            Operational team management, territory assignments, and performance overview across field agents.
-          </p>
-        </div>
+      <PageHeader
+        title="Salespersons & User Directory"
+        description="Operational team management, territory assignments, and performance overview across field agents."
+        action={
+          <Link
+            href="/settings/users"
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-white text-[#1B2A4A] font-extrabold hover:bg-slate-100 transition shadow-md cursor-pointer text-sm"
+          >
+            <UserPlus className="w-4 h-4" />
+            Provision New User
+          </Link>
+        }
+      />
 
-        <Link
-          href="/settings/users"
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1B2A4A] text-white text-xs font-bold hover:bg-[#15223c] transition shadow-md shadow-[#1B2A4A]/10 cursor-pointer"
-        >
-          <UserPlus className="w-4 h-4" />
-          Provision New User
-        </Link>
-      </div>
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 pb-12">
 
       {/* Search & Actions Bar */}
       <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
@@ -250,6 +247,7 @@ export default function UsersManagementPage() {
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </div>
   );

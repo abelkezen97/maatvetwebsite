@@ -35,6 +35,7 @@ import {
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Customer, Invoice, Quote, Receipt as ReceiptType } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
+import { PageHeader } from "@/components/PageHeader";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
@@ -319,54 +320,23 @@ export default function CustomerDetailPage() {
   }
 
   return (
-    <div className="space-y-6 md:space-y-8">
-      {/* ================================================== */}
-      {/* 1. CUSTOMER HEADER HERO — SIMPLE & ELEGANT */}
-      {/* ================================================== */}
-      <div className="bg-white rounded-2xl p-5 md:p-6 border border-slate-200/80 shadow-2xs space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          {/* Identity & Company Title Block */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push("/customers")}
-              className="p-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 transition cursor-pointer shrink-0"
-              title="Back to Customer Directory"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-
-            <div className="space-y-1">
-              <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
-                {customer.company || customer.companyName}
-              </h1>
-
-              {/* Minimal Inline Subtitle metadata */}
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium">
-                <span className="font-mono font-semibold text-slate-600">{customer.customerCode || "CUST-000000"}</span>
-                <span>·</span>
-                <span>{customer.country === "Oman" ? "🇴🇲 Oman" : "🇦🇪 UAE"}</span>
-                <span>·</span>
-                <span className={customer.is_active !== false ? "text-emerald-700 font-semibold" : "text-slate-500"}>
-                  {customer.is_active !== false ? "Active" : "Inactive"}
-                </span>
-                {salespersonAssignmentText && (
-                  <>
-                    <span>·</span>
-                    <span className="text-[#1B2A4A] font-semibold">{salespersonAssignmentText}</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Clean Primary Action Buttons */}
-          <div className="flex items-center gap-2 flex-wrap shrink-0">
+    <div className="w-full">
+      {/* 1. CUSTOMER HEADER HERO */}
+      <PageHeader
+        title={customer.company || customer.companyName || "Customer Details"}
+        description={`Code: ${customer.customerCode || "CUST-000000"} · ${customer.country === "Oman" ? "Oman Territory" : "UAE Territory"} · ${salespersonAssignmentText || "Assigned Account"}`}
+        breadcrumbs={[
+          { label: "Customers", href: "/customers" },
+          { label: customer.company || customer.companyName || "Customer" }
+        ]}
+        action={
+          <div className="flex items-center gap-2.5 flex-wrap shrink-0">
             {canCreateQuote && (isSuperAdmin || isSalesperson || (isAccountant && canCreateQuote)) && (
               <button
                 onClick={() => router.push(`/quotes/new?customerId=${customer.id}`)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold transition cursor-pointer backdrop-blur-xs"
               >
-                <Plus className="w-3.5 h-3.5 text-slate-400" />
+                <Plus className="w-4 h-4" />
                 <span>New Quotation</span>
               </button>
             )}
@@ -374,9 +344,9 @@ export default function CustomerDetailPage() {
             {canCreateInv && (
               <button
                 onClick={() => router.push(`/invoices/new?customerId=${customer.id}`)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#1B2A4A] hover:bg-[#15223c] text-white font-semibold text-xs transition cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-3 min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition cursor-pointer shadow-md shadow-emerald-600/20"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
                 <span>New Invoice</span>
               </button>
             )}
@@ -384,14 +354,17 @@ export default function CustomerDetailPage() {
             {canRecordRec && (
               <button
                 onClick={() => router.push(`/receipts/new?customerId=${customer.id}`)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition cursor-pointer whitespace-nowrap"
+                className="inline-flex items-center justify-center gap-1.5 px-5 py-3 min-h-[44px] rounded-xl bg-[#165B66] hover:bg-[#124750] text-white font-extrabold text-sm transition cursor-pointer shadow-md shadow-[#165B66]/20"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4" />
                 <span>Record Payment</span>
               </button>
             )}
           </div>
-        </div>
+        }
+      />
+
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 md:space-y-8 pb-12">
 
         {/* Minimal Actionable Quick Contact & Address Strip */}
         <div className="pt-3 border-t border-slate-100 flex items-center gap-3 text-xs flex-wrap">
@@ -447,7 +420,6 @@ export default function CustomerDetailPage() {
             </>
           )}
         </div>
-      </div>
 
       {/* ================================================== */}
       {/* 4, 5, 6, 7. FINANCIAL SUMMARY BY ROLE */}
@@ -1262,6 +1234,7 @@ export default function CustomerDetailPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

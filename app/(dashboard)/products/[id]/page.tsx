@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useAuth } from "@/hooks/useAuth";
+import { PageHeader } from "@/components/PageHeader";
 
 interface ProductDetailData {
   product: {
@@ -321,69 +322,49 @@ export default function ProductDetailPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 text-slate-800">
-      {/* HEADER BAR */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200/80 p-5 rounded-2xl shadow-xs">
-        <div className="flex items-start gap-4">
-          <Link
-            href="/products"
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition shrink-0 mt-1"
-            title="Back to Products"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-
-          <div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">{product.name}</h1>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${product.isAvailable ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"}`}>
-                {product.isAvailable ? "Active" : "Inactive"}
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                {product.category}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-500 font-medium">
-              <span>Unit: <strong className="text-slate-700">{product.unit}</strong></span>
-              {product.brand && <span>Brand: <strong className="text-slate-700">{product.brand}</strong></span>}
+    <div className="w-full">
+      <PageHeader
+        title={product.name}
+        description={`Category: ${product.category} · Unit: ${product.unit} ${product.brand ? `· Brand: ${product.brand}` : ""}`}
+        breadcrumbs={[
+          { label: "Products", href: "/products" },
+          { label: product.name }
+        ]}
+        action={
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Master Price</div>
+              <div className="text-2xl font-black text-white font-mono">
+                AED {product.sellingPrice.toFixed(2)}
+              </div>
             </div>
           </div>
-        </div>
+        }
+      />
 
-        {/* MASTER PRICE & SUPER ADMIN ACTIONS */}
-        <div className="flex items-center gap-4 border-t sm:border-t-0 pt-4 sm:pt-0 border-slate-100">
-          <div className="text-right">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Master Price</div>
-            <div className="text-2xl font-black text-slate-900">
-              AED {product.sellingPrice.toFixed(2)}
-            </div>
+      <div className="p-6 md:p-8 lg:p-10 max-w-[1600px] mx-auto space-y-6 text-slate-800">
+        {isSuperAdmin && (
+          <div className="flex items-center gap-2 justify-end">
+            <button
+              onClick={() => {
+                setAdjAction("ADD");
+                setIsAdjModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 min-h-[44px] bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-extrabold rounded-xl transition shadow-md shadow-emerald-600/20 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" /> Add Stock
+            </button>
+            <button
+              onClick={() => {
+                setAdjAction("DEDUCT");
+                setIsAdjModalOpen(true);
+              }}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 min-h-[44px] bg-slate-800 hover:bg-slate-900 text-white text-sm font-extrabold rounded-xl transition shadow-md shadow-slate-800/20 cursor-pointer"
+            >
+              <Minus className="w-4 h-4" /> Adjust
+            </button>
           </div>
-
-          {isSuperAdmin && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setAdjAction("ADD");
-                  setIsAdjModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
-              >
-                <Plus className="w-4 h-4" /> Add Stock
-              </button>
-              <button
-                onClick={() => {
-                  setAdjAction("DEDUCT");
-                  setIsAdjModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-xl transition shadow-xs cursor-pointer"
-              >
-                <Minus className="w-4 h-4" /> Adjust / Deduct
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+        )}
 
       {/* PRODUCT MOVEMENT STATUS & STOCK RISK */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -919,6 +900,7 @@ export default function ProductDetailPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
