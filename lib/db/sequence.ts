@@ -2,36 +2,59 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Generates the next guaranteed unused document number for a given entity table.
- * Analyzes all existing document numbers for the current year (including soft-deleted rows),
- * computes the highest numeric sequence, and returns candidate `${prefix}-${year}-${padStart}`.
+ * 
+ * Prefix "D": Special sequence for Dr. Kaleemullah (e.g. D0353, D0354, D0355).
+ * Prefix "INV": Standard invoice sequence (e.g. INV-2026-000353).
  */
 export async function generateNextDocumentNumber(
   supabase: SupabaseClient,
   table: "invoices" | "quotations" | "receipts" | "expenses" | "cash_handovers",
   column: "invoice_number" | "quotation_number" | "receipt_number" | "expense_number" | "handover_number",
-  prefix: "INV" | "QT" | "REC" | "EXP" | "CH",
+  prefix: "INV" | "QT" | "REC" | "EXP" | "CH" | "CF" | "D",
   padLength: number = 6
 ): Promise<string> {
   const year = new Date().getFullYear();
-  const yearPrefix = `${prefix}-${year}-`;
 
-  // Fetch all existing numbers for the current year prefix from the table.
+  let yearPrefix = "";
+  let minThreshold = 0;
+
+  if (prefix === "D") {
+    // Dr. Kaleemullah prefix: D0353, D0354, D0355...
+    yearPrefix = "D";
+    padLength = 4;
+    minThreshold = 352; // Next sequence starts at 353 (D0353)
+  } else {
+    yearPrefix = `${prefix}-${year}-`;
+  }
+
+  // Fetch all existing numbers for the column
   const { data } = await supabase
     .from(table)
     .select(column);
 
-  let highestSeq = 0;
+  let highestSeq = minThreshold;
 
   if (data && Array.isArray(data)) {
     for (const row of data as Record<string, any>[]) {
       const val = row[column];
-      if (typeof val === "string") {
-        const match = val.match(new RegExp(`${prefix}-${year}-(\\d+)`)) || val.match(/(\d+)$/);
-        if (match && match[1]) {
-          const parsed = parseInt(match[1], 10);
-          if (!isNaN(parsed) && parsed > highestSeq) {
-            highestSeq = parsed;
+      if (typeof val === "string" && !val.toUpperCase().includes("TEST")) {
+        let parsed = NaN;
+        if (prefix === "D") {
+          // Match D0349, D0351, D0352, D0353
+          const match = val.match(/^D(\d+)$/i);
+          if (match && match[1]) {
+            parsed = parseInt(match[1], 10);
           }
+        } else {
+          // Match INV-2026-000350
+          const match = val.match(new RegExp(`^${prefix}-${year}-(\\d+)$`, "i"));
+          if (match && match[1]) {
+            parsed = parseInt(match[1], 10);
+          }
+        }
+
+        if (!isNaN(parsed) && parsed < 1000000 && parsed > highestSeq) {
+          highestSeq = parsed;
         }
       }
     }

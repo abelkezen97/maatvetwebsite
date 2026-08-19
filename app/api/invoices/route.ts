@@ -4,7 +4,7 @@ import { Permissions } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
-import { QuoteItem } from "@/types";
+import { QuoteItem, UserCountry } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { validateAndProcessInvoiceInventory, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
 
@@ -19,10 +19,40 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
+    const isNextNumberReq = searchParams.get("nextNumber") === "true" || searchParams.get("nextNumber") === "1";
+    const targetSalesmanId = searchParams.get("salesmanId") || profile.id;
     const customerId = searchParams.get("customerId");
     const limit = searchParams.get("limit");
 
     const queryClient = createAdminClient() || userClient;
+
+    if (isNextNumberReq) {
+      const KALEEM_PROFILE_ID = "59ce7b2c-156f-4b91-9ee9-a55c05aa160f";
+      let isKaleem = targetSalesmanId === KALEEM_PROFILE_ID || profile.id === KALEEM_PROFILE_ID;
+      if (!isKaleem && (profile.full_name?.toLowerCase().includes("kaleem") || profile.email?.toLowerCase().includes("kaleem"))) {
+        isKaleem = true;
+      }
+      if (!isKaleem && targetSalesmanId) {
+        const { data: salesmanProf } = await queryClient
+          .from("profiles")
+          .select("id, full_name, email")
+          .eq("id", targetSalesmanId)
+          .maybeSingle();
+
+        if (salesmanProf && (
+          salesmanProf.id === KALEEM_PROFILE_ID ||
+          salesmanProf.full_name?.toLowerCase().includes("kaleem") ||
+          salesmanProf.email?.toLowerCase().includes("kaleem")
+        )) {
+          isKaleem = true;
+        }
+      }
+
+      const invPrefix = isKaleem ? "D" : "INV";
+      const invPad = isKaleem ? 4 : 6;
+      const nextInvoiceNumber = await generateNextDocumentNumber(queryClient, "invoices", "invoice_number", invPrefix, invPad);
+      return NextResponse.json({ nextInvoiceNumber });
+    }
 
     let query = queryClient
       .from("invoices")
@@ -126,25 +156,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!isEditMode) {
-      // Check if candidate client invoice number already exists in DB
-      let isClientNumTaken = false;
-      if (invoiceNumber) {
-        const { data: existingByNum } = await supabase
-          .from("invoices")
-          .select("id")
-          .eq("invoice_number", invoiceNumber)
-          .maybeSingle();
-        if (existingByNum?.id) {
-          isClientNumTaken = true;
-        }
-      }
 
-      // If no invoice number supplied OR client invoice number is already taken, generate server-side sequence
-      if (!invoiceNumber || isClientNumTaken) {
-        invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", "INV", 6);
-      }
-    }
 
     const quoteNumber = invoiceData.quoteNumber || payload.quoteNumber || null;
     const customerId = invoiceData.customerId || payload.customerId || null;
@@ -259,7 +271,7 @@ export async function POST(request: Request) {
     const rawDiscountTotal = Number(invoiceData.discountTotal ?? payload.discountTotal ?? 0);
     const rawGrandTotal = Number(invoiceData.grandTotal ?? payload.grandTotal ?? 0);
 
-    const targetCountry = profile.country === "Oman" ? "Oman" : "UAE";
+    const targetCountry: UserCountry = (custRow?.country || invoiceData.country || payload.country || profile.country) === "Oman" ? "Oman" : "UAE";
     // UAE VAT Rule: VAT is NOT applicable to UAE invoices (vat_total = 0)
     const vatTotal = targetCountry === "UAE" ? 0 : Number(invoiceData.taxTotal ?? payload.taxTotal ?? 0);
 
@@ -293,6 +305,52 @@ export async function POST(request: Request) {
     let finalSalesmanId = profile.id;
     if (profile.role !== "salesperson") {
       finalSalesmanId = invoiceData.salesmanId || payload.salesmanId || quoteRow?.salesman_id || custRow?.assigned_salesman_id || profile.id;
+    }
+
+    // Determine if Dr. Kaleemullah is the salesperson for this invoice
+    const KALEEM_PROFILE_ID = "59ce7b2c-156f-4b91-9ee9-a55c05aa160f";
+    let isKaleemullah = false;
+
+    if (finalSalesmanId === KALEEM_PROFILE_ID || profile.id === KALEEM_PROFILE_ID) {
+      isKaleemullah = true;
+    } else if (profile.full_name?.toLowerCase().includes("kaleem") || profile.email?.toLowerCase().includes("kaleem")) {
+      isKaleemullah = true;
+    } else if (finalSalesmanId) {
+      const queryClient = createAdminClient() || supabase;
+      const { data: salesmanProf } = await queryClient
+        .from("profiles")
+        .select("id, full_name, email")
+        .eq("id", finalSalesmanId)
+        .maybeSingle();
+
+      if (salesmanProf && (
+        salesmanProf.id === KALEEM_PROFILE_ID ||
+        salesmanProf.full_name?.toLowerCase().includes("kaleem") ||
+        salesmanProf.email?.toLowerCase().includes("kaleem")
+      )) {
+        isKaleemullah = true;
+      }
+    }
+
+    const invPrefix = isKaleemullah ? "D" : "INV";
+    const invPad = isKaleemullah ? 4 : 6;
+
+    if (!isEditMode) {
+      // Server-side reference generation: Dr. Kaleemullah or Salesperson ALWAYS gets server-generated reference
+      if (isKaleemullah || profile.role === "salesperson" || !invoiceNumber) {
+        invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", invPrefix, invPad);
+      } else {
+        const { data: existingByNum } = await supabase
+          .from("invoices")
+          .select("id")
+          .eq("invoice_number", invoiceNumber)
+          .maybeSingle();
+
+        if (existingByNum?.id) {
+          invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", invPrefix, invPad);
+        }
+      }
+      headerPayload.invoice_number = invoiceNumber;
     }
 
     // SERVER IS SOURCE OF TRUTH (Client payload enforced for salesman_id, country, created_by, updated_by)
@@ -346,7 +404,7 @@ export async function POST(request: Request) {
       while (!inserted && insertAttempts < maxAttempts) {
         insertAttempts++;
         if (insertAttempts > 1) {
-          headerPayload.invoice_number = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", "INV", 6);
+          headerPayload.invoice_number = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", invPrefix, invPad);
           invoiceNumber = headerPayload.invoice_number;
         }
 
@@ -420,14 +478,14 @@ export async function POST(request: Request) {
             invoiceId,
             invoiceNumber,
             inventoryItems,
-            profile.country,
+            targetCountry,
             profile.id
           );
         } else {
           await validateAndProcessInvoiceInventory(
             supabase,
             inventoryItems,
-            profile.country,
+            targetCountry,
             invoiceId,
             invoiceNumber,
             profile.id

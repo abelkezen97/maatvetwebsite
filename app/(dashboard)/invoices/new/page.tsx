@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Product, Customer, QuoteItem, Quote, Invoice, Receipt } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
+import { Permissions } from "@/lib/auth/permissions";
 import { mockQuotes, mockInvoices } from "@/lib/mockData";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
@@ -139,18 +140,66 @@ function NewInvoiceForm() {
     loadData();
   }, []);
 
-  const computeNextInvoiceNumber = (list: Invoice[]) => {
+  const isKaleemullah = useMemo(() => {
+    const KALEEM_ID = "59ce7b2c-156f-4b91-9ee9-a55c05aa160f";
+    if (user?.id === KALEEM_ID || profile?.id === KALEEM_ID) return true;
+    if (user?.name?.toLowerCase().includes("kaleem") || profile?.full_name?.toLowerCase().includes("kaleem") || user?.email?.toLowerCase().includes("kaleem")) return true;
+    return false;
+  }, [user, profile]);
+
+  const computeNextInvoiceNumber = (list: Invoice[], isKaleem: boolean = isKaleemullah) => {
+    if (isKaleem) {
+      let maxSeq = 352;
+      (list || []).forEach((inv) => {
+        if (!inv.invoiceNumber) return;
+        const match = inv.invoiceNumber.match(/^D(\d+)$/i);
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxSeq) maxSeq = num;
+        }
+      });
+      return `D${String(maxSeq + 1).padStart(4, "0")}`;
+    }
+
     const dateSuffix = new Date().getFullYear();
     let maxSeq = 0;
     (list || []).forEach((inv) => {
       if (!inv.invoiceNumber) return;
-      const match = inv.invoiceNumber.match(/INV-\d{4}-(\d+)/) || inv.invoiceNumber.match(/(\d+)$/);
+      const match = inv.invoiceNumber.match(/^INV-\d{4}-(\d+)$/i);
       if (match && match[1]) {
         const num = parseInt(match[1], 10);
-        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+        if (!isNaN(num) && num < 1000000 && num > maxSeq) maxSeq = num;
       }
     });
     return `INV-${dateSuffix}-${String(maxSeq + 1).padStart(6, "0")}`;
+  };
+
+  const populateFormWithInvoice = (existing: Invoice) => {
+    setInvoiceNumber(existing.invoiceNumber);
+    setSelectedCustomerId(existing.customerId);
+    setStatus(existing.status);
+    setCreditDays(existing.creditDays || 30);
+    setNotes(existing.notes || "");
+    
+    const cust = customers.find((c) => c.id === existing.customerId);
+    if (cust) {
+      setCustomerSearchQuery(`${cust.company} ${cust.name ? `(${cust.name})` : ""}`);
+    } else {
+      setCustomerSearchQuery(existing.companyName || existing.customerName || "");
+    }
+
+    if (Array.isArray(existing.items)) {
+      setInvoiceItems(existing.items.map(item => ({
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        price: item.price,
+        discount: item.discount,
+        total: item.total,
+        manualDiscount: item.discountPrice ?? (item.discount > 0 ? (item.price - item.discount) : undefined),
+        discountPrice: item.discountPrice,
+      })));
+    }
   };
 
   // Set default / prepopulated states once databases load
@@ -158,32 +207,24 @@ function NewInvoiceForm() {
     if (isPageLoading) return;
 
     // Mode A: EDIT EXISTING INVOICE
-    if (editInvoiceNumber && invoicesList.length > 0) {
-      const existing = invoicesList.find((i) => i.invoiceNumber === editInvoiceNumber);
-      if (existing) {
-        setInvoiceNumber(existing.invoiceNumber);
-        setSelectedCustomerId(existing.customerId);
-        setStatus(existing.status);
-        setCreditDays(existing.creditDays || 30);
-        setNotes(existing.notes || "");
-        
-        // Find matching customer to set labels
-        const cust = customers.find((c) => c.id === existing.customerId);
-        if (cust) {
-          setCustomerSearchQuery(`${cust.company} ${cust.name ? `(${cust.name})` : ""}`);
-        } else {
-          setCustomerSearchQuery(existing.companyName);
-        }
-
-        setInvoiceItems(existing.items.map(item => ({
-          productId: item.productId,
-          productName: item.productName,
-          quantity: item.quantity,
-          price: item.price,
-          discount: item.discount,
-          total: item.total,
-          manualDiscount: item.discount < item.price ? item.discount : undefined,
-        })));
+    if (editInvoiceNumber) {
+      if (profile && !Permissions.canEditInvoice(profile)) {
+        alert("Forbidden: Only Super Admins can edit existing invoices.");
+        router.push("/invoices");
+        return;
+      }
+      const existing = invoicesList.find((i) => i.invoiceNumber === editInvoiceNumber || i.id === editInvoiceNumber);
+      if (existing && existing.items && existing.items.length > 0) {
+        populateFormWithInvoice(existing);
+      } else {
+        fetch(`/api/invoices/${encodeURIComponent(editInvoiceNumber)}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data && !data.error) {
+              populateFormWithInvoice(data);
+            }
+          })
+          .catch((err) => console.error("Failed to fetch invoice for editing:", err));
       }
     }
     // Mode B: CONVERT FROM QUOTE
@@ -191,7 +232,7 @@ function NewInvoiceForm() {
       const quote = quotesList.find((q) => q.quoteNumber === fromQuoteNumber);
       if (quote) {
         if (!isCustomInvoiceNumber) {
-          setInvoiceNumber(computeNextInvoiceNumber(invoicesList));
+          setInvoiceNumber(computeNextInvoiceNumber(invoicesList, isKaleemullah));
         }
 
         setSelectedCustomerId(quote.customerId);
@@ -231,9 +272,23 @@ function NewInvoiceForm() {
     }
     // Mode C: NEW INVOICE FROM SCRATCH
     else if (!editInvoiceNumber && !isCustomInvoiceNumber) {
-      setInvoiceNumber(computeNextInvoiceNumber(invoicesList));
+      setInvoiceNumber(computeNextInvoiceNumber(invoicesList, isKaleemullah));
     }
-  }, [editInvoiceNumber, fromQuoteNumber, quotesList, invoicesList, customers, isPageLoading, isCustomInvoiceNumber]);
+  }, [editInvoiceNumber, fromQuoteNumber, quotesList, invoicesList, customers, isPageLoading, isCustomInvoiceNumber, isKaleemullah]);
+
+  // Fetch authoritative next invoice number from server
+  useEffect(() => {
+    if (isPageLoading || editInvoiceNumber || isCustomInvoiceNumber) return;
+
+    fetch("/api/invoices?nextNumber=true")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.nextInvoiceNumber) {
+          setInvoiceNumber(data.nextInvoiceNumber);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch server next invoice number:", err));
+  }, [isPageLoading, editInvoiceNumber, isCustomInvoiceNumber, isKaleemullah]);
 
   // Selected customer object
   const selectedCustomer = useMemo(() => {
@@ -627,9 +682,9 @@ function NewInvoiceForm() {
             <div>
               <div className="flex justify-between items-center mb-2">
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Invoice Number (Editable)
+                  {profile?.role === "salesperson" ? "Invoice Number (Auto-Generated)" : "Invoice Number (Editable)"}
                 </label>
-                {isCustomInvoiceNumber && !editInvoiceNumber && (
+                {isCustomInvoiceNumber && !editInvoiceNumber && profile?.role !== "salesperson" && (
                   <button
                     type="button"
                     onClick={() => {
@@ -645,12 +700,17 @@ function NewInvoiceForm() {
               <input
                 type="text"
                 required
+                readOnly={profile?.role === "salesperson"}
                 value={invoiceNumber}
                 onChange={(e) => {
-                  setInvoiceNumber(e.target.value);
-                  setIsCustomInvoiceNumber(true);
+                  if (profile?.role !== "salesperson") {
+                    setInvoiceNumber(e.target.value);
+                    setIsCustomInvoiceNumber(true);
+                  }
                 }}
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
+                className={`w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none transition-all font-bold ${
+                  profile?.role === "salesperson" ? "bg-slate-50 cursor-not-allowed opacity-80" : "focus:ring-2 focus:ring-accent/15"
+                }`}
               />
             </div>
             <div className="space-y-4">

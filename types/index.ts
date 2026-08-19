@@ -234,6 +234,8 @@ export interface Expense {
   updatedAt?: string;
 }
 
+export type HandoverType = "admin_handover" | "carry_forward";
+
 export interface CashHandover {
   id: string;
   handoverNumber: string;
@@ -243,6 +245,7 @@ export interface CashHandover {
   receivedBy: string;
   receivedByName?: string;
   amount: number;
+  handoverType?: HandoverType;
   referenceNumber?: string;
   notes?: string;
   country: UserCountry;
@@ -281,7 +284,7 @@ export interface CollectionLedgerEntry {
   id: string;
   date: string;
   timestamp: string;
-  type: "OPENING_BALANCE" | "CASH_RECEIPT" | "CASH_EXPENSE" | "CASH_HANDOVER";
+  type: "OPENING_BALANCE" | "CASH_RECEIPT" | "CASH_EXPENSE" | "CASH_HANDOVER" | "CASH_CARRY_FORWARD";
   description: string;
   referenceNo: string;
   paymentMethod: string;

@@ -578,6 +578,7 @@ export function mapHandoverFromDb(row: any, userMap?: Map<string, string>): Cash
     receivedBy: row.received_by || "",
     receivedByName: recipientName,
     amount: typeof row.amount === "number" ? row.amount : parseFloat(row.amount) || 0,
+    handoverType: (row.handover_type === "carry_forward" || (row.handover_number && String(row.handover_number).startsWith("CF")) || (row.reference_number && String(row.reference_number).startsWith("CF:"))) ? "carry_forward" : "admin_handover",
     referenceNumber: row.reference_number || "",
     notes: row.notes || "",
     country: countryVal,
@@ -606,7 +607,12 @@ export function mapHandoverToDb(handover: Partial<CashHandover>): Record<string,
   if (handover.salespersonId !== undefined) payload.salesperson_id = handover.salespersonId;
   if (handover.receivedBy !== undefined) payload.received_by = handover.receivedBy;
   if (handover.amount !== undefined) payload.amount = Number(handover.amount);
-  if (handover.referenceNumber !== undefined) payload.reference_number = handover.referenceNumber;
+
+  let refNum = handover.referenceNumber || "";
+  if (handover.handoverType === "carry_forward" && !refNum.startsWith("CF:")) {
+    refNum = `CF:${refNum}`;
+  }
+  if (refNum !== undefined) payload.reference_number = refNum;
   if (handover.notes !== undefined) payload.notes = handover.notes;
   if (handover.country !== undefined) payload.country = handover.country === "Oman" ? "Oman" : "UAE";
   if (handover.status !== undefined) payload.status = handover.status;
@@ -664,6 +670,19 @@ export function mapOpeningBalanceToDb(ob: Partial<SalespersonOpeningBalance>): R
  * Database columns: id, product_id, country, movement_type, quantity, reference_type, reference_id, reason, notes, created_by, created_at
  * Relational joins: products(name, product_code), profiles(full_name)
  */
+export function normalizeTransactionTypeToDb(type?: string): string {
+  if (!type) return "Adjustment";
+  const upper = type.toUpperCase().trim();
+  if (upper === "OPENING_STOCK" || upper === "OPENING STOCK" || upper === "OPENING") return "Opening Stock";
+  if (upper === "STOCK_RECEIVED" || upper === "PURCHASE" || upper === "RECEIVING") return "Purchase";
+  if (upper === "SALE") return "Sale";
+  if (upper === "SALE_RETURN" || upper === "RETURN") return "Return";
+  if (upper === "ADJUSTMENT_IN" || upper === "ADJUSTMENT_OUT" || upper === "ADJUSTMENT") return "Adjustment";
+  if (upper === "DAMAGE" || upper === "EXPIRY") return "Damage";
+  if (upper === "TRANSFER_IN" || upper === "TRANSFER_OUT" || upper === "TRANSFER") return "Transfer";
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
 export function mapInventoryMovementFromDb(row: any, userMap?: Map<string, string>): InventoryMovement {
   const countryVal: UserCountry = row.country === "Oman" ? "Oman" : "UAE";
   const rawProd = Array.isArray(row.products) ? row.products[0] : row.products;
@@ -673,18 +692,32 @@ export function mapInventoryMovementFromDb(row: any, userMap?: Map<string, strin
     (row.created_by && userMap?.get(row.created_by)) ||
     undefined;
 
+  const rawTxType = String(row.transaction_type || row.movement_type || "Adjustment");
+  let mType: InventoryMovementType = "ADJUSTMENT_IN";
+
+  const upper = rawTxType.toUpperCase().trim();
+  if (upper === "OPENING STOCK" || upper === "OPENING_STOCK") mType = "OPENING_STOCK";
+  else if (upper === "PURCHASE" || upper === "STOCK_RECEIVED") mType = "STOCK_RECEIVED";
+  else if (upper === "SALE") mType = "SALE";
+  else if (upper === "RETURN" || upper === "SALE_RETURN") mType = "SALE_RETURN";
+  else if (upper === "DAMAGE" || upper === "EXPIRY") mType = "DAMAGE";
+  else if (upper === "TRANSFER" || upper === "TRANSFER_IN" || upper === "TRANSFER_OUT") mType = "TRANSFER_IN";
+  else mType = (Number(row.quantity) || 0) < 0 ? "ADJUSTMENT_OUT" : "ADJUSTMENT_IN";
+
+  const textVal = row.remarks || "";
+
   return {
     id: row.id ? String(row.id) : `im-${Date.now()}`,
     productId: row.product_id ? String(row.product_id) : "",
     productName: rawProd?.name || row.product_name || "",
     productCode: rawProd?.sku || rawProd?.product_code || row.product_code || undefined,
     country: countryVal,
-    movementType: (row.movement_type || "ADJUSTMENT_IN") as InventoryMovementType,
+    movementType: mType,
     quantity: Number(row.quantity) || 0,
     referenceType: row.reference_type || undefined,
     referenceId: row.reference_id || undefined,
-    reason: row.reason || undefined,
-    notes: row.notes || undefined,
+    reason: textVal || undefined,
+    notes: textVal || undefined,
     createdBy: row.created_by || undefined,
     createdByName,
     createdAt: row.created_at || "",
@@ -695,12 +728,15 @@ export function mapInventoryMovementToDb(mv: Partial<InventoryMovement>): Record
   const payload: Record<string, any> = {};
   if (mv.productId !== undefined) payload.product_id = mv.productId;
   if (mv.country !== undefined) payload.country = mv.country === "Oman" ? "Oman" : "UAE";
-  if (mv.movementType !== undefined) payload.movement_type = mv.movementType;
+  if (mv.movementType !== undefined) {
+    payload.transaction_type = normalizeTransactionTypeToDb(mv.movementType);
+  }
   if (mv.quantity !== undefined) payload.quantity = Number(mv.quantity);
   if (mv.referenceType !== undefined) payload.reference_type = mv.referenceType;
   if (mv.referenceId !== undefined) payload.reference_id = mv.referenceId;
-  if (mv.reason !== undefined) payload.reason = mv.reason;
-  if (mv.notes !== undefined) payload.notes = mv.notes;
+  if (mv.reason !== undefined || mv.notes !== undefined) {
+    payload.remarks = mv.reason || mv.notes || "";
+  }
   if (mv.createdBy !== undefined) payload.created_by = mv.createdBy;
   return payload;
 }

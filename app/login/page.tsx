@@ -137,7 +137,7 @@ export default function LoginPage() {
               <img 
                 src="/logowhte.png" 
                 alt="MAAT Logo" 
-                className="h-32 object-contain scale-135 my-4" 
+                className="h-44 object-contain scale-160 my-4" 
                 style={{ clipPath: 'inset(0 15% 0 0)' }}
               />
             </div>

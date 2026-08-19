@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { Permissions } from "@/lib/auth/permissions";
-import { mapInventoryMovementFromDb } from "@/lib/db/mappers";
+import { mapInventoryMovementFromDb, normalizeTransactionTypeToDb } from "@/lib/db/mappers";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -17,17 +17,17 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const productId = searchParams.get("productId");
     const country = searchParams.get("country");
-    const movementType = searchParams.get("movementType");
+    const movementType = searchParams.get("movementType") || searchParams.get("transactionType");
     const limit = searchParams.get("limit");
 
     const queryClient = createAdminClient() || supabase;
 
     let query = queryClient
-      .from("inventory_movements")
+      .from("inventory_transactions")
       .select("*, products(name, sku), profiles!created_by(full_name)")
       .order("created_at", { ascending: false });
 
-    // Salesperson filtered by assigned country. Super Admin & Accountant view all or filter by query param.
+    // Salesperson MUST BE filtered strictly by assigned country. Server is source of truth!
     if (profile.role === "salesperson") {
       query = query.eq("country", profile.country);
     } else if (country && (country === "UAE" || country === "Oman")) {
@@ -38,8 +38,9 @@ export async function GET(request: Request) {
       query = query.eq("product_id", productId);
     }
 
-    if (movementType) {
-      query = query.eq("movement_type", movementType);
+    if (movementType && movementType !== "ALL") {
+      const dbTxType = normalizeTransactionTypeToDb(movementType);
+      query = query.or(`transaction_type.eq.${dbTxType},transaction_type.ilike.${movementType}`);
     }
 
     if (limit && !isNaN(Number(limit))) {
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
       if (error.message.includes("does not exist")) {
         return NextResponse.json([]);
       }
-      console.error("Error loading inventory movements:", error);
+      console.error("Error loading inventory transactions:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

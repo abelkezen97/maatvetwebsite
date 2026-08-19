@@ -29,16 +29,14 @@ async function applyDdl() {
   await client.connect();
   console.log("Connected to PostgreSQL database directly.");
 
-  const sqlPath = path.resolve(process.cwd(), "supabase/migrations/20260819000000_inventory_country_separation.sql");
+  const sqlPath = path.resolve(process.cwd(), "supabase/migrations/20260818000000_add_handover_type.sql");
   const sqlContent = fs.readFileSync(sqlPath, "utf8");
 
-  console.log("Applying inventory country separation migration SQL...");
+  console.log("Applying handover_type migration SQL...");
   await client.query(sqlContent);
-  console.log("Inventory migration applied.");
+  console.log("Handover migration applied.");
 
-  console.log("Granting explicit Data API REST access & notifying PostgREST schema reload...");
   await client.query(`
-    GRANT ALL ON public.inventory_transactions TO authenticated, anon, service_role, postgres;
     NOTIFY pgrst, 'reload schema';
   `);
 

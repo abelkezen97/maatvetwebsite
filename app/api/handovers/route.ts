@@ -4,6 +4,7 @@ import { Permissions } from "@/lib/auth/permissions";
 import { mapHandoverFromDb, mapHandoverToDb } from "@/lib/db/mappers";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { CashHandover, HandoverType } from "@/types";
 
 export async function GET(req: NextRequest) {
   try {
@@ -75,38 +76,61 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { amount, handoverDate, receivedBy, referenceNumber, notes } = body;
+    const { amount, handoverDate, handoverType, receivedBy, referenceNumber, notes, status } = body;
 
     if (!amount || Number(amount) <= 0) {
       return NextResponse.json({ error: "A positive cash handover amount is required" }, { status: 400 });
     }
 
-    let handoverNumber = "";
-    try {
-      handoverNumber = await generateNextDocumentNumber(supabase, "cash_handovers", "handover_number", "CH", 6);
-    } catch (e) {
-      handoverNumber = `CH-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
-    }
-
     const salespersonId = (Permissions.canViewAllLedgers(profile) && body.salespersonId) || profile.id;
     const dateVal = handoverDate || new Date().toISOString().split("T")[0];
+    const typeVal: HandoverType = handoverType === "carry_forward" ? "carry_forward" : "admin_handover";
+    const statusVal = status || "Approved";
 
-    const newHandover = {
+    const adminClient = createAdminClient() || supabase;
+
+    // DUPLICATE PROTECTION: Check for duplicate handover created recently (within 15 seconds)
+    const fifteenSecsAgo = new Date(Date.now() - 15000).toISOString();
+    const { data: existingDuplicates } = await adminClient
+      .from("cash_handovers")
+      .select("*")
+      .eq("salesperson_id", salespersonId)
+      .eq("amount", Number(amount))
+      .eq("handover_date", dateVal)
+      .gte("created_at", fifteenSecsAgo)
+      .limit(1);
+
+    if (existingDuplicates && existingDuplicates.length > 0) {
+      console.log("Duplicate handover submission detected; returning existing record.");
+      return NextResponse.json(mapHandoverFromDb(existingDuplicates[0]), { status: 200 });
+    }
+
+    let handoverNumber = "";
+    const prefix: "CH" | "CF" = typeVal === "carry_forward" ? "CF" : "CH";
+    try {
+      handoverNumber = await generateNextDocumentNumber(supabase, "cash_handovers", "handover_number", prefix, 6);
+    } catch (e) {
+      handoverNumber = `${prefix}-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
+    }
+
+    const newHandover: Partial<CashHandover> = {
       handoverNumber,
       handoverDate: dateVal,
       salespersonId,
       receivedBy: receivedBy || profile.id,
       amount: Number(amount),
+      handoverType: typeVal,
       referenceNumber: referenceNumber || "",
       notes: notes || "",
       country: profile.country,
-      status: "Pending" as const,
+      status: statusVal,
+      approvedBy: statusVal === "Approved" ? profile.id : undefined,
+      approvedAt: statusVal === "Approved" ? new Date().toISOString() : undefined,
       createdBy: profile.id,
     };
 
     const insertPayload = mapHandoverToDb(newHandover);
 
-    const adminClient = createAdminClient() || supabase;
     const { data, error } = await adminClient
       .from("cash_handovers")
       .insert([insertPayload])

@@ -31,7 +31,7 @@ export const Permissions = {
   // Invoices
   canViewInvoices: (p: ProfileContext): boolean => p.is_active,
   canCreateInvoice: (p: ProfileContext): boolean => p.is_active,
-  canEditInvoice: (p: ProfileContext): boolean => p.is_active,
+  canEditInvoice: (p: ProfileContext): boolean => p.is_active && p.role === "super_admin",
   canSoftDeleteInvoice: (p: ProfileContext): boolean => p.is_active && p.role === "super_admin",
 
   // Receipts

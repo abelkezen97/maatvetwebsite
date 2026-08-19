@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/DataTable";
 import { SearchInput } from "@/components/SearchInput";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
-import { Product, ProductCategory } from "@/types";
+import { Product, ProductCategory, ProductStockSummary } from "@/types";
 import {
   Package,
   RefreshCw,
@@ -21,21 +21,25 @@ import {
   AlertTriangle,
   DollarSign,
   Info,
+  Download,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { generateProductsPdf } from "@/lib/utils/exportProductsPdf";
 
 export default function ProductsPage() {
   const router = useRouter();
   const { t, translateBusinessText, formatCurrency } = useLanguage();
-  const { isSuperAdmin, isAccountant, isSalesperson } = useAuth();
+  const { profile, isSuperAdmin, isAccountant, isSalesperson } = useAuth();
 
   // Primary data states
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [stockSummaries, setStockSummaries] = useState<ProductStockSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
 
   // Search & Filter states
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,20 +84,23 @@ export default function ProductsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formSuccess, setFormSuccess] = useState(false);
 
-  // Load products & categories from Supabase API
+  // Load products, categories & inventory stock from Supabase API
   const loadData = async () => {
     setLoading(true);
     try {
-      const [prodRes, catRes] = await Promise.all([
+      const [prodRes, catRes, invRes] = await Promise.all([
         fetch(`/api/products?t=${Date.now()}`),
         fetch(`/api/categories?t=${Date.now()}`),
+        fetch(`/api/inventory?t=${Date.now()}`),
       ]);
 
       const prodData = await prodRes.json();
       const catData = await catRes.json();
+      const invData = await invRes.json();
 
       setProducts(prodData.products || []);
       setCategories(catData.categories || []);
+      setStockSummaries(invData.summaries || []);
     } catch (err) {
       console.error("Failed to load products database:", err);
     } finally {
@@ -105,6 +112,56 @@ export default function ProductsPage() {
     loadData();
   }, []);
 
+  // PDF Export Handler
+  const handleDownloadPdf = async () => {
+    setIsPdfGenerating(true);
+    try {
+      const stockMap = new Map<string, ProductStockSummary>();
+      stockSummaries.forEach((s) => {
+        stockMap.set(s.productId, s);
+      });
+
+      const pdfProductsList: ProductStockSummary[] = filteredProducts.map((p) => {
+        const stockEntry = stockMap.get(p.id);
+        const uaeStock = stockEntry ? stockEntry.uaeStock : 0;
+        const omanStock = stockEntry ? stockEntry.omanStock : 0;
+        const totalStock = stockEntry ? stockEntry.totalStock : uaeStock + omanStock;
+        const status = stockEntry
+          ? stockEntry.status
+          : totalStock > 10
+          ? "IN STOCK"
+          : totalStock > 0
+          ? "LOW STOCK"
+          : "OUT OF STOCK";
+
+        return {
+          productId: p.id,
+          productCode: p.sku || p.productCode || "—",
+          productName: p.name,
+          category: p.category || "General",
+          masterPrice: p.price ?? p.sellingPrice ?? 0,
+          unit: p.unit || "Item",
+          uaeStock,
+          omanStock,
+          totalStock,
+          status,
+        };
+      });
+
+      generateProductsPdf({
+        products: pdfProductsList,
+        userRole: profile?.role,
+        userCountry: profile?.country,
+        searchFilter: searchQuery,
+        categoryFilter: selectedCategory,
+      });
+    } catch (error) {
+      console.error("Error generating Products PDF:", error);
+    } finally {
+      setIsPdfGenerating(false);
+    }
+  };
+
   // Filtered products logic
   const filteredProducts = useMemo(() => {
     return products.filter((p) => {
@@ -113,9 +170,7 @@ export default function ProductsPage() {
       const matchesSearch =
         !query ||
         p.name.toLowerCase().includes(query) ||
-        p.sku.toLowerCase().includes(query) ||
         (p.barcode && p.barcode.toLowerCase().includes(query)) ||
-        (p.productCode && p.productCode.toLowerCase().includes(query)) ||
         (p.brand && p.brand.toLowerCase().includes(query)) ||
         (p.category && p.category.toLowerCase().includes(query));
 
@@ -215,6 +270,16 @@ export default function ProductsPage() {
         description={t("productsDesc")}
         action={
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={isPdfGenerating || loading || products.length === 0}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
+              title="Download Full Products & Stock Catalog as PDF"
+            >
+              <Download className={`w-4 h-4 ${isPdfGenerating ? "animate-bounce" : ""}`} />
+              {isPdfGenerating ? "Generating PDF..." : "Download PDF"}
+            </button>
+
             <button
               onClick={loadData}
               disabled={loading}

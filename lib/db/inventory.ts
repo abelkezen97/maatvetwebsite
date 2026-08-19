@@ -5,6 +5,7 @@ import { createAdminClient } from "@/utils/supabase/admin";
 
 /**
  * Get available stock for a specific product and country.
+ * Authoritative ledger: public.inventory_transactions
  */
 export async function getProductStock(
   supabase: SupabaseClient,
@@ -13,7 +14,7 @@ export async function getProductStock(
 ): Promise<number> {
   const client = createAdminClient() || supabase;
   const { data, error } = await client
-    .from("inventory_movements")
+    .from("inventory_transactions")
     .select("quantity")
     .eq("product_id", productId)
     .eq("country", country);
@@ -39,7 +40,7 @@ export async function getAllProductsStockSummary(
   // Fetch all active products with categories
   const { data: productsData, error: prodErr } = await client
     .from("products")
-    .select("id, sku, name, selling_price, stock_quantity, unit, product_categories(name)")
+    .select("id, sku, name, selling_price, unit, product_categories(name)")
     .order("name", { ascending: true });
 
   if (prodErr) {
@@ -47,19 +48,19 @@ export async function getAllProductsStockSummary(
     throw prodErr;
   }
 
-  // Fetch all inventory movements
-  const { data: movementsData, error: movErr } = await client
-    .from("inventory_movements")
+  // Fetch all inventory transactions
+  const { data: transactionsData, error: txErr } = await client
+    .from("inventory_transactions")
     .select("product_id, country, quantity");
 
-  if (movErr && !movErr.message.includes("does not exist")) {
-    console.error("Error fetching inventory movements:", movErr);
+  if (txErr && !txErr.message.includes("does not exist")) {
+    console.error("Error fetching inventory transactions:", txErr);
   }
 
-  // Group movements by product_id and country
+  // Group transactions by product_id and country
   const stockMap = new Map<string, { uae: number; oman: number }>();
 
-  (movementsData || []).forEach((row: any) => {
+  (transactionsData || []).forEach((row: any) => {
     const pid = String(row.product_id);
     const countryStr = String(row.country);
     const qty = Number(row.quantity) || 0;
@@ -88,18 +89,11 @@ export async function getAllProductsStockSummary(
     const pid = String(p.id);
     const stocks = stockMap.get(pid);
 
-    let uaeStock = stocks ? stocks.uae : 0;
-    let omanStock = stocks ? stocks.oman : 0;
+    // CRITICAL: Stock is calculated strictly from transaction ledger. No fallbacks to products.stock_quantity!
+    const uaeStock = stocks ? stocks.uae : 0;
+    const omanStock = stocks ? stocks.oman : 0;
 
-    if ((!movementsData || movementsData.length === 0 || !stocks) && p.stock_quantity !== undefined && p.stock_quantity !== null) {
-      const fallbackQty = Number(p.stock_quantity) || 0;
-      if (userCountry === "Oman") {
-        omanStock = fallbackQty;
-      } else {
-        uaeStock = fallbackQty;
-      }
-    }
-
+    // Role-based stock visibility masking
     const visibleUaeStock = (isSalesperson && userCountry === "Oman") ? 0 : uaeStock;
     const visibleOmanStock = (isSalesperson && userCountry === "UAE") ? 0 : omanStock;
     const totalStock = isSalesperson
@@ -145,7 +139,7 @@ export async function getAllProductsStockSummary(
 }
 
 /**
- * Record a manual or automated inventory movement.
+ * Record a manual or automated inventory transaction.
  */
 export async function recordInventoryMovement(
   supabase: SupabaseClient,
@@ -165,14 +159,14 @@ export async function recordInventoryMovement(
   const dbPayload = mapInventoryMovementToDb(payload);
 
   const { data, error } = await client
-    .from("inventory_movements")
+    .from("inventory_transactions")
     .insert([dbPayload])
     .select()
     .single();
 
   if (error) {
-    console.error("Failed to record inventory movement:", error);
-    throw new Error(`Inventory movement error: ${error.message}`);
+    console.error("Failed to record inventory transaction:", error);
+    throw new Error(`Inventory transaction error: ${error.message}`);
   }
 
   return mapInventoryMovementFromDb(data);
@@ -206,29 +200,28 @@ export async function validateAndProcessInvoiceInventory(
     }
   }
 
-  // 2. Process SALE movements
-  const movements = validItems.map((item) => ({
+  // 2. Process Sale transactions using live DB CHECK constraint value: 'Sale'
+  const transactions = validItems.map((item) => ({
     product_id: item.productId,
     country,
-    movement_type: "SALE",
-    quantity: -Math.abs(Number(item.quantity)), // SALE is deduction (-qty)
+    transaction_type: "Sale",
+    quantity: -Math.abs(Number(item.quantity)), // Sale is deduction (-qty)
     reference_type: "INVOICE",
     reference_id: invoiceId,
-    reason: `Confirmed Invoice ${invoiceNumber}`,
-    notes: `Automated inventory deduction for Invoice ${invoiceNumber}`,
-    created_by: userId,
+    remarks: `Confirmed Invoice ${invoiceNumber}`,
+    created_by: userId || null,
   }));
 
-  const { error: insErr } = await client.from("inventory_movements").insert(movements);
+  const { error: insErr } = await client.from("inventory_transactions").insert(transactions);
   if (insErr) {
-    console.error("Error inserting invoice inventory movements:", insErr);
+    console.error("Error inserting invoice inventory transactions:", insErr);
     throw new Error(`Failed to deduct inventory: ${insErr.message}`);
   }
 }
 
 /**
- * Reconcile inventory movements on Invoice editing.
- * Calculates net delta per product between previously posted SALE/SALE_RETURN movements for this invoice and the updated quantities.
+ * Reconcile inventory transactions on Invoice editing.
+ * Calculates net delta per product between previously posted Sale/Return transactions for this invoice and the updated quantities.
  */
 export async function reconcileInvoiceInventoryOnEdit(
   supabase: SupabaseClient,
@@ -240,23 +233,22 @@ export async function reconcileInvoiceInventoryOnEdit(
 ) {
   const client = createAdminClient() || supabase;
 
-  // Fetch previous inventory movements for this invoice
-  const { data: prevMovements, error: prevErr } = await client
-    .from("inventory_movements")
+  // Fetch previous inventory transactions for this invoice
+  const { data: prevTransactions, error: prevErr } = await client
+    .from("inventory_transactions")
     .select("product_id, quantity")
     .eq("reference_id", invoiceId);
 
   if (prevErr) {
-    console.error("Error fetching existing invoice movements for edit reconciliation:", prevErr);
+    console.error("Error fetching existing invoice transactions for edit reconciliation:", prevErr);
   }
 
   // Calculate previously net deducted quantity per product for this invoice
   const previousNetMap = new Map<string, number>();
-  (prevMovements || []).forEach((m: any) => {
+  (prevTransactions || []).forEach((m: any) => {
     const pid = String(m.product_id);
     const current = previousNetMap.get(pid) || 0;
-    // Note: quantity is negative for SALE, positive for SALE_RETURN
-    // Net deducted qty = -1 * sum(quantity)
+    // Note: quantity is negative for Sale, positive for Return
     previousNetMap.set(pid, current + (Number(m.quantity) || 0));
   });
 
@@ -272,12 +264,10 @@ export async function reconcileInvoiceInventoryOnEdit(
 
   // Determine all affected product IDs
   const allProductIds = new Set([...previousNetMap.keys(), ...newNetMap.keys()]);
-  const newMovementsToInsert: any[] = [];
+  const newTransactionsToInsert: any[] = [];
 
   for (const pid of Array.from(allProductIds)) {
-    // previousSum is negative (e.g. -5 for SALE of 5 units)
     const previousSum = previousNetMap.get(pid) || 0;
-    // previousQty is positive (e.g. 5)
     const previousQty = Math.abs(previousSum);
     const newQty = newNetMap.get(pid)?.qty || 0;
     const prodName = newNetMap.get(pid)?.name || "Product";
@@ -285,43 +275,41 @@ export async function reconcileInvoiceInventoryOnEdit(
     const diff = newQty - previousQty; // e.g. 8 - 5 = +3 (additional 3 units needed)
 
     if (diff > 0) {
-      // Need additional stock: check available stock first
+      // Need additional stock: check available stock first in target country
       const currentAvailable = await getProductStock(client, pid, country);
       if (currentAvailable < diff) {
         throw new Error(`Insufficient stock for ${prodName}. Additional quantity required: ${diff}, Available: ${currentAvailable}.`);
       }
-      newMovementsToInsert.push({
+      newTransactionsToInsert.push({
         product_id: pid,
         country,
-        movement_type: "SALE",
+        transaction_type: "Sale",
         quantity: -diff, // negative deduction
         reference_type: "INVOICE",
         reference_id: invoiceId,
-        reason: `Invoice ${invoiceNumber} quantity increase (+${diff})`,
-        notes: `Automated inventory adjustment on invoice edit`,
-        created_by: userId,
+        remarks: `Invoice ${invoiceNumber} quantity increase (+${diff})`,
+        created_by: userId || null,
       });
     } else if (diff < 0) {
-      // Quantity decreased: return stock via SALE_RETURN (+abs(diff))
+      // Quantity decreased: return stock via Return (+abs(diff))
       const returnQty = Math.abs(diff);
-      newMovementsToInsert.push({
+      newTransactionsToInsert.push({
         product_id: pid,
         country,
-        movement_type: "SALE_RETURN",
+        transaction_type: "Return",
         quantity: returnQty, // positive addition
         reference_type: "INVOICE",
         reference_id: invoiceId,
-        reason: `Invoice ${invoiceNumber} quantity reduction (-${returnQty})`,
-        notes: `Automated inventory return on invoice edit`,
-        created_by: userId,
+        remarks: `Invoice ${invoiceNumber} quantity reduction (-${returnQty})`,
+        created_by: userId || null,
       });
     }
   }
 
-  if (newMovementsToInsert.length > 0) {
-    const { error: insErr } = await client.from("inventory_movements").insert(newMovementsToInsert);
+  if (newTransactionsToInsert.length > 0) {
+    const { error: insErr } = await client.from("inventory_transactions").insert(newTransactionsToInsert);
     if (insErr) {
-      console.error("Error inserting edit reconciliation movements:", insErr);
+      console.error("Error inserting edit reconciliation transactions:", insErr);
       throw new Error(`Failed to reconcile invoice inventory: ${insErr.message}`);
     }
   }
@@ -329,7 +317,7 @@ export async function reconcileInvoiceInventoryOnEdit(
 
 /**
  * Reverse all inventory deductions when an invoice is cancelled or soft-deleted.
- * Creates SALE_RETURN (+quantity) movements so original SALE history is never erased.
+ * Creates Return (+quantity) transactions so original Sale history is never erased.
  */
 export async function reverseInvoiceInventoryOnCancel(
   supabase: SupabaseClient,
@@ -340,45 +328,44 @@ export async function reverseInvoiceInventoryOnCancel(
 ) {
   const client = createAdminClient() || supabase;
 
-  // Fetch all existing movements for this invoice
-  const { data: existingMovements, error: fetchErr } = await client
-    .from("inventory_movements")
+  // Fetch all existing transactions for this invoice
+  const { data: existingTransactions, error: fetchErr } = await client
+    .from("inventory_transactions")
     .select("product_id, quantity")
     .eq("reference_id", invoiceId);
 
-  if (fetchErr || !existingMovements || existingMovements.length === 0) {
+  if (fetchErr || !existingTransactions || existingTransactions.length === 0) {
     return;
   }
 
   // Calculate net remaining balance per product for this invoice
   const netMap = new Map<string, number>();
-  existingMovements.forEach((m: any) => {
+  existingTransactions.forEach((m: any) => {
     const pid = String(m.product_id);
     const current = netMap.get(pid) || 0;
     netMap.set(pid, current + (Number(m.quantity) || 0));
   });
 
-  const reversalMovements: any[] = [];
+  const reversalTransactions: any[] = [];
   netMap.forEach((netQuantity, pid) => {
     // If netQuantity is negative (e.g. -5), we reverse with +5
     if (netQuantity < 0) {
       const returnQty = Math.abs(netQuantity);
-      reversalMovements.push({
+      reversalTransactions.push({
         product_id: pid,
         country,
-        movement_type: "SALE_RETURN",
+        transaction_type: "Return",
         quantity: returnQty,
         reference_type: "INVOICE",
         reference_id: invoiceId,
-        reason: `Cancelled Invoice ${invoiceNumber}`,
-        notes: `Automated inventory reversal for cancelled/deleted invoice ${invoiceNumber}`,
-        created_by: userId,
+        remarks: `Cancelled Invoice ${invoiceNumber}`,
+        created_by: userId || null,
       });
     }
   });
 
-  if (reversalMovements.length > 0) {
-    const { error: revErr } = await client.from("inventory_movements").insert(reversalMovements);
+  if (reversalTransactions.length > 0) {
+    const { error: revErr } = await client.from("inventory_transactions").insert(reversalTransactions);
     if (revErr) {
       console.error("Error reversing inventory on invoice cancellation:", revErr);
       throw new Error(`Failed to reverse inventory for cancelled invoice: ${revErr.message}`);

@@ -16,10 +16,12 @@ import {
   CheckCircle2,
   SlidersHorizontal,
   History,
+  Download,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { ProductStockSummary, InventoryDashboardMetrics, UserCountry } from "@/types";
 import { PageHeader } from "@/components/PageHeader";
+import { generateProductsPdf } from "@/lib/utils/exportProductsPdf";
 
 export default function InventoryDashboardPage() {
   const { profile, permissions } = useAuth();
@@ -38,11 +40,29 @@ export default function InventoryDashboardPage() {
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPdfGenerating, setIsPdfGenerating] = useState<boolean>(false);
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [countryFilter, setCountryFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+
+  const handleDownloadPdf = () => {
+    setIsPdfGenerating(true);
+    try {
+      generateProductsPdf({
+        products: filteredSummaries,
+        metrics,
+        userRole: profile?.role,
+        userCountry: profile?.country,
+        searchFilter: searchTerm,
+      });
+    } catch (err) {
+      console.error("Error generating inventory PDF:", err);
+    } finally {
+      setIsPdfGenerating(false);
+    }
+  };
 
   // Modals state (Super Admin only)
   const [showOpeningModal, setShowOpeningModal] = useState<boolean>(false);
@@ -92,7 +112,6 @@ export default function InventoryDashboardPage() {
   const filteredSummaries = summaries.filter((item) => {
     const matchesSearch =
       item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.productCode && item.productCode.toLowerCase().includes(searchTerm.toLowerCase())) ||
       item.category.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesCountry =
@@ -157,6 +176,16 @@ export default function InventoryDashboardPage() {
         description="Real-time stock control, multi-country warehouse isolation & movement history."
         action={
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={isPdfGenerating || loading || summaries.length === 0}
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm transition shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
+              title="Download Full Products & Stock Inventory as PDF"
+            >
+              <Download className={`w-4 h-4 ${isPdfGenerating ? "animate-bounce" : ""}`} />
+              {isPdfGenerating ? "Generating PDF..." : "Download PDF"}
+            </button>
+
             <Link
               href="/inventory/movements"
               className="inline-flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] rounded-xl border border-white/20 bg-white/10 text-white hover:bg-white/20 text-sm font-bold transition cursor-pointer backdrop-blur-xs"
@@ -257,7 +286,7 @@ export default function InventoryDashboardPage() {
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search code, product, category..."
+            placeholder="Search product, category..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition duration-150"
@@ -265,6 +294,21 @@ export default function InventoryDashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+          {canViewGlobal && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-500">Country:</span>
+              <select
+                value={countryFilter}
+                onChange={(e) => setCountryFilter(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold"
+              >
+                <option value="ALL">All Countries</option>
+                <option value="UAE">UAE</option>
+                <option value="Oman">Oman</option>
+              </select>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-slate-400" />
             <span className="text-xs font-medium text-slate-500">Status:</span>
@@ -308,7 +352,6 @@ export default function InventoryDashboardPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3.5 px-4">Code</th>
                   <th className="py-3.5 px-4">Product Name</th>
                   <th className="py-3.5 px-4">Category</th>
                   <th className="py-3.5 px-4 text-right">Master Price</th>
@@ -321,9 +364,6 @@ export default function InventoryDashboardPage() {
               <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                 {filteredSummaries.map((item) => (
                   <tr key={item.productId} className="hover:bg-slate-50/50 transition duration-150">
-                    <td className="py-3 px-4 font-mono text-slate-500 font-semibold">
-                      {item.productCode || "—"}
-                    </td>
                     <td className="py-3 px-4 font-semibold text-slate-900">
                       {item.productName}
                     </td>
@@ -396,7 +436,7 @@ export default function InventoryDashboardPage() {
                 >
                   {summaries.map((p) => (
                     <option key={p.productId} value={p.productId}>
-                      {p.productName} ({p.productCode || "No Code"})
+                      {p.productName}
                     </option>
                   ))}
                 </select>
@@ -495,7 +535,7 @@ export default function InventoryDashboardPage() {
                 >
                   {summaries.map((p) => (
                     <option key={p.productId} value={p.productId}>
-                      {p.productName} ({p.productCode || "No Code"})
+                      {p.productName}
                     </option>
                   ))}
                 </select>

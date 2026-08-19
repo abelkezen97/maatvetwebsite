@@ -10,6 +10,7 @@ import { SearchInput } from "@/components/SearchInput";
 import { Invoice, Customer } from "@/types";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { useAuth } from "@/hooks/useAuth";
+import { Permissions } from "@/lib/auth/permissions";
 import { ActionDropdown, ActionOption } from "@/components/ActionDropdown";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 import { useLanguage } from "@/context/LanguageContext";
@@ -19,7 +20,7 @@ export default function InvoicesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const customerIdParam = searchParams.get("customerId");
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -185,12 +186,34 @@ export default function InvoicesPage() {
     {
       header: t("actionsCol") || "Actions",
       accessor: (row: Invoice) => {
+        const canEdit = profile ? Permissions.canEditInvoice(profile) : false;
+        const canDelete = profile ? Permissions.canSoftDeleteInvoice(profile) : false;
+
         const options: ActionOption[] = [
           { label: t("view") || "View Details", onClick: () => setSelectedInvoice(row) },
+        ];
+
+        if (canEdit) {
+          options.push({
+            label: t("edit") || "Edit Invoice",
+            onClick: () => router.push(`/invoices/new?edit=${encodeURIComponent(row.invoiceNumber || row.id)}`),
+          });
+        }
+
+        options.push(
           { label: t("print") || "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
           { label: "Download PDF", onClick: () => generatePDF(row) },
-          { label: "Share Invoice via WhatsApp", onClick: () => shareToWhatsApp(row) },
-        ];
+          { label: "Share Invoice via WhatsApp", onClick: () => shareToWhatsApp(row) }
+        );
+
+        if (canDelete) {
+          options.push({
+            label: t("delete") || "Delete Invoice",
+            onClick: () => handleDelete(row),
+            danger: true,
+          });
+        }
+
         return <ActionDropdown options={options} />;
       },
       className: "w-28 text-center",

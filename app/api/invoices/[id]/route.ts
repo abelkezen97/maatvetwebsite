@@ -47,6 +47,25 @@ export async function GET(
       error = res.error;
     }
 
+    if (!data) {
+      let numQuery = supabase
+        .from("invoices")
+        .select("*, invoice_items(*, products(name, unit, sku)), customers!left(company_name, doctor_name)")
+        .eq("invoice_number", id);
+
+      if (profile.role === "salesperson") {
+        numQuery = numQuery.eq("country", profile.country).eq("salesman_id", profile.id);
+      } else if (profile.role === "accountant") {
+        numQuery = numQuery.eq("country", profile.country);
+      }
+
+      const numRes = await numQuery.eq("is_deleted", false).maybeSingle();
+      if (numRes.data) {
+        data = numRes.data;
+        error = null;
+      }
+    }
+
     if (error || !data) {
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     }
@@ -99,9 +118,23 @@ export async function PATCH(
       .eq("id", id)
       .maybeSingle();
 
+    if (!existing) {
+      const numRes = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("invoice_number", id)
+        .maybeSingle();
+      if (numRes.data) {
+        existing = numRes.data;
+        fetchErr = null;
+      }
+    }
+
     if (fetchErr || !existing || existing.is_deleted) {
       return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     }
+
+    const targetInvoiceId = existing.id;
 
     if (profile.role === "salesperson") {
       if (existing.country !== profile.country || existing.salesman_id !== profile.id) {
@@ -131,7 +164,7 @@ export async function PATCH(
     let { data: updatedHeader, error: headerErr } = await supabase
       .from("invoices")
       .update(headerPayload)
-      .eq("id", id)
+      .eq("id", targetInvoiceId)
       .select()
       .maybeSingle();
 
@@ -141,7 +174,7 @@ export async function PATCH(
       const retryRes = await supabase
         .from("invoices")
         .update(headerPayload)
-        .eq("id", id)
+        .eq("id", targetInvoiceId)
         .select()
         .maybeSingle();
       updatedHeader = retryRes.data;
@@ -154,7 +187,7 @@ export async function PATCH(
     }
 
     if (payload.items && Array.isArray(payload.items)) {
-      await supabase.from("invoice_items").delete().eq("invoice_id", id);
+      await supabase.from("invoice_items").delete().eq("invoice_id", targetInvoiceId);
 
       const items: QuoteItem[] = payload.items;
       if (items.length > 0) {
@@ -179,7 +212,7 @@ export async function PATCH(
           const lineTotal = Math.max(0, qty * effectiveUnitPrice);
 
           return {
-            invoice_id: id,
+            invoice_id: targetInvoiceId,
             product_id: item.productId || null,
             quantity: qty,
             unit_price: unitPrice,
@@ -202,7 +235,7 @@ export async function PATCH(
     const { data: existingReceipt } = await supabase
       .from("receipts")
       .select("id, is_deleted, reference_number")
-      .eq("invoice_id", id)
+      .eq("invoice_id", targetInvoiceId)
       .eq("is_deleted", false)
       .maybeSingle();
 
@@ -226,7 +259,7 @@ export async function PATCH(
         await supabase.from("receipts").insert([{
           receipt_number: autoReceiptNumber,
           customer_id: newCustId,
-          invoice_id: id,
+          invoice_id: targetInvoiceId,
           amount_paid: actualPaymentAmount,
           payment_date: updatedHeader?.issue_date || existing.issue_date || new Date().toISOString().split("T")[0],
           payment_method: paymentMethod,
@@ -255,8 +288,8 @@ export async function PATCH(
       if (newStatus === "Cancelled") {
         await reverseInvoiceInventoryOnCancel(
           supabase,
-          id,
-          existing.invoice_number || id,
+          targetInvoiceId,
+          existing.invoice_number || targetInvoiceId,
           existing.country || profile.country,
           profile.id
         );
@@ -269,8 +302,8 @@ export async function PATCH(
 
         await reconcileInvoiceInventoryOnEdit(
           supabase,
-          id,
-          existing.invoice_number || id,
+          targetInvoiceId,
+          existing.invoice_number || targetInvoiceId,
           inventoryItems,
           existing.country || profile.country,
           profile.id
@@ -302,7 +335,7 @@ export async function PATCH(
     const { data: refreshedInvoice } = await supabase
       .from("invoices")
       .select("*, invoice_items(*, products(name, unit, sku)), customers!left(company_name, doctor_name)")
-      .eq("id", id)
+      .eq("id", targetInvoiceId)
       .maybeSingle();
 
     return NextResponse.json({ success: true, invoice: refreshedInvoice ? mapInvoiceFromDb(refreshedInvoice) : updatedHeader ? mapInvoiceFromDb(updatedHeader) : null });

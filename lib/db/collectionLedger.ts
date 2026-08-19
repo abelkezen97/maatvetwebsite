@@ -62,8 +62,8 @@ export async function calculateSalespersonCollectionLedger(
 
     const priorHoQuery = supabase
       .from("cash_handovers")
-      .select("amount, status")
-      .or(`salesperson_id.eq.${salespersonId},created_by.eq.${salespersonId}`)
+      .select("amount, status, reference_number, handover_number")
+      .eq("salesperson_id", salespersonId)
       .lt("handover_date", options.startDate);
 
     const [pRecRes, pExpRes, pHoRes] = await Promise.all([
@@ -72,7 +72,18 @@ export async function calculateSalespersonCollectionLedger(
       priorHoQuery,
     ]);
 
-    const priorCollections = (pRecRes.data || []).reduce(
+    let pRecData = pRecRes.data;
+    if (pRecRes.error) {
+      const fb = await supabase
+        .from("receipts")
+        .select("amount_paid")
+        .eq("created_by", salespersonId)
+        .eq("payment_method", "Cash")
+        .lt("payment_date", options.startDate);
+      if (fb.data) pRecData = fb.data;
+    }
+
+    const priorCollections = (pRecData || []).reduce(
       (sum: number, r: any) => sum + (Number(r.amount_paid) || 0),
       0
     );
@@ -89,11 +100,29 @@ export async function calculateSalespersonCollectionLedger(
       return isApproved && isCash ? sum + (Number(e.amount) || 0) : sum;
     }, 0);
 
-    const priorHandovers = (pHoRes.data || []).reduce((sum: number, h: any) => {
+    const isCarryForward = (h: any) =>
+      h.handover_type === "carry_forward" ||
+      (h.handover_number && String(h.handover_number).startsWith("CF")) ||
+      (h.reference_number && String(h.reference_number).startsWith("CF:"));
+
+    let pHoData = pHoRes.data;
+    if (pHoRes.error) {
+      const fallback = await supabase
+        .from("cash_handovers")
+        .select("amount, status, reference_number, handover_number")
+        .eq("salesperson_id", salespersonId)
+        .lt("handover_date", options.startDate);
+      if (fallback.data) pHoData = fallback.data;
+    }
+
+    const priorHandovers = (pHoData || []).reduce((sum: number, h: any) => {
       if (h.is_deleted === true) return sum;
+      if (isCarryForward(h)) return sum;
       const isApproved = (h.status || "Pending") === "Approved";
       return isApproved ? sum + (Number(h.amount) || 0) : sum;
     }, 0);
+
+    console.log(`[DEBUG CALCULATE PRIOR] startDate=${options.startDate} | priorCollections=${priorCollections} | priorExpenses=${priorExpenses} | priorHandovers=${priorHandovers} | pHoDataCount=${(pHoData||[]).length}`);
 
     priorNetBalance = priorCollections - priorExpenses - priorHandovers;
   }
@@ -200,10 +229,16 @@ export async function calculateSalespersonCollectionLedger(
     if (fallback.data) handoverRows = fallback.data;
   }
 
+  const isCarryForwardRow = (h: any) =>
+    h.handover_type === "carry_forward" ||
+    (h.handover_number && String(h.handover_number).startsWith("CF")) ||
+    (h.reference_number && String(h.reference_number).startsWith("CF:"));
+
   let pendingHandoversCount = 0;
   const approvedCashHandovers = handoverRows.filter((h: any) => {
     if (h.is_deleted === true) return false;
     if ((h.status || "Pending") === "Pending") pendingHandoversCount++;
+    if (isCarryForwardRow(h)) return false;
     return (h.status || "Pending") === "Approved";
   });
 
@@ -245,7 +280,7 @@ export async function calculateSalespersonCollectionLedger(
   interface RawStreamItem {
     date: string;
     timestamp: string;
-    type: "OPENING_BALANCE" | "CASH_RECEIPT" | "CASH_EXPENSE" | "CASH_HANDOVER";
+    type: "OPENING_BALANCE" | "CASH_RECEIPT" | "CASH_EXPENSE" | "CASH_HANDOVER" | "CASH_CARRY_FORWARD";
     description: string;
     referenceNo: string;
     paymentMethod: string;
@@ -304,18 +339,35 @@ export async function calculateSalespersonCollectionLedger(
     });
   });
 
-  // Approved Cash Handovers (OUT)
+  // Approved Cash Handovers to Admin (OUT)
   approvedCashHandovers.forEach((h: any) => {
     rawStream.push({
       date: h.handover_date || (h.created_at ? h.created_at.split("T")[0] : ""),
       timestamp: h.created_at || `${h.handover_date || new Date().toISOString().split("T")[0]}T00:00:00.000Z`,
       type: "CASH_HANDOVER",
-      description: `Cash Handover to Accountant${h.notes ? ` (${h.notes})` : ""}`,
+      description: `Cash Handover to Admin${h.notes ? ` (${h.notes})` : ""}`,
       referenceNo: h.handover_number || h.reference_number || "CH",
       paymentMethod: "Cash",
       inAmount: 0,
       outAmount: Number(h.amount) || 0,
     });
+  });
+
+  // Keep Cash / Carry Forward Log Items (Informational, net 0 change)
+  handoverRows.forEach((h: any) => {
+    if (h.is_deleted === true) return;
+    if (isCarryForwardRow(h) && (h.status || "Pending") === "Approved") {
+      rawStream.push({
+        date: h.handover_date || (h.created_at ? h.created_at.split("T")[0] : ""),
+        timestamp: h.created_at || `${h.handover_date || new Date().toISOString().split("T")[0]}T00:00:00.000Z`,
+        type: "CASH_CARRY_FORWARD",
+        description: `Keep Cash / Carry Forward${h.notes ? ` (${h.notes})` : ""}`,
+        referenceNo: h.handover_number || h.reference_number || "CF",
+        paymentMethod: "Cash",
+        inAmount: 0,
+        outAmount: 0,
+      });
+    }
   });
 
   // Sort Stream Oldest -> Newest to compute accurate running balance

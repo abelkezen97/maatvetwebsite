@@ -88,13 +88,13 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
             className="flex items-center justify-center w-12 h-12 rounded-xl bg-white/5 hover:bg-white/10 transition duration-150 focus:outline-none cursor-pointer"
             title="Expand Sidebar"
           >
-            <img src="/inverted.svg" alt="MAAT Logo" className="w-8 h-8 object-contain" />
+            <img src="/inverted.svg" alt="MAAT Logo" className="w-10 h-10 object-contain scale-110" />
           </button>
         ) : (
           <>
             <div className="flex items-center gap-3">
               <div className="p-1 bg-white/5 rounded-xl">
-                <img src="/inverted.svg" alt="MAAT Logo" className="w-9 h-9 object-contain" />
+                <img src="/inverted.svg" alt="MAAT Logo" className="w-12 h-12 object-contain scale-110" />
               </div>
               <div className="flex flex-col">
                 <span className="font-extrabold text-base tracking-wider text-white leading-none">

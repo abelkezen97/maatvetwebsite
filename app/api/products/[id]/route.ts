@@ -37,9 +37,9 @@ export async function GET(
 
     const product = mapProductFromDb(productRow);
 
-    // 2. Fetch Inventory Movements for this Product
+    // 2. Fetch Inventory Transactions for this Product
     let movementsQuery = queryClient
-      .from("inventory_movements")
+      .from("inventory_transactions")
       .select("*, profiles!created_by(full_name)")
       .eq("product_id", id)
       .order("created_at", { ascending: false });
@@ -72,7 +72,8 @@ export async function GET(
 
     const formattedMovements = (movementsData || []).map((m: any) => {
       const qty = Number(m.quantity) || 0;
-      const type = String(m.movement_type);
+      const rawType = String(m.transaction_type || m.movement_type || "Adjustment");
+      const typeUpper = rawType.toUpperCase().trim();
       const ctry = String(m.country);
 
       if (ctry === "Oman") {
@@ -81,12 +82,12 @@ export async function GET(
         uaeStock += qty;
       }
 
-      if (type === "OPENING_STOCK") openingStock += qty;
-      else if (type === "STOCK_RECEIVED") stockReceived += qty;
-      else if (type === "SALE") unitsSoldMovement += Math.abs(qty);
-      else if (type === "SALE_RETURN") salesReturns += qty;
-      else if (type === "ADJUSTMENT_IN") adjustmentsIn += qty;
-      else if (type === "ADJUSTMENT_OUT" || type === "DAMAGE" || type === "EXPIRY" || type === "TRANSFER_OUT") {
+      if (typeUpper === "OPENING STOCK" || typeUpper === "OPENING_STOCK") openingStock += qty;
+      else if (typeUpper === "PURCHASE" || typeUpper === "STOCK_RECEIVED") stockReceived += qty;
+      else if (typeUpper === "SALE") unitsSoldMovement += Math.abs(qty);
+      else if (typeUpper === "RETURN" || typeUpper === "SALE_RETURN") salesReturns += qty;
+      else if (typeUpper === "ADJUSTMENT" || typeUpper === "ADJUSTMENT_IN") adjustmentsIn += qty;
+      else if (typeUpper === "DAMAGE" || typeUpper === "EXPIRY" || typeUpper === "ADJUSTMENT_OUT" || typeUpper === "TRANSFER" || typeUpper === "TRANSFER_OUT") {
         adjustmentsOut += Math.abs(qty);
       }
 
@@ -94,26 +95,21 @@ export async function GET(
         id: String(m.id),
         date: m.created_at ? String(m.created_at).split("T")[0] : "",
         createdAt: m.created_at,
-        movementType: type,
+        movementType: rawType,
         quantity: qty,
         location: ctry,
         referenceType: m.reference_type || "",
         referenceId: m.reference_id || "",
-        reason: m.reason || "",
-        notes: m.notes || "",
+        reason: m.remarks || "",
+        notes: m.remarks || "",
         createdByName: (m.created_by && profileMap.get(m.created_by)) || m.profiles?.full_name || "System",
       };
     });
 
-    let totalStock = uaeStock + omanStock;
-    if (totalStock === 0 && (movementsData || []).length === 0 && productRow.stock_quantity) {
-      totalStock = Number(productRow.stock_quantity) || 0;
-      if (profile.country === "Oman") {
-        omanStock = totalStock;
-      } else {
-        uaeStock = totalStock;
-      }
-    }
+    // Authoritative stock is calculated strictly from transaction ledger
+    const totalStock = profile.role === "salesperson"
+      ? (profile.country === "Oman" ? omanStock : uaeStock)
+      : (uaeStock + omanStock);
 
     // 4. Fetch Confirmed Sales (Invoices + Invoice Items) for this Product
     let invItemsQuery = queryClient

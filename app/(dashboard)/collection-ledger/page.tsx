@@ -89,6 +89,7 @@ export default function CollectionLedgerPage() {
   const [hoDate, setHoDate] = useState(new Date().toISOString().split("T")[0]);
   const [hoNotes, setHoNotes] = useState("");
   const [hoRef, setHoRef] = useState("");
+  const [handoverMode, setHandoverMode] = useState<"admin_handover" | "carry_forward">("admin_handover");
 
   const canViewAll = profile?.role === "super_admin" || profile?.role === "accountant";
   const effectiveSalespersonId = canViewAll
@@ -984,68 +985,165 @@ export default function CollectionLedgerPage() {
       {/* Modal: Cash Handover */}
       {showHandoverModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-slate-900 text-base">Submit Cash Handover</h3>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Cash Handover & Retention</h3>
+                <p className="text-xs text-slate-500 mt-0.5">How would you like to handle your physical cash?</p>
+              </div>
               <button onClick={() => setShowHandoverModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
                 ✕
               </button>
             </div>
-            <form onSubmit={handleAddHandover} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Handover Amount ({currencySymbol}) *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  required
-                  placeholder="0.00"
-                  value={hoAmount}
-                  onChange={(e) => setHoAmount(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-900 focus:outline-none focus:border-[#1B2A4A]"
-                />
+
+            <form onSubmit={handleAddHandover} className="p-6 space-y-5">
+              {/* Option Selector Cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setHandoverMode("admin_handover")}
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    handoverMode === "admin_handover"
+                      ? "border-[#1B2A4A] bg-[#1B2A4A]/5 ring-2 ring-[#1B2A4A]/20"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Send className={`w-4 h-4 ${handoverMode === "admin_handover" ? "text-[#1B2A4A]" : "text-slate-400"}`} />
+                    <span className="text-xs font-bold text-slate-900">Hand Over to Admin</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    Deduct cash from your balance and transfer physical cash to Admin Ledger.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setHandoverMode("carry_forward")}
+                  className={`p-3.5 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                    handoverMode === "carry_forward"
+                      ? "border-emerald-600 bg-emerald-50/50 ring-2 ring-emerald-600/20"
+                      : "border-slate-200 bg-white hover:border-slate-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Wallet className={`w-4 h-4 ${handoverMode === "carry_forward" ? "text-emerald-600" : "text-slate-400"}`} />
+                    <span className="text-xs font-bold text-slate-900">Keep Cash / Carry Forward</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    Retain cash under your balance and carry it forward into next period's Opening Cash.
+                  </p>
+                </button>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Handover Date *
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={hoDate}
-                  onChange={(e) => setHoDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#1B2A4A]"
-                />
-              </div>
+              {handoverMode === "admin_handover" ? (
+                /* OPTION 1: HAND OVER TO ADMIN FORM */
+                <div className="space-y-4 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Handover Amount ({currencySymbol}) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      placeholder="0.00"
+                      value={hoAmount}
+                      onChange={(e) => setHoAmount(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-900 focus:outline-none focus:border-[#1B2A4A]"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Reference / Voucher # (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Voucher 104"
-                  value={hoRef}
-                  onChange={(e) => setHoRef(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#1B2A4A]"
-                />
-              </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Handover Date *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={hoDate}
+                      onChange={(e) => setHoDate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#1B2A4A]"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Notes / Handed to Whom
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Handed physical cash to Chief Accountant at Head Office"
-                  value={hoNotes}
-                  onChange={(e) => setHoNotes(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-[#1B2A4A]"
-                />
-              </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Reference / Voucher # (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Voucher 104"
+                      value={hoRef}
+                      onChange={(e) => setHoRef(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#1B2A4A]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Notes / Handed to Whom
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Handed physical cash to Chief Accountant at Head Office"
+                      value={hoNotes}
+                      onChange={(e) => setHoNotes(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-[#1B2A4A]"
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* OPTION 2: KEEP CASH / CARRY FORWARD FORM */
+                <div className="space-y-4 pt-1">
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800">
+                    <strong>Note:</strong> Retained cash remains under your cash in hand and will automatically be included in next period's Opening Cash.
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Retained Amount ({currencySymbol}) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      placeholder="0.00"
+                      value={hoAmount}
+                      onChange={(e) => setHoAmount(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-bold text-slate-900 focus:outline-none focus:border-emerald-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Effective Date *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={hoDate}
+                      onChange={(e) => setHoDate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-emerald-600"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Notes / Carry Forward Reason
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Retaining cash for tomorrow's field expenses and float"
+                      value={hoNotes}
+                      onChange={(e) => setHoNotes(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-emerald-600"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
@@ -1058,9 +1156,17 @@ export default function CollectionLedgerPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-[#1B2A4A] hover:bg-[#253963] text-white text-sm font-semibold rounded-xl shadow-sm cursor-pointer disabled:opacity-50"
+                  className={`px-5 py-2 text-white text-sm font-semibold rounded-xl shadow-sm cursor-pointer disabled:opacity-50 transition ${
+                    handoverMode === "admin_handover"
+                      ? "bg-[#1B2A4A] hover:bg-[#253963]"
+                      : "bg-emerald-600 hover:bg-emerald-700"
+                  }`}
                 >
-                  {submitting ? "Submitting..." : "Submit Handover"}
+                  {submitting
+                    ? "Submitting..."
+                    : handoverMode === "admin_handover"
+                    ? "Confirm Handover"
+                    : "Carry Forward"}
                 </button>
               </div>
             </form>

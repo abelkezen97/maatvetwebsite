@@ -1,17 +1,21 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { X, Printer, Download } from "lucide-react";
+import { X, Printer, Download, Pencil } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Invoice } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
+import { useAuth } from "@/hooks/useAuth";
+import { Permissions } from "@/lib/auth/permissions";
 
 interface InvoiceDetailModalProps {
   invoice: Invoice;
   onClose: () => void;
   onPrintThermal?: (invoice: Invoice) => void;
   onDownloadPDF?: (invoice: Invoice) => void;
+  onEdit?: (invoice: Invoice) => void;
 }
 
 export function InvoiceDetailModal({
@@ -19,10 +23,15 @@ export function InvoiceDetailModal({
   onClose,
   onPrintThermal,
   onDownloadPDF,
+  onEdit,
 }: InvoiceDetailModalProps) {
+  const router = useRouter();
+  const { profile } = useAuth();
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
   const [fullInvoice, setFullInvoice] = useState<Invoice>(invoice);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const canEdit = profile ? Permissions.canEditInvoice(profile) : false;
 
   useEffect(() => {
     setFullInvoice(invoice);
@@ -30,7 +39,8 @@ export function InvoiceDetailModal({
     // If invoice items are missing or empty, attempt fetching full record from API
     if (!invoice.items || invoice.items.length === 0) {
       setIsLoading(true);
-      fetch(`/api/invoices/${invoice.id}`)
+      const targetId = invoice.id || invoice.invoiceNumber;
+      fetch(`/api/invoices/${encodeURIComponent(targetId)}`)
         .then((res) => res.json())
         .then((data) => {
           if (data && !data.error && Array.isArray(data.items)) {
@@ -63,6 +73,14 @@ export function InvoiceDetailModal({
     } else {
       const doc = buildInvoicePDF(fullInvoice);
       doc.save(`MAAT-INVOICE-${fullInvoice.invoiceNumber}.pdf`);
+    }
+  };
+
+  const handleEdit = () => {
+    if (onEdit) {
+      onEdit(fullInvoice);
+    } else {
+      router.push(`/invoices/new?edit=${encodeURIComponent(fullInvoice.invoiceNumber || fullInvoice.id)}`);
     }
   };
 
@@ -248,6 +266,15 @@ export function InvoiceDetailModal({
         {/* Modal Footer / Touch-friendly Action Buttons */}
         <div className="flex flex-wrap items-center justify-between border-t border-slate-100 pt-4 mt-5 gap-3">
           <div className="flex items-center gap-2">
+            {canEdit && (
+              <button
+                onClick={handleEdit}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold transition cursor-pointer"
+              >
+                <Pencil className="w-4 h-4 text-amber-700" />
+                {t("edit") || "Edit Invoice"}
+              </button>
+            )}
             <button
               onClick={handlePrint}
               className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer"
