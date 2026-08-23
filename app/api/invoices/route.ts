@@ -56,13 +56,10 @@ export async function GET(request: Request) {
 
     let query = queryClient
       .from("invoices")
-      .select("*, invoice_items(*, products(name, unit, sku)), customers!left(company_name, doctor_name)")
+      .select("*, invoice_items(*, products(name, unit, sku)), customers!left(company_name, doctor_name, assigned_salesman_id)")
       .order("created_at", { ascending: false });
 
-    // Salesperson filters by assigned country and own salesman_id
-    if (profile.role === "salesperson") {
-      query = query.eq("country", profile.country).eq("salesman_id", profile.id);
-    } else if (profile.role === "accountant") {
+    if (profile.role === "accountant") {
       query = query.eq("country", profile.country);
     }
 
@@ -80,12 +77,10 @@ export async function GET(request: Request) {
     if (error && (error.message.includes("is_deleted") || error.message.includes("country"))) {
       let fallbackQuery = queryClient
         .from("invoices")
-        .select("*, invoice_items(*, products(name, unit, sku)), customers!left(company_name, doctor_name)")
+        .select("*, invoice_items(*, products(name, unit, sku)), customers!left(company_name, doctor_name, assigned_salesman_id)")
         .order("created_at", { ascending: false });
 
-      if (profile.role === "salesperson") {
-        fallbackQuery = fallbackQuery.eq("country", profile.country).eq("salesman_id", profile.id);
-      } else if (profile.role === "accountant") {
+      if (profile.role === "accountant") {
         fallbackQuery = fallbackQuery.eq("country", profile.country);
       }
       if (customerId) fallbackQuery = fallbackQuery.eq("customer_id", customerId);
@@ -99,6 +94,18 @@ export async function GET(request: Request) {
     if (error) {
       console.error("Failed to load Supabase invoices:", error);
       return NextResponse.json([]);
+    }
+
+    // Apply salesperson country & ownership/creator filter inclusively
+    if (profile.role === "salesperson" && data && Array.isArray(data)) {
+      data = data.filter((row: any) => {
+        const matchesCountry = (row.country || profile.country) === profile.country;
+        const matchesSalesman =
+          row.salesman_id === profile.id ||
+          row.created_by === profile.id ||
+          row.customers?.assigned_salesman_id === profile.id;
+        return matchesCountry && matchesSalesman;
+      });
     }
 
     const { data: profileRows } = await queryClient.from("profiles").select("id, full_name");

@@ -110,10 +110,10 @@ export default function InvoicesPage() {
     }
 
     return [...list].sort((a, b) => {
-      const timeA = a.date ? new Date(a.date).getTime() : 0;
-      const timeB = b.date ? new Date(b.date).getTime() : 0;
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.date ? new Date(a.date).getTime() : 0);
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.date ? new Date(b.date).getTime() : 0);
       if (timeA !== timeB) return timeB - timeA;
-      return b.invoiceNumber.localeCompare(a.invoiceNumber);
+      return b.invoiceNumber.localeCompare(a.invoiceNumber, undefined, { numeric: true, sensitivity: "base" });
     });
   }, [invoices, searchQuery]);
 
