@@ -1,4 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/utils/supabase/admin";
 
 /**
  * Generates the next guaranteed unused document number for a given entity table.
@@ -14,6 +15,7 @@ export async function generateNextDocumentNumber(
   padLength: number = 6
 ): Promise<string> {
   const year = new Date().getFullYear();
+  const queryClient = createAdminClient() || supabase;
 
   let yearPrefix = "";
   let minThreshold = 0;
@@ -27,8 +29,8 @@ export async function generateNextDocumentNumber(
     yearPrefix = `${prefix}-${year}-`;
   }
 
-  // Fetch all existing numbers for the column
-  const { data } = await supabase
+  // Fetch all existing numbers for the column across the entire database
+  const { data } = await queryClient
     .from(table)
     .select(column);
 
@@ -40,7 +42,7 @@ export async function generateNextDocumentNumber(
       if (typeof val === "string" && !val.toUpperCase().includes("TEST")) {
         let parsed = NaN;
         if (prefix === "D" || table === "invoices") {
-          // Match D0349, D0351, D0352, D0353, D0354
+          // Match D0349, D0351, D0352, D0353, D0354, D0355
           const matchD = val.match(/^D(\d+)$/i);
           if (matchD && matchD[1]) {
             parsed = parseInt(matchD[1], 10);
@@ -72,7 +74,7 @@ export async function generateNextDocumentNumber(
   // Loop until candidate does not exist anywhere in DB
   let isUnique = false;
   while (!isUnique) {
-    const { data: existing } = await supabase
+    const { data: existing } = await queryClient
       .from(table)
       .select("id")
       .eq(column, candidate)
