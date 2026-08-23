@@ -191,6 +191,107 @@ export default function ProductsPage() {
     });
   }, [products, searchQuery, selectedCategory, selectedBrand, selectedStatus]);
 
+  // Handlers for Add/Edit/Delete product
+  const handleOpenAddModal = () => {
+    setEditingProduct(null);
+    setFormName("");
+    setFormProductCode("");
+    setFormSku("");
+    setFormBarcode("");
+    setFormCategory("General");
+    setFormCategoryId("");
+    setFormBrand("");
+    setFormUnit("Item");
+    setFormDescription("");
+    setFormSellingPrice("");
+    setFormPrice10("");
+    setFormPrice50("");
+    setFormPrice100("");
+    setFormIsActive(true);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (product: Product) => {
+    setEditingProduct(product);
+    setFormName(product.name || "");
+    setFormProductCode(product.productCode || "");
+    setFormSku(product.sku || "");
+    setFormBarcode(product.barcode || "");
+    setFormCategory(product.category || "General");
+    setFormCategoryId(product.categoryId || "");
+    setFormBrand(product.brand || "");
+    setFormUnit(product.unit || "Item");
+    setFormDescription(product.description || "");
+    setFormSellingPrice(String(product.price ?? product.sellingPrice ?? ""));
+    setFormPrice10(product.price10 ? String(product.price10) : "");
+    setFormPrice50(product.price50 ? String(product.price50) : "");
+    setFormPrice100(product.price100 ? String(product.price100) : "");
+    setFormIsActive(product.isAvailable !== false);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formName.trim() || isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      const payload = {
+        name: formName.trim(),
+        productCode: formProductCode.trim(),
+        sku: formSku.trim(),
+        barcode: formBarcode.trim(),
+        category: formCategory,
+        categoryId: formCategoryId || undefined,
+        brand: formBrand.trim(),
+        unit: formUnit,
+        description: formDescription.trim(),
+        sellingPrice: Number(formSellingPrice) || 0,
+        price10: formPrice10 ? Number(formPrice10) : undefined,
+        price50: formPrice50 ? Number(formPrice50) : undefined,
+        price100: formPrice100 ? Number(formPrice100) : undefined,
+        isAvailable: formIsActive,
+      };
+
+      const url = editingProduct ? `/api/products/${editingProduct.id}` : "/api/products";
+      const method = editingProduct ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setIsModalOpen(false);
+        await loadData();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to save product");
+      }
+    } catch (err: any) {
+      console.error("Error saving product:", err);
+      alert(err.message || "Failed to save product");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!confirm("Are you sure you want to delete this product?")) return;
+    try {
+      const res = await fetch(`/api/products/${productId}`, { method: "DELETE" });
+      if (res.ok) {
+        await loadData();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to delete product");
+      }
+    } catch (err: any) {
+      console.error("Failed to delete product:", err);
+    }
+  };
+
   // Table Columns Definition
   const columns = [
     {
@@ -257,9 +358,35 @@ export default function ProductsPage() {
           >
             <Eye className="w-4 h-4" />
           </Link>
+          {isSuperAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenEditModal(row);
+                }}
+                title="Edit Product"
+                className="p-2 rounded-xl text-slate-500 hover:text-accent hover:bg-slate-100 transition duration-150 cursor-pointer"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteProduct(row.id);
+                }}
+                title="Delete Product"
+                className="p-2 rounded-xl text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition duration-150 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       ),
-      className: "w-28 text-center",
+      className: "w-36 text-center",
     },
   ];
 
@@ -270,6 +397,16 @@ export default function ProductsPage() {
         description={t("productsDesc")}
         action={
           <div className="flex flex-wrap items-center gap-3">
+            {isSuperAdmin && (
+              <button
+                onClick={handleOpenAddModal}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-[#61989B] hover:bg-[#4b7a7c] text-white font-extrabold text-sm transition shadow-md shadow-[#61989B]/20 cursor-pointer"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                Add Product
+              </button>
+            )}
+
             <button
               onClick={handleDownloadPdf}
               disabled={isPdfGenerating || loading || products.length === 0}
@@ -315,6 +452,239 @@ export default function ProductsPage() {
           />
         )}
       </div>
+
+      {/* Add / Edit Product Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-2xl bg-white rounded-2xl p-6 shadow-2xl relative text-left border border-slate-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+              <div className="flex items-center gap-3 text-[#1B2A4A]">
+                <div className="p-2 bg-slate-100 rounded-xl">
+                  <Package className="w-5 h-5 text-[#1B2A4A]" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  {editingProduct ? "Edit Product" : "Add New Product"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProduct} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Product Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Tricodex 50ml"
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    SKU Code
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TRICO-050"
+                    value={formSku}
+                    onChange={(e) => setFormSku(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Barcode
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 629100029301"
+                    value={formBarcode}
+                    onChange={(e) => setFormBarcode(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Category
+                  </label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => {
+                      setFormCategory(e.target.value);
+                      const matched = categories.find((c) => c.name === e.target.value);
+                      setFormCategoryId(matched?.id || "");
+                    }}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition"
+                  >
+                    <option value="General">General</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Unit Type
+                  </label>
+                  <select
+                    value={formUnit}
+                    onChange={(e) => setFormUnit(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition"
+                  >
+                    <option value="Item">Item</option>
+                    <option value="Vial">Vial</option>
+                    <option value="Bottle">Bottle</option>
+                    <option value="Box">Box</option>
+                    <option value="Pack">Pack</option>
+                    <option value="Kg">Kg</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Brand
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Maat Vet"
+                    value={formBrand}
+                    onChange={(e) => setFormBrand(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Selling Price (AED) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    placeholder="0.00"
+                    value={formSellingPrice}
+                    onChange={(e) => setFormSellingPrice(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition font-bold"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+                  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                    Tiered Volume Pricing (Optional)
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                        10+ Qty Price
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formPrice10}
+                        onChange={(e) => setFormPrice10(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                        50+ Qty Price
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formPrice50}
+                        onChange={(e) => setFormPrice50(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                        100+ Qty Price
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={formPrice100}
+                        onChange={(e) => setFormPrice100(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Enter product description or specifications..."
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition"
+                  />
+                </div>
+
+                <div className="sm:col-span-2 flex items-center justify-between pt-2">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Available in Catalog
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFormIsActive(!formIsActive)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      formIsActive ? "bg-[#61989B]" : "bg-slate-200"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        formIsActive ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-slate-100 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="w-1/2 py-3 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-1/2 py-3 text-sm font-bold text-white bg-[#1B2A4A] rounded-xl hover:bg-[#15223c] transition disabled:opacity-50"
+                >
+                  {isSubmitting ? "Saving..." : editingProduct ? "Update Product" : "Create Product"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
