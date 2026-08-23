@@ -436,18 +436,42 @@ export async function POST(request: Request) {
           break;
         }
 
-        if (
+        console.error("INVOICE INSERT FAILED:", {
+          attempt: insertAttempts,
+          invoice_number: candidateNum,
+          code: insertErr?.code,
+          message: insertErr?.message,
+          details: insertErr?.details,
+          hint: insertErr?.hint,
+          salesperson_id: finalSalesmanId,
+          user_id: profile.id,
+          user_role: profile.role,
+          country: headerPayload.country,
+          operation: "INSERT_INVOICE_HEADER",
+        });
+
+        const isCollision =
           insertErr?.code === "23505" ||
           insertErr?.message?.toLowerCase().includes("unique constraint") ||
           insertErr?.message?.toLowerCase().includes("already exists") ||
-          insertErr?.message?.toLowerCase().includes("duplicate key")
-        ) {
-          console.warn(`[Invoice Concurrency] Collision on ${candidateNum}, retrying attempt ${insertAttempts + 1}...`);
+          insertErr?.message?.toLowerCase().includes("duplicate key");
+
+        if (isCollision) {
+          console.warn(`[Invoice Concurrency Collision] Candidate ${candidateNum} already exists, retrying attempt ${insertAttempts + 1}...`);
           continue;
         }
 
-        console.error("Supabase insert invoice error:", insertErr);
-        throw insertErr;
+        // Return exact database error immediately for non-collision errors
+        return NextResponse.json(
+          {
+            error: `Invoice Insert Failed: ${insertErr?.message || "Database insert error"}`,
+            code: insertErr?.code,
+            details: insertErr?.details,
+            hint: insertErr?.hint,
+            attempted_number: candidateNum,
+          },
+          { status: 400 }
+        );
       }
 
       if (!inserted) {
