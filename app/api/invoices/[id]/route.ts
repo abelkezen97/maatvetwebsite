@@ -137,14 +137,14 @@ export async function PATCH(
     const targetInvoiceId = existing.id;
 
     if (profile.role === "salesperson") {
-      if (existing.country !== profile.country || existing.salesman_id !== profile.id) {
-        return NextResponse.json({ error: "Forbidden: Cannot edit another salesperson's invoice" }, { status: 403 });
-      }
+      return NextResponse.json({ error: "Forbidden: Only Admin/Super Admin can edit invoices or modify payment status" }, { status: 403 });
     } else if (profile.role === "accountant" && existing.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot edit invoice in another country" }, { status: 403 });
     }
 
     const oldCustomerId = existing.customer_id;
+    const oldStatus = existing.status || "Paid";
+    const oldGrandTotal = Number(existing.grand_total || 0);
 
     const payload = await request.json();
     const headerPayload = mapInvoiceToDb(payload);
@@ -160,6 +160,7 @@ export async function PATCH(
     delete headerPayload.deleted_by;
 
     headerPayload.updated_at = new Date().toISOString();
+    headerPayload.updated_by = profile.id;
 
     let { data: updatedHeader, error: headerErr } = await supabase
       .from("invoices")
@@ -170,7 +171,6 @@ export async function PATCH(
 
     if (headerErr && (headerErr.message.includes("updated_by") || headerErr.message.includes("status"))) {
       delete headerPayload.updated_by;
-      delete headerPayload.status;
       const retryRes = await supabase
         .from("invoices")
         .update(headerPayload)
@@ -225,23 +225,26 @@ export async function PATCH(
       }
     }
 
-    // AUTOMATIC RECEIPT RECONCILIATION ON INVOICE EDIT
+    // AUTOMATIC RECEIPT & FINANCIAL RECONCILIATION ON INVOICE EDIT
     const newStatus = updatedHeader?.status || payload.status || existing.status;
     const newGrandTotal = updatedHeader?.grand_total !== undefined ? Number(updatedHeader.grand_total) : Number(existing.grand_total || 0);
     const newCustId = updatedHeader?.customer_id || payload.customerId || existing.customer_id;
     const paymentMethod = payload.paymentMethod || "Cash";
     const actualPaymentAmount = Number(payload.amountPaid ?? payload.amountCollected ?? (newStatus === "Paid" ? newGrandTotal : 0));
 
+    // Fetch existing active receipt for this invoice
     const { data: existingReceipt } = await supabase
       .from("receipts")
-      .select("id, is_deleted, reference_number")
+      .select("id, amount_paid, is_deleted, reference_number")
       .eq("invoice_id", targetInvoiceId)
       .eq("is_deleted", false)
       .maybeSingle();
 
+    let receiptActionLog = "none";
+
     if (newStatus === "Paid" && actualPaymentAmount > 0) {
       if (existingReceipt?.id) {
-        // Update existing receipt with new total
+        // CASE 3: PAID -> PAID or CREDIT -> PAID (with existing receipt)
         await supabase
           .from("receipts")
           .update({
@@ -252,8 +255,9 @@ export async function PATCH(
             updated_at: new Date().toISOString(),
           })
           .eq("id", existingReceipt.id);
+        receiptActionLog = `Updated receipt ${existingReceipt.id} amount to AED ${actualPaymentAmount}`;
       } else {
-        // Create automatic receipt for newly Paid invoice
+        // CASE 2: CREDIT -> PAID
         const generateNextDocumentNumber = (await import("@/lib/db/sequence")).generateNextDocumentNumber;
         const autoReceiptNumber = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
         await supabase.from("receipts").insert([{
@@ -269,9 +273,10 @@ export async function PATCH(
           created_by: profile.id,
           updated_by: profile.id,
         }]);
+        receiptActionLog = `Generated new receipt ${autoReceiptNumber} for AED ${actualPaymentAmount}`;
       }
     } else if ((newStatus === "Credit" || actualPaymentAmount <= 0) && existingReceipt?.id) {
-      // Soft-delete automatic receipt if status converted back to Credit or payment amount is 0
+      // CASE 1: PAID -> CREDIT
       await supabase
         .from("receipts")
         .update({
@@ -281,6 +286,7 @@ export async function PATCH(
           updated_by: profile.id,
         })
         .eq("id", existingReceipt.id);
+      receiptActionLog = `Soft-deleted/reversed receipt ${existingReceipt.id}`;
     }
 
     // RECONCILE INVENTORY ON INVOICE UPDATE / CANCELLATION
@@ -314,6 +320,7 @@ export async function PATCH(
       return NextResponse.json({ error: invErr.message || "Failed to reconcile inventory" }, { status: 400 });
     }
 
+    // RECONCILE CUSTOMER BALANCE
     const newCustomerId = updatedHeader?.customer_id || oldCustomerId;
     if (newCustomerId) {
       try {
@@ -330,6 +337,26 @@ export async function PATCH(
       } catch (e: any) {
         console.error("Failed to recalculate old customer balance on invoice edit:", e);
       }
+    }
+
+    // AUDIT LOGGING
+    try {
+      await supabase.from("activity_logs").insert([{
+        user_id: profile.id,
+        entity_type: "INVOICE_CORRECTION",
+        entity_id: targetInvoiceId,
+        details: JSON.stringify({
+          invoiceNumber: existing.invoice_number,
+          oldStatus,
+          newStatus,
+          oldGrandTotal,
+          newGrandTotal,
+          receiptAction: receiptActionLog,
+          timestamp: new Date().toISOString(),
+        }),
+      }]);
+    } catch (auditErr) {
+      // Non-blocking audit log catch
     }
 
     const { data: refreshedInvoice } = await supabase

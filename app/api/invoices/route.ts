@@ -332,13 +332,13 @@ export async function POST(request: Request) {
       }
     }
 
-    const invPrefix = isKaleemullah ? "D" : "INV";
-    const invPad = isKaleemullah ? 4 : 6;
+    const invPrefix = "D";
+    const invPad = 4;
 
     if (!isEditMode) {
-      // Server-side reference generation: Dr. Kaleemullah or Salesperson ALWAYS gets server-generated reference
-      if (isKaleemullah || profile.role === "salesperson" || !invoiceNumber) {
-        invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", invPrefix, invPad);
+      // Server-side reference generation: generate D prefix invoice number (e.g. D0355)
+      if (profile.role === "salesperson" || !invoiceNumber || invoiceNumber.startsWith("INV-")) {
+        invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", "D", 4);
       } else {
         const { data: existingByNum } = await supabase
           .from("invoices")
@@ -347,7 +347,7 @@ export async function POST(request: Request) {
           .maybeSingle();
 
         if (existingByNum?.id) {
-          invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", invPrefix, invPad);
+          invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", "D", 4);
         }
       }
       headerPayload.invoice_number = invoiceNumber;

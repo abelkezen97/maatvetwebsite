@@ -385,7 +385,10 @@ export function mapInvoiceToDb(invoice: Partial<Invoice>): Record<string, any> {
   if (invoice.discountTotal !== undefined) payload.discount_total = Number(invoice.discountTotal);
   if (invoice.taxTotal !== undefined) payload.vat_total = Number(invoice.taxTotal);
   if (invoice.grandTotal !== undefined) payload.grand_total = Number(invoice.grandTotal);
-  if (invoice.status !== undefined) payload.status = invoice.status;
+  if (invoice.status !== undefined) {
+    payload.status = invoice.status;
+    payload.payment_status = invoice.status;
+  }
   if (invoice.creditDays !== undefined) payload.credit_days = Number(invoice.creditDays);
   if (invoice.notes !== undefined) payload.notes = invoice.notes;
   if (invoice.country !== undefined) payload.country = invoice.country === "Oman" ? "Oman" : "UAE";

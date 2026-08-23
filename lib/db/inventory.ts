@@ -278,7 +278,8 @@ export async function reconcileInvoiceInventoryOnEdit(
       // Need additional stock: check available stock first in target country
       const currentAvailable = await getProductStock(client, pid, country);
       if (currentAvailable < diff) {
-        throw new Error(`Insufficient stock for ${prodName}. Additional quantity required: ${diff}, Available: ${currentAvailable}.`);
+        const effectiveAvailable = currentAvailable + previousQty;
+        throw new Error(`Insufficient stock for ${prodName}. Available quantity: ${effectiveAvailable}.`);
       }
       newTransactionsToInsert.push({
         product_id: pid,

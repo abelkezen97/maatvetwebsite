@@ -33,6 +33,8 @@ function NewInvoiceForm() {
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItemWithManual[]>([]);
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<"Paid" | "Credit">("Paid");
+  const [originalInvoiceStatus, setOriginalInvoiceStatus] = useState<"Paid" | "Credit" | "Cancelled">("Paid");
+  const [showReconcileConfirmModal, setShowReconcileConfirmModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Bank Transfer" | "Cheque" | "Other">("Cash");
   const [creditDays, setCreditDays] = useState<number | string>(30);
   
@@ -147,37 +149,29 @@ function NewInvoiceForm() {
     return false;
   }, [user, profile]);
 
-  const computeNextInvoiceNumber = (list: Invoice[], isKaleem: boolean = isKaleemullah) => {
-    if (isKaleem) {
-      let maxSeq = 352;
-      (list || []).forEach((inv) => {
-        if (!inv.invoiceNumber) return;
-        const match = inv.invoiceNumber.match(/^D(\d+)$/i);
-        if (match && match[1]) {
-          const num = parseInt(match[1], 10);
-          if (!isNaN(num) && num > maxSeq) maxSeq = num;
-        }
-      });
-      return `D${String(maxSeq + 1).padStart(4, "0")}`;
-    }
-
-    const dateSuffix = new Date().getFullYear();
-    let maxSeq = 0;
+  const computeNextInvoiceNumber = (list: Invoice[], _isKaleem?: boolean) => {
+    let maxSeq = 352;
     (list || []).forEach((inv) => {
       if (!inv.invoiceNumber) return;
-      const match = inv.invoiceNumber.match(/^INV-\d{4}-(\d+)$/i);
-      if (match && match[1]) {
-        const num = parseInt(match[1], 10);
+      const matchD = inv.invoiceNumber.match(/^D(\d+)$/i);
+      if (matchD && matchD[1]) {
+        const num = parseInt(matchD[1], 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+      const matchInv = inv.invoiceNumber.match(/^INV-\d{4}-(\d+)$/i);
+      if (matchInv && matchInv[1]) {
+        const num = parseInt(matchInv[1], 10);
         if (!isNaN(num) && num < 1000000 && num > maxSeq) maxSeq = num;
       }
     });
-    return `INV-${dateSuffix}-${String(maxSeq + 1).padStart(6, "0")}`;
+    return `D${String(maxSeq + 1).padStart(4, "0")}`;
   };
 
   const populateFormWithInvoice = (existing: Invoice) => {
     setInvoiceNumber(existing.invoiceNumber);
     setSelectedCustomerId(existing.customerId);
     setStatus(existing.status);
+    setOriginalInvoiceStatus(existing.status);
     setCreditDays(existing.creditDays || 30);
     setNotes(existing.notes || "");
     
@@ -481,19 +475,44 @@ function NewInvoiceForm() {
     setInvoiceItems(updated);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!selectedCustomerId || invoiceItems.length === 0 || isSaving) return;
 
-    // Validate available stock before posting invoice
+    if (editInvoiceNumber && originalInvoiceStatus === "Paid" && status === "Credit" && !showReconcileConfirmModal) {
+      setShowReconcileConfirmModal(true);
+      return;
+    }
+
+    await executeSave();
+  };
+
+  const executeSave = async () => {
+    // Validate available stock before posting invoice (accounting for restored quantities on edit)
     const targetCountry = selectedCustomer?.country || user?.country || "UAE";
+    const editingInv = editInvoiceNumber
+      ? invoicesList.find((i) => i.invoiceNumber === editInvoiceNumber || i.id === editInvoiceNumber)
+      : null;
+
+    const originalQtyMap = new Map<string, number>();
+    if (editingInv && Array.isArray(editingInv.items)) {
+      editingInv.items.forEach((it) => {
+        if (it.productId) {
+          originalQtyMap.set(String(it.productId), (originalQtyMap.get(String(it.productId)) || 0) + Number(it.quantity));
+        }
+      });
+    }
+
     for (const item of invoiceItems) {
       if (item.productId) {
         const stocks = stockMap.get(String(item.productId));
-        const available = targetCountry === "Oman" ? (stocks?.oman ?? 0) : (stocks?.uae ?? 0);
+        const availableInDb = targetCountry === "Oman" ? (stocks?.oman ?? 0) : (stocks?.uae ?? 0);
+        const originalQtyInThisInv = originalQtyMap.get(String(item.productId)) || 0;
+        const restoredAvailable = availableInDb + originalQtyInThisInv;
         const requested = Number(item.quantity) || 0;
-        if (requested > available) {
-          setErrorMessage(`Insufficient stock for ${item.productName}. Available quantity: ${available}.`);
+
+        if (requested > restoredAvailable) {
+          setErrorMessage(`Insufficient stock for ${item.productName}. Available quantity: ${restoredAvailable}.`);
           return;
         }
       }
@@ -1243,6 +1262,40 @@ function NewInvoiceForm() {
                 </form>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Reconcile Paid -> Credit Confirmation Modal */}
+      {showReconcileConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl relative text-left border border-amber-200">
+            <div className="flex items-center gap-3 text-amber-600 mb-3">
+              <span className="p-2 bg-amber-50 rounded-xl text-lg">⚠️</span>
+              <h3 className="text-base font-bold text-slate-900">Confirm Payment Correction</h3>
+            </div>
+            <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+              Changing this invoice from <strong>Paid</strong> to <strong>Credit</strong> will reverse the associated receipt and collection entry and update the customer's outstanding balance.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowReconcileConfirmModal(false)}
+                className="w-1/2 py-2.5 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReconcileConfirmModal(false);
+                  executeSave();
+                }}
+                className="w-1/2 py-2.5 text-xs font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition"
+              >
+                Confirm & Reconcile
+              </button>
+            </div>
           </div>
         </div>
       )}

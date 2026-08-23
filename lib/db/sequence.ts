@@ -18,11 +18,11 @@ export async function generateNextDocumentNumber(
   let yearPrefix = "";
   let minThreshold = 0;
 
-  if (prefix === "D") {
-    // Dr. Kaleemullah prefix: D0353, D0354, D0355...
+  if (prefix === "D" || table === "invoices") {
+    // Invoice sequence prefix "D": D0353, D0354, D0355...
     yearPrefix = "D";
     padLength = 4;
-    minThreshold = 352; // Next sequence starts at 353 (D0353)
+    minThreshold = 352; // Sequence starts after 352 (D0353, D0354...)
   } else {
     yearPrefix = `${prefix}-${year}-`;
   }
@@ -39,14 +39,20 @@ export async function generateNextDocumentNumber(
       const val = row[column];
       if (typeof val === "string" && !val.toUpperCase().includes("TEST")) {
         let parsed = NaN;
-        if (prefix === "D") {
-          // Match D0349, D0351, D0352, D0353
-          const match = val.match(/^D(\d+)$/i);
-          if (match && match[1]) {
-            parsed = parseInt(match[1], 10);
+        if (prefix === "D" || table === "invoices") {
+          // Match D0349, D0351, D0352, D0353, D0354
+          const matchD = val.match(/^D(\d+)$/i);
+          if (matchD && matchD[1]) {
+            parsed = parseInt(matchD[1], 10);
+          } else {
+            // Match legacy INV-2026-000350
+            const matchInv = val.match(/^INV-\d{4}-(\d+)$/i);
+            if (matchInv && matchInv[1]) {
+              parsed = parseInt(matchInv[1], 10);
+            }
           }
         } else {
-          // Match INV-2026-000350
+          // Match standard prefix format (e.g. QT-2026-000001)
           const match = val.match(new RegExp(`^${prefix}-${year}-(\\d+)$`, "i"));
           if (match && match[1]) {
             parsed = parseInt(match[1], 10);
