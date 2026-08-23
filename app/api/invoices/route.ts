@@ -406,46 +406,48 @@ export async function POST(request: Request) {
       // ON INSERT: STAMP COUNTRY AND CREATED_BY WITH CONCURRENCY RETRY LOOP
       let inserted: any = null;
       let insertAttempts = 0;
-      const maxAttempts = 5;
+      const maxAttempts = 10;
 
       while (!inserted && insertAttempts < maxAttempts) {
         insertAttempts++;
-        if (insertAttempts > 1) {
-          headerPayload.invoice_number = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", invPrefix, invPad);
-          invoiceNumber = headerPayload.invoice_number;
-        }
 
-        let { data: createdData, error: insertErr } = await supabase
+        const candidateNum = await generateNextDocumentNumber(
+          supabase,
+          "invoices",
+          "invoice_number",
+          invPrefix,
+          invPad
+        );
+
+        const attemptPayload = {
+          ...headerPayload,
+          invoice_number: candidateNum,
+        };
+
+        const { data: createdData, error: insertErr } = await supabase
           .from("invoices")
-          .insert([headerPayload])
-          .select("id")
+          .insert([attemptPayload])
+          .select("id, invoice_number")
           .single();
 
-        if (insertErr && (insertErr.message.includes("country") || insertErr.message.includes("created_by") || insertErr.message.includes("updated_by") || insertErr.message.includes("status"))) {
-          delete headerPayload.country;
-          delete headerPayload.created_by;
-          delete headerPayload.updated_by;
-          delete headerPayload.status;
-
-          const retryInsert = await supabase
-            .from("invoices")
-            .insert([headerPayload])
-            .select("id")
-            .single();
-          createdData = retryInsert.data;
-          insertErr = retryInsert.error;
+        if (!insertErr && createdData) {
+          inserted = createdData;
+          invoiceNumber = createdData.invoice_number;
+          break;
         }
 
-        if (insertErr) {
-          if (insertErr.code === "23505" || insertErr.message.includes("unique constraint") || insertErr.message.includes("already exists")) {
-            console.warn(`Invoice number concurrency collision on ${headerPayload.invoice_number}, retrying...`);
-            continue;
-          }
-          console.error("Supabase insert invoice error:", insertErr);
-          throw insertErr;
+        if (
+          insertErr?.code === "23505" ||
+          insertErr?.message?.toLowerCase().includes("unique constraint") ||
+          insertErr?.message?.toLowerCase().includes("already exists") ||
+          insertErr?.message?.toLowerCase().includes("duplicate key")
+        ) {
+          console.warn(`[Invoice Concurrency] Collision on ${candidateNum}, retrying attempt ${insertAttempts + 1}...`);
+          continue;
         }
 
-        inserted = createdData;
+        console.error("Supabase insert invoice error:", insertErr);
+        throw insertErr;
       }
 
       if (!inserted) {
