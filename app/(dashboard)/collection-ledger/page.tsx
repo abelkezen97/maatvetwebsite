@@ -75,6 +75,7 @@ export default function CollectionLedgerPage() {
   // Modal States
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showHandoverModal, setShowHandoverModal] = useState(false);
+  const [showOpeningBalanceModal, setShowOpeningBalanceModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Form States
@@ -90,6 +91,12 @@ export default function CollectionLedgerPage() {
   const [hoNotes, setHoNotes] = useState("");
   const [hoRef, setHoRef] = useState("");
   const [handoverMode, setHandoverMode] = useState<"admin_handover" | "carry_forward">("admin_handover");
+
+  const [obAmount, setObAmount] = useState("");
+  const [obDate, setObDate] = useState(new Date().toISOString().split("T")[0]);
+  const [obNotes, setObNotes] = useState("");
+  const [obSalespersonId, setObSalespersonId] = useState("");
+  const [obSubmitting, setObSubmitting] = useState(false);
 
   const canViewAll = profile?.role === "super_admin" || profile?.role === "accountant";
   const effectiveSalespersonId = canViewAll
@@ -417,6 +424,49 @@ export default function CollectionLedgerPage() {
     }
   };
 
+  // Handle Save / Edit Opening Balance
+  const handleSaveOpeningBalance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!obAmount || Number(obAmount) < 0) {
+      alert("Please enter a valid non-negative opening balance amount");
+      return;
+    }
+    const targetSp = obSalespersonId || (selectedSalespersonId !== "all" ? selectedSalespersonId : profile?.id);
+    if (!targetSp || targetSp === "all") {
+      alert("Please select a specific salesperson to set opening balance");
+      return;
+    }
+    setObSubmitting(true);
+    try {
+      const res = await fetch("/api/collection-ledger/opening-balance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          salespersonId: targetSp,
+          amount: parseFloat(obAmount),
+          effectiveDate: obDate,
+          notes: obNotes,
+          country: summary?.country,
+        }),
+      });
+
+      if (res.ok) {
+        setShowOpeningBalanceModal(false);
+        setObAmount("");
+        setObNotes("");
+        await loadLedger();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to save opening balance");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error saving opening balance");
+    } finally {
+      setObSubmitting(false);
+    }
+  };
+
   // Download PDF
   const handleDownloadPDF = () => {
     if (!summary) {
@@ -630,8 +680,24 @@ export default function CollectionLedgerPage() {
         <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Opening Cash</span>
-            <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg">
-              <Calendar className="w-4 h-4" />
+            <div className="flex items-center gap-1.5">
+              {canViewAll && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setObSalespersonId(selectedSalespersonId !== "all" ? selectedSalespersonId : profile?.id || "");
+                    setObAmount(String(summary?.openingCash || 0));
+                    setObDate(customStart || new Date().toISOString().split("T")[0]);
+                    setShowOpeningBalanceModal(true);
+                  }}
+                  className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer border border-slate-200"
+                >
+                  {summary?.openingCash ? "Edit" : "Set"}
+                </button>
+              )}
+              <div className="p-1.5 bg-slate-100 text-slate-600 rounded-lg">
+                <Calendar className="w-4 h-4" />
+              </div>
             </div>
           </div>
           <div className="text-xl font-bold text-slate-900 mt-2">
@@ -1167,6 +1233,128 @@ export default function CollectionLedgerPage() {
                     : handoverMode === "admin_handover"
                     ? "Confirm Handover"
                     : "Carry Forward"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN SET / EDIT OPENING BALANCE MODAL */}
+      {showOpeningBalanceModal && canViewAll && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-start">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-slate-100 rounded-xl text-slate-700">
+                  <Calendar className="w-5 h-5 text-slate-800" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-lg">
+                    {summary?.openingCash ? "Edit Opening Balance" : "Set Opening Balance"}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold">
+                    Admin Cash Control for Salesperson
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowOpeningBalanceModal(false)}
+                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOpeningBalance} className="space-y-4">
+              {/* Salesperson Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Salesperson *
+                </label>
+                <select
+                  value={obSalespersonId}
+                  onChange={(e) => setObSalespersonId(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:border-[#1B2A4A]"
+                >
+                  <option value="">Select Salesperson...</option>
+                  <option value={profile?.id}>{profile?.full_name} (Myself)</option>
+                  {salespeople
+                    .filter((sp) => sp.id !== profile?.id)
+                    .map((sp) => (
+                      <option key={sp.id} value={sp.id}>
+                        {sp.full_name} ({sp.role})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Country & Currency Indicator */}
+              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                <span className="font-bold text-slate-500 uppercase tracking-wider">Country / Currency:</span>
+                <span className="font-extrabold text-slate-900">{summary?.country || profile?.country || "UAE"} ({currencySymbol})</span>
+              </div>
+
+              {/* Business Date */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Business Effective Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={obDate}
+                  onChange={(e) => setObDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:border-[#1B2A4A]"
+                />
+              </div>
+
+              {/* Opening Balance Amount */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Opening Balance Amount ({currencySymbol}) *
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  placeholder="0.00"
+                  value={obAmount}
+                  onChange={(e) => setObAmount(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base font-extrabold text-slate-900 focus:outline-none focus:border-[#1B2A4A]"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Notes (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Approved starting float for Q3 field operations"
+                  value={obNotes}
+                  onChange={(e) => setObNotes(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 focus:outline-none focus:border-[#1B2A4A]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowOpeningBalanceModal(false)}
+                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={obSubmitting}
+                  className="px-5 py-2 bg-[#1B2A4A] hover:bg-[#253963] text-white text-sm font-bold rounded-xl shadow-sm cursor-pointer disabled:opacity-50 transition"
+                >
+                  {obSubmitting ? "Saving..." : "Save Opening Balance"}
                 </button>
               </div>
             </form>
