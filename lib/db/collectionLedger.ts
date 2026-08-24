@@ -49,20 +49,20 @@ export async function calculateSalespersonCollectionLedger(
   if (options?.startDate) {
     const priorRecQuery = supabase
       .from("receipts")
-      .select("amount_paid")
+      .select("amount_paid, is_deleted")
       .or(`created_by.eq.${salespersonId}`)
       .eq("payment_method", "Cash")
       .lt("payment_date", options.startDate);
 
     const priorExpQuery = supabase
       .from("expenses")
-      .select("amount, payment_method, status, description")
+      .select("amount, payment_method, status, description, is_deleted")
       .or(`salesperson_id.eq.${salespersonId},employee_id.eq.${salespersonId},created_by.eq.${salespersonId}`)
       .lt("expense_date", options.startDate);
 
     const priorHoQuery = supabase
       .from("cash_handovers")
-      .select("amount, status, reference_number, handover_number")
+      .select("amount, status, reference_number, handover_number, is_deleted, handover_type")
       .eq("salesperson_id", salespersonId)
       .lt("handover_date", options.startDate);
 
@@ -76,7 +76,7 @@ export async function calculateSalespersonCollectionLedger(
     if (pRecRes.error) {
       const fb = await supabase
         .from("receipts")
-        .select("amount_paid")
+        .select("amount_paid, is_deleted")
         .eq("created_by", salespersonId)
         .eq("payment_method", "Cash")
         .lt("payment_date", options.startDate);
@@ -84,7 +84,10 @@ export async function calculateSalespersonCollectionLedger(
     }
 
     const priorCollections = (pRecData || []).reduce(
-      (sum: number, r: any) => sum + (Number(r.amount_paid) || 0),
+      (sum: number, r: any) => {
+        if (r.is_deleted === true) return sum;
+        return sum + (Number(r.amount_paid) || 0);
+      },
       0
     );
 
@@ -109,7 +112,7 @@ export async function calculateSalespersonCollectionLedger(
     if (pHoRes.error) {
       const fallback = await supabase
         .from("cash_handovers")
-        .select("amount, status, reference_number, handover_number")
+        .select("amount, status, reference_number, handover_number, is_deleted, handover_type")
         .eq("salesperson_id", salespersonId)
         .lt("handover_date", options.startDate);
       if (fallback.data) pHoData = fallback.data;

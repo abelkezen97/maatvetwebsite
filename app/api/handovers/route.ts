@@ -89,13 +89,33 @@ export async function POST(req: NextRequest) {
 
     const adminClient = createAdminClient() || supabase;
 
+    // SERVER-SIDE FINANCIAL VALIDATION: Calculate available cash in hand up to handover date
+    const { calculateSalespersonCollectionLedger } = await import("@/lib/db/collectionLedger");
+    const { summary: ledgerSummary } = await calculateSalespersonCollectionLedger(adminClient, salespersonId, {
+      endDate: dateVal,
+    });
+
+    const availableCash = Math.max(0, ledgerSummary.currentCashInHand);
+    const requestedAmount = Number(amount);
+
+    if (requestedAmount > availableCash) {
+      const formattedAvailable = availableCash.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return NextResponse.json(
+        {
+          error: `Insufficient cash available. Current cash balance is AED ${formattedAvailable}. Maximum handover allowed is AED ${formattedAvailable}.`,
+          availableCash,
+        },
+        { status: 400 }
+      );
+    }
+
     // DUPLICATE PROTECTION: Check for duplicate handover created recently (within 15 seconds)
     const fifteenSecsAgo = new Date(Date.now() - 15000).toISOString();
     const { data: existingDuplicates } = await adminClient
       .from("cash_handovers")
       .select("*")
       .eq("salesperson_id", salespersonId)
-      .eq("amount", Number(amount))
+      .eq("amount", requestedAmount)
       .eq("handover_date", dateVal)
       .gte("created_at", fifteenSecsAgo)
       .limit(1);
