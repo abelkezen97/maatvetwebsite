@@ -11,6 +11,26 @@ export interface LedgerQueryOptions {
 }
 
 /**
+ * Authoritative Server-Side Function: getCurrentCashInHand
+ * Single source of truth for calculating current physical cash in hand.
+ *
+ * Formula:
+ * Physical Cash in Hand = Opening Cash + Cash Collections - Approved Cash Expenses - Approved Cash Handovers
+ */
+export async function getCurrentCashInHand(
+  supabase: SupabaseClient,
+  salespersonId: string,
+  country?: UserCountry,
+  asOfDate?: string
+): Promise<number> {
+  if (!salespersonId) return 0;
+  const { summary } = await calculateSalespersonCollectionLedger(supabase, salespersonId, {
+    endDate: asOfDate,
+  });
+  return summary.currentCashInHand;
+}
+
+/**
  * Calculates authoritative Cash in Hand and dynamic chronological ledger for a salesperson or all salespeople.
  * 
  * Formula:
