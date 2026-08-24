@@ -233,7 +233,7 @@ export async function reconcileInvoiceInventoryOnEdit(
 ) {
   const client = createAdminClient() || supabase;
 
-  // Fetch previous inventory transactions for this invoice
+  // 1. Fetch previous inventory transactions for this invoice
   const { data: prevTransactions, error: prevErr } = await client
     .from("inventory_transactions")
     .select("product_id, quantity")
@@ -243,76 +243,84 @@ export async function reconcileInvoiceInventoryOnEdit(
     console.error("Error fetching existing invoice transactions for edit reconciliation:", prevErr);
   }
 
-  // Calculate previously net deducted quantity per product for this invoice
+  // Calculate net deducted quantity per product for this invoice
   const previousNetMap = new Map<string, number>();
   (prevTransactions || []).forEach((m: any) => {
     const pid = String(m.product_id);
     const current = previousNetMap.get(pid) || 0;
-    // Note: quantity is negative for Sale, positive for Return
     previousNetMap.set(pid, current + (Number(m.quantity) || 0));
   });
 
-  // Calculate new requested net deducted quantity per product
-  const newNetMap = new Map<string, { qty: number; name?: string }>();
-  newItems.forEach((item) => {
-    if (item.productId && Number(item.quantity) > 0) {
-      const pid = String(item.productId);
-      const existing = newNetMap.get(pid)?.qty || 0;
-      newNetMap.set(pid, { qty: existing + Number(item.quantity), name: item.productName });
-    }
-  });
-
-  // Determine all affected product IDs
-  const allProductIds = new Set([...previousNetMap.keys(), ...newNetMap.keys()]);
-  const newTransactionsToInsert: any[] = [];
-
-  for (const pid of Array.from(allProductIds)) {
-    const previousSum = previousNetMap.get(pid) || 0;
-    const previousQty = Math.abs(previousSum);
-    const newQty = newNetMap.get(pid)?.qty || 0;
-    const prodName = newNetMap.get(pid)?.name || "Product";
-
-    const diff = newQty - previousQty; // e.g. 8 - 5 = +3 (additional 3 units needed)
-
-    if (diff > 0) {
-      // Need additional stock: check available stock first in target country
-      const currentAvailable = await getProductStock(client, pid, country);
-      if (currentAvailable < diff) {
-        const effectiveAvailable = currentAvailable + previousQty;
-        throw new Error(`Insufficient stock for ${prodName}. Available quantity: ${effectiveAvailable}.`);
-      }
-      newTransactionsToInsert.push({
-        product_id: pid,
-        country,
-        transaction_type: "Sale",
-        quantity: -diff, // negative deduction
-        reference_type: "INVOICE",
-        reference_id: invoiceId,
-        remarks: `Invoice ${invoiceNumber} quantity increase (+${diff})`,
-        created_by: userId || null,
-      });
-    } else if (diff < 0) {
-      // Quantity decreased: return stock via Return (+abs(diff))
-      const returnQty = Math.abs(diff);
-      newTransactionsToInsert.push({
+  // Step A: Restore original stock consumed by this invoice (Return transactions)
+  const returnTransactions: any[] = [];
+  previousNetMap.forEach((netQty, pid) => {
+    if (netQty < 0) { // netQty is negative for Sale (-qty)
+      const returnQty = Math.abs(netQty);
+      returnTransactions.push({
         product_id: pid,
         country,
         transaction_type: "Return",
-        quantity: returnQty, // positive addition
+        quantity: returnQty,
         reference_type: "INVOICE",
         reference_id: invoiceId,
-        remarks: `Invoice ${invoiceNumber} quantity reduction (-${returnQty})`,
+        remarks: `Reversal for edit of Invoice ${invoiceNumber}`,
         created_by: userId || null,
       });
     }
+  });
+
+  let insertedReturnIds: string[] = [];
+  if (returnTransactions.length > 0) {
+    const { data: returnData, error: retErr } = await client
+      .from("inventory_transactions")
+      .insert(returnTransactions)
+      .select("id");
+
+    if (retErr) {
+      console.error("Failed to insert stock reversal transactions on edit:", retErr);
+      throw new Error(`Failed to restore original stock for edit: ${retErr.message}`);
+    }
+    insertedReturnIds = (returnData || []).map((r: any) => r.id);
   }
 
-  if (newTransactionsToInsert.length > 0) {
-    const { error: insErr } = await client.from("inventory_transactions").insert(newTransactionsToInsert);
-    if (insErr) {
-      console.error("Error inserting edit reconciliation transactions:", insErr);
-      throw new Error(`Failed to reconcile invoice inventory: ${insErr.message}`);
+  // Step B: Validate and deduct new items against freshly restored stock
+  try {
+    const validItems = newItems.filter((item) => item.productId && Number(item.quantity) > 0);
+    if (validItems.length > 0) {
+      // Validate stock availability for each new line item
+      for (const item of validItems) {
+        const currentStock = await getProductStock(client, item.productId, country);
+        const requestedQty = Number(item.quantity);
+
+        if (currentStock < requestedQty) {
+          const prodName = item.productName || "Selected product";
+          throw new Error(`Insufficient stock for ${prodName}. Available quantity: ${currentStock}.`);
+        }
+      }
+
+      // Deduct new inventory quantities
+      const saleTransactions = validItems.map((item) => ({
+        product_id: item.productId,
+        country,
+        transaction_type: "Sale",
+        quantity: -Math.abs(Number(item.quantity)),
+        reference_type: "INVOICE",
+        reference_id: invoiceId,
+        remarks: `Updated Invoice ${invoiceNumber}`,
+        created_by: userId || null,
+      }));
+
+      const { error: saleErr } = await client.from("inventory_transactions").insert(saleTransactions);
+      if (saleErr) {
+        throw new Error(`Failed to deduct updated invoice inventory: ${saleErr.message}`);
+      }
     }
+  } catch (err: any) {
+    // ROLLBACK: If new item deduction fails, remove inserted return transactions to leave DB in original state
+    if (insertedReturnIds.length > 0) {
+      await client.from("inventory_transactions").delete().in("id", insertedReturnIds);
+    }
+    throw err;
   }
 }
 

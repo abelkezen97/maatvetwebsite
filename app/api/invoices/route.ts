@@ -146,19 +146,23 @@ export async function POST(request: Request) {
 
     const targetInvoiceId = payload.id || invoiceData.id || null;
     let invoiceNumber = invoiceData.invoiceNumber || payload.invoiceNumber;
-    let isEditMode = false;
     let invoiceId: string | null = null;
+    let isEditMode = false;
+    let oldCustomerId: string | null = null;
+    let oldStatus: string | null = null;
 
     if (targetInvoiceId) {
       const { data: existingById } = await supabase
         .from("invoices")
-        .select("id, invoice_number")
+        .select("id, invoice_number, customer_id, status")
         .eq("id", targetInvoiceId)
         .maybeSingle();
 
       if (existingById?.id) {
         invoiceId = existingById.id;
         invoiceNumber = existingById.invoice_number;
+        oldCustomerId = existingById.customer_id || null;
+        oldStatus = existingById.status || null;
         isEditMode = true;
       }
     }
@@ -534,44 +538,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // AUTOMATIC RECEIPT FOR IMMEDIATE-PAYMENT (Paid) INVOICES
+    // RECEIPT & FINANCIAL RECONCILIATION FOR CONFIRMED INVOICES
     const paymentMethod = invoiceData.paymentMethod || payload.paymentMethod || "Cash";
     const actualPaymentAmount = Number(invoiceData.amountPaid ?? payload.amountPaid ?? (status === "Paid" ? grandTotal : 0));
 
-    // CRITICAL FINANCIAL RULE: Create receipt ONLY IF actual payment amount > 0
-    if (status === "Paid" && actualPaymentAmount > 0 && invoiceId) {
-      // Check if an active receipt already exists for this invoice to prevent duplicates
-      const { data: existingRec } = await supabase
-        .from("receipts")
-        .select("id")
-        .eq("invoice_id", invoiceId)
-        .eq("is_deleted", false)
-        .maybeSingle();
-
-      if (!existingRec?.id) {
-        const autoReceiptNumber = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
-        const receiptPayload = {
-          receipt_number: autoReceiptNumber,
-          customer_id: customerId || null,
-          invoice_id: invoiceId,
-          amount_paid: actualPaymentAmount,
-          payment_date: issueDate,
-          payment_method: paymentMethod,
-          reference_number: `Auto-generated for Invoice ${invoiceNumber}`,
-          notes: notes || `Automatic payment receipt for Invoice ${invoiceNumber}`,
-          country: profile.country,
-          created_by: profile.id,
-          updated_by: profile.id,
-        };
-
-        const { error: recErr } = await supabase.from("receipts").insert([receiptPayload]);
-        if (recErr) {
-          console.error("Failed to create automatic receipt for immediate-payment invoice:", recErr);
-        }
-      }
-    }
-
-    // Recalculate customer outstanding balance from single source of truth
     let targetCustId = customerId;
     if (!targetCustId && (companyName || customerName)) {
       const { data: custRows } = await supabase
@@ -584,12 +554,77 @@ export async function POST(request: Request) {
       }
     }
 
+    if (invoiceId) {
+      if (status === "Paid" && actualPaymentAmount > 0) {
+        // Find existing active receipt for this invoice
+        const { data: existingRec } = await supabase
+          .from("receipts")
+          .select("id")
+          .eq("invoice_id", invoiceId)
+          .eq("is_deleted", false)
+          .maybeSingle();
+
+        if (existingRec?.id) {
+          // Update existing receipt
+          await supabase
+            .from("receipts")
+            .update({
+              customer_id: targetCustId || null,
+              amount_paid: actualPaymentAmount,
+              payment_date: issueDate,
+              payment_method: paymentMethod,
+              country: profile.country,
+              updated_by: profile.id,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingRec.id);
+        } else {
+          // Create new receipt for Paid status transition
+          const autoReceiptNumber = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
+          const receiptPayload = {
+            receipt_number: autoReceiptNumber,
+            customer_id: targetCustId || null,
+            invoice_id: invoiceId,
+            amount_paid: actualPaymentAmount,
+            payment_date: issueDate,
+            payment_method: paymentMethod,
+            reference_number: `Auto-generated for Invoice ${invoiceNumber}`,
+            notes: notes || `Automatic payment receipt for Invoice ${invoiceNumber}`,
+            country: profile.country,
+            created_by: profile.id,
+            updated_by: profile.id,
+          };
+          await supabase.from("receipts").insert([receiptPayload]);
+        }
+      } else {
+        // Status is Credit or Cancelled: soft-delete any active receipt associated with this invoice
+        await supabase
+          .from("receipts")
+          .update({
+            is_deleted: true,
+            deleted_at: new Date().toISOString(),
+            deleted_by: profile.id,
+          })
+          .eq("invoice_id", invoiceId)
+          .eq("is_deleted", false);
+      }
+    }
+
+    // Recalculate customer outstanding balances (both former and current customer if changed)
+    if (oldCustomerId && oldCustomerId !== targetCustId) {
+      try {
+        await recalculateCustomerBalance(supabase, oldCustomerId, profile.id);
+      } catch (e: any) {
+        console.error("Failed to recalculate old customer balance on invoice edit:", e);
+      }
+    }
+
     if (targetCustId) {
       try {
         await recalculateCustomerBalance(supabase, targetCustId, profile.id);
       } catch (e: any) {
-        console.error("Failed to recalculate balance on invoice creation:", e);
-        return NextResponse.json({ error: `Invoice created, but customer balance recalculation failed: ${e.message}` }, { status: 500 });
+        console.error("Failed to recalculate balance on invoice creation/edit:", e);
+        return NextResponse.json({ error: `Invoice saved, but customer balance recalculation failed: ${e.message}` }, { status: 500 });
       }
     }
 

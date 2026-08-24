@@ -62,8 +62,8 @@ export async function calculateSalespersonCollectionLedger(
 
     const priorHoQuery = supabase
       .from("cash_handovers")
-      .select("amount, status, reference_number, handover_number, is_deleted, handover_type")
-      .eq("salesperson_id", salespersonId)
+      .select("amount, status, reference_number, handover_number, is_deleted")
+      .or(`salesperson_id.eq.${salespersonId},created_by.eq.${salespersonId}`)
       .lt("handover_date", options.startDate);
 
     const [pRecRes, pExpRes, pHoRes] = await Promise.all([
@@ -104,7 +104,6 @@ export async function calculateSalespersonCollectionLedger(
     }, 0);
 
     const isCarryForward = (h: any) =>
-      h.handover_type === "carry_forward" ||
       (h.handover_number && String(h.handover_number).startsWith("CF")) ||
       (h.reference_number && String(h.reference_number).startsWith("CF:"));
 
@@ -112,8 +111,8 @@ export async function calculateSalespersonCollectionLedger(
     if (pHoRes.error) {
       const fallback = await supabase
         .from("cash_handovers")
-        .select("amount, status, reference_number, handover_number, is_deleted, handover_type")
-        .eq("salesperson_id", salespersonId)
+        .select("amount, status, reference_number, handover_number, is_deleted")
+        .or(`salesperson_id.eq.${salespersonId},created_by.eq.${salespersonId}`)
         .lt("handover_date", options.startDate);
       if (fallback.data) pHoData = fallback.data;
     }

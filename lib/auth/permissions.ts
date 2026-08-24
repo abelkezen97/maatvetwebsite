@@ -53,11 +53,11 @@ export const Permissions = {
   canViewAllLedgers: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
   canViewExpenses: (p: ProfileContext): boolean => p.is_active,
   canCreateExpense: (p: ProfileContext): boolean => p.is_active,
-  canApproveExpense: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
+  canApproveExpense: (p: ProfileContext): boolean => p.is_active,
   canSoftDeleteExpense: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
   canViewHandovers: (p: ProfileContext): boolean => p.is_active,
   canCreateHandover: (p: ProfileContext): boolean => p.is_active,
-  canApproveHandover: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
+  canApproveHandover: (p: ProfileContext): boolean => p.is_active,
   canSetOpeningBalance: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
 
   // Inventory & Stock Management

@@ -136,7 +136,9 @@ export async function POST(req: NextRequest) {
       description: description || "",
       attachmentUrl: attachmentUrl || "",
       country: profile.country,
-      status: "Pending" as const,
+      status: "Approved" as const,
+      approvedBy: profile.id,
+      approvedAt: new Date().toISOString(),
       createdBy: profile.id,
     };
 
