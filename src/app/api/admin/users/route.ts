@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { generateTemporaryPassword, validatePassword } from "@/lib/auth/password";
 import { UserRole, UserCountry } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -67,10 +68,13 @@ export async function POST(request: Request) {
 
     if (!finalPassword) {
       // Option B: Generate a secure temporary password if administrator did not provide one
-      finalPassword = `Maat#${Math.random().toString(36).substring(2, 10)}${Math.floor(100 + Math.random() * 900)}`;
+      finalPassword = generateTemporaryPassword();
       temporaryPasswordDisplay = finalPassword;
-    } else if (finalPassword.length < 6) {
-      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    } else {
+      const invalid = validatePassword(finalPassword);
+      if (invalid) {
+        return NextResponse.json({ error: invalid }, { status: 400 });
+      }
     }
 
     const validRole: UserRole = ["super_admin", "accountant", "salesperson"].includes(role) ? role : "salesperson";

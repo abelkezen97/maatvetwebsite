@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { createAdminClient } from "@/utils/supabase/admin";
 import { UserRole, UserCountry } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +18,15 @@ export async function PATCH(
 
     const body = await request.json();
     const { full_name, phone, role, country, is_active, password } = body;
+
+    // Passwords are reset through POST /api/admin/users/:id/reset-password,
+    // which reports failures instead of silently ignoring them.
+    if (password !== undefined && password !== "") {
+      return NextResponse.json(
+        { error: "Use the Reset password action to change a user's password." },
+        { status: 400 }
+      );
+    }
 
     // 1. SELF-LOCKOUT PREVENTION
     if (id === adminProfile.id) {
@@ -88,28 +96,12 @@ export async function PATCH(
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
 
-    // Optional Password Reset via Admin API
-    let passwordResetPerformed = false;
-    if (password && String(password).trim().length >= 6) {
-      try {
-        const adminClient = createAdminClient();
-        if (adminClient) {
-          const { error: pwdError } = await adminClient.auth.admin.updateUserById(id, {
-            password: String(password).trim(),
-          });
-          if (!pwdError) passwordResetPerformed = true;
-        }
-      } catch {
-        // Admin API catch
-      }
-    }
-
     // 3. ADMINISTRATIVE AUDIT LOGGING
     try {
       await supabase.from("admin_audit_logs").insert([{
         performed_by: adminProfile.id,
         performed_at: new Date().toISOString(),
-        action: passwordResetPerformed ? "UPDATE_USER_AND_RESET_PASSWORD" : "UPDATE_USER",
+        action: "UPDATE_USER",
         target_user: id,
         details: updatePayload,
       }]);

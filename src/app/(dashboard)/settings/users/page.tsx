@@ -32,6 +32,15 @@ export default function UserManagementPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
 
+  // Password reset dialog
+  const [resetTarget, setResetTarget] = useState<Profile | null>(null);
+  const [resetMode, setResetMode] = useState<"generate" | "manual">("generate");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetDone, setResetDone] = useState<{ password?: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
   // Form States
   const [formData, setFormData] = useState({
     email: "",
@@ -111,7 +120,6 @@ export default function UserManagementPage() {
           role: formData.role,
           country: formData.country,
           is_active: formData.is_active,
-          password: formData.password || undefined,
         }),
       });
 
@@ -148,6 +156,64 @@ export default function UserManagementPage() {
       fetchUsers();
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to deactivate user");
+    }
+  };
+
+  const openResetDialog = (p: Profile) => {
+    setResetTarget(p);
+    setResetMode("generate");
+    setResetPassword("");
+    setResetError(null);
+    setResetDone(null);
+    setCopied(false);
+  };
+
+  const closeResetDialog = () => {
+    // Drop the password from memory as soon as the dialog closes
+    setResetTarget(null);
+    setResetPassword("");
+    setResetDone(null);
+    setCopied(false);
+  };
+
+  const handleResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetTarget) return;
+    setResetError(null);
+
+    if (resetMode === "manual" && resetPassword.trim().length < 8) {
+      setResetError("Password must be at least 8 characters");
+      return;
+    }
+
+    setResetBusy(true);
+    try {
+      const res = await fetch(`/api/admin/users/${resetTarget.id}/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(resetMode === "manual" ? { password: resetPassword.trim() } : {}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResetError(data.error || "Failed to reset password");
+        return;
+      }
+      setResetDone({ password: data.temporaryPassword ?? (resetMode === "manual" ? resetPassword.trim() : undefined) });
+      setResetPassword("");
+    } catch (err: any) {
+      setResetError(err.message || "Failed to reset password");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const copyResetPassword = async () => {
+    if (!resetDone?.password) return;
+    try {
+      await navigator.clipboard.writeText(resetDone.password);
+      setCopied(true);
+    } catch {
+      setCopied(false);
     }
   };
 
@@ -336,6 +402,14 @@ export default function UserManagementPage() {
                         <Edit3 className="w-3.5 h-3.5" />
                         Edit
                       </button>
+                      <button
+                        onClick={() => openResetDialog(p)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                        title={`Reset password for ${p.full_name}`}
+                      >
+                        <KeyRound className="w-3.5 h-3.5" />
+                        Reset password
+                      </button>
                       {p.is_active && (
                         <button
                           onClick={() => handleDeactivate(p)}
@@ -448,19 +522,23 @@ export default function UserManagementPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  {editingProfile ? "Reset Password (Optional)" : "Password *"}
-                </label>
-                <input
-                  type="password"
-                  required={!editingProfile}
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder={editingProfile ? "Leave blank to keep current password" : "••••••••"}
-                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-[#1B2A4A]"
-                />
-              </div>
+              {!editingProfile && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="At least 8 characters"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-[#1B2A4A]"
+                  />
+                </div>
+              )}
 
               {editingProfile && (
                 <div className="flex items-center gap-2 pt-2">
@@ -496,6 +574,145 @@ export default function UserManagementPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Dialog */}
+      {resetTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true" aria-labelledby="reset-title">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <h2 id="reset-title" className="text-xl font-extrabold text-[#1B2A4A] flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-accent" />
+                Reset password
+              </h2>
+              <button onClick={closeResetDialog} className="text-slate-400 hover:text-slate-600 font-bold" aria-label="Close">
+                ✕
+              </button>
+            </div>
+
+            <div className="text-sm">
+              <div className="font-bold text-slate-800">{resetTarget.full_name}</div>
+              <div className="text-xs text-slate-400 font-medium">{resetTarget.email}</div>
+              {!resetTarget.is_active && (
+                <div className="mt-2 text-xs font-semibold text-amber-700">
+                  This account is deactivated. Reactivate it in Edit before the user can sign in.
+                </div>
+              )}
+            </div>
+
+            {resetDone ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2.5 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-700">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  <span className="font-semibold">Password changed. The old password no longer works.</span>
+                </div>
+                {resetDone.password && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      New password
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        readOnly
+                        value={resetDone.password}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-semibold text-slate-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={copyResetPassword}
+                        className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        {copied ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs font-semibold text-slate-500">
+                      Shown only now. Send it to {resetTarget.full_name} privately, not in a group chat.
+                    </p>
+                  </div>
+                )}
+                <div className="flex justify-end pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={closeResetDialog}
+                    className="px-5 py-2.5 rounded-xl bg-[#1B2A4A] text-white text-sm font-bold hover:bg-[#15223c] transition shadow-md cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleResetSubmit} className="space-y-4">
+                <fieldset className="space-y-2">
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 cursor-pointer has-[:checked]:border-[#1B2A4A] has-[:checked]:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="reset-mode"
+                      checked={resetMode === "generate"}
+                      onChange={() => setResetMode("generate")}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block text-sm font-bold text-slate-800">Generate a temporary password</span>
+                      <span className="block text-xs font-medium text-slate-500">A random 12-character password you can copy and share.</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 cursor-pointer has-[:checked]:border-[#1B2A4A] has-[:checked]:bg-slate-50">
+                    <input
+                      type="radio"
+                      name="reset-mode"
+                      checked={resetMode === "manual"}
+                      onChange={() => setResetMode("manual")}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block text-sm font-bold text-slate-800">Set a password myself</span>
+                      <span className="block text-xs font-medium text-slate-500">At least 8 characters.</span>
+                    </span>
+                  </label>
+                </fieldset>
+
+                {resetMode === "manual" && (
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    required
+                    autoFocus
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    placeholder="New password"
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-[#1B2A4A]"
+                  />
+                )}
+
+                {resetError && (
+                  <div className="flex items-center gap-2.5 rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">
+                    <AlertCircle className="h-5 w-5 shrink-0" />
+                    <span className="font-semibold">{resetError}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={closeResetDialog}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resetBusy}
+                    className="px-5 py-2.5 rounded-xl bg-[#1B2A4A] text-white text-sm font-bold hover:bg-[#15223c] transition shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+                  >
+                    {resetBusy ? "Resetting…" : "Reset password"}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
