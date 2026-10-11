@@ -4,6 +4,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
+/** Pages reachable without a session. "/" redirects based on auth state. */
+const PUBLIC_ROUTES = ["/", "/login"];
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -35,14 +38,11 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  const isProtectedRoute =
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/products") ||
-    pathname.startsWith("/quotes") ||
-    pathname.startsWith("/invoices") ||
-    pathname.startsWith("/receipts") ||
-    pathname.startsWith("/customers") ||
-    pathname.startsWith("/settings");
+  // Every page requires a signed-in user except PUBLIC_ROUTES.
+  // (API routes are excluded by the matcher in src/middleware.ts and enforce
+  // auth themselves through requireAuth().)
+  const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+  const isProtectedRoute = !isPublicRoute;
 
   const isAuthRoute = pathname === "/login";
 

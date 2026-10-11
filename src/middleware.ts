@@ -6,15 +6,9 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Run on every page. Skip API routes (they call requireAuth themselves),
+  // Next.js internals, and static files in /public.
   matcher: [
-    "/",
-    "/login",
-    "/dashboard/:path*",
-    "/products/:path*",
-    "/quotes/:path*",
-    "/invoices/:path*",
-    "/receipts/:path*",
-    "/customers/:path*",
-    "/settings/:path*",
+    "/((?!api/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml)$).*)",
   ],
 };
