@@ -366,6 +366,36 @@ export default function CustomerDetailPage() {
       />
 
       <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
+        {customer.cashOnly && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+            <div>
+              <span className="font-bold">Cash only.</span>{" "}
+              {customer.cashOnlyReason || "A cheque from this customer bounced."} No credit invoices or cheque payments until an admin removes the flag.
+            </div>
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!window.confirm(`Allow credit and cheques again for ${customer.company || customer.companyName}?`)) return;
+                  const res = await fetch(`/api/customers/${customer.id}/cash-only`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ cashOnly: false }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    alert(data.error || "Could not remove the flag");
+                    return;
+                  }
+                  loadCustomerWorkspace();
+                }}
+                className="shrink-0 px-4 py-2 rounded-xl bg-white border border-amber-300 text-amber-800 font-bold hover:bg-amber-100 transition cursor-pointer"
+              >
+                Remove cash-only flag
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Minimal Actionable Quick Contact & Address Strip */}
         <div className="pt-3 border-t border-slate-100 flex items-center gap-3 text-xs flex-wrap">

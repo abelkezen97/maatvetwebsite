@@ -35,7 +35,7 @@ graph LR
 
 - **`sequence.ts`** — next document number per table. Invoices use the `D` series (D0353, D0354…); other documents use `PREFIX-YEAR-000001`. Runs with the admin client so numbers are unique across all users, and callers retry on unique-violation (23505).
 - **`inventory.ts`** — stock is the sum of `inventory_transactions` per product and country. Invoices deduct stock on create, reconcile the difference on edit, and reverse on cancel.
-- **`balances.ts`** — recomputes a customer's pending balance from opening balance, invoices and receipts.
+- **`balances.ts`** — reads the `customer_balances` view: opening balance + open invoice amounts − payments not applied to an invoice. The stored `customers.pending_balance` is a copy for list screens.
 - **`collectionLedger.ts`** — per-salesperson cash ledger: collections, expenses, handovers to admin and day-to-day carry-forward; `getCurrentCashInHand()` is the single source of truth for the handover limit.
 - **`mappers.ts`** — converts between snake_case DB rows and the camelCase types in `src/types`.
 
@@ -48,3 +48,10 @@ PDFs (quotes, invoices, receipts, ledgers) are generated in the browser with jsP
 Profiles, customers, stock and documents carry a `country` (`UAE` or `Oman`). **Every** role, admins included, sees only its own country: the API filters by `profile.country` (helper `isCountryStaff()` in `src/lib/auth/permissions.ts`) and RLS does the same in the database (`is_country_staff()`, `is_country_admin()`, `is_own_country()`). The admin role is still stored as `super_admin`, but it is country-scoped and shown as "Admin (UAE)" / "Admin (Oman)".
 
 Products are shared; prices are per country (AED columns for UAE, `*_omr` columns for Oman). A trigger stops an admin or accountant from changing the other country's prices. Currency formatting lives in `src/lib/currency.ts` (AED 2 decimals, OMR 3).
+
+## Payments and cheques
+
+- A receipt can settle several invoices through `receipt_allocations`; anything not allocated stays on the customer as an advance. A receipt with `invoice_id` and no allocation rows (the automatic receipt of a Paid invoice) counts as applied to that invoice in full (`receipt_applications` view).
+- `invoice_balances` gives each invoice's paid amount, pending cheques, open amount, due date (issue date + credit days) and state: Paid, Cheque pending, Partly paid, Unpaid, plus overdue days.
+- Cheques: `cheque_status` Pending → Cleared or Bounced (`POST /api/receipts/:id/cheque`, admin or accountant). A cheque counts as paid only when Cleared. "Received" records that the office has the cheque from the salesperson; until then it shows in the salesperson's *Cheques in hand*, separate from cash in hand.
+- A bounce reopens the invoices automatically (the receipt stops counting) and sets `customers.cash_only`, which blocks credit invoices and cheque payments until an admin clears it (`POST /api/customers/:id/cash-only`).
