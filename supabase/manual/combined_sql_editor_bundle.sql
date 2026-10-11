@@ -466,7 +466,7 @@ CREATE INDEX IF NOT EXISTS idx_inventory_tx_ref ON public.inventory_transactions
 CREATE INDEX IF NOT EXISTS idx_inventory_tx_created_at ON public.inventory_transactions (created_at DESC);
 
 ALTER TABLE public.inventory_transactions ENABLE ROW LEVEL SECURITY;
-GRANT ALL ON public.inventory_transactions TO authenticated, anon, service_role, postgres;
+GRANT ALL ON public.inventory_transactions TO authenticated, service_role;
 
 DROP POLICY IF EXISTS "inventory_tx_select_policy" ON public.inventory_transactions;
 DROP POLICY IF EXISTS "inventory_tx_insert_policy" ON public.inventory_transactions;
