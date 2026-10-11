@@ -74,6 +74,9 @@ export interface Customer {
   creditLimit?: number;
   openingBalance?: number;
   pendingBillwiseAmount?: number;
+  /** Set after a bounced cheque: no credit invoices or cheque payments until an admin clears it. */
+  cashOnly?: boolean;
+  cashOnlyReason?: string;
   notes?: string;
   is_active?: boolean;
   createdBy?: string;
@@ -148,7 +151,12 @@ export interface Invoice {
   creditDays?: number;
   paidAmount?: number;
   outstandingAmount?: number;
+  /** Paid | Cheque pending | Partly paid | Unpaid (from invoice_balances) */
   paymentStatus?: string;
+  pendingCheques?: number;
+  dueDate?: string;
+  isOverdue?: boolean;
+  daysOverdue?: number;
   notes?: string;
   isDeleted?: boolean;
   deletedAt?: string;
@@ -174,6 +182,17 @@ export interface Receipt {
   referenceNo?: string;
   notes?: string;
   country: UserCountry;
+  // Cheque life cycle (payment method "Cheque"): Pending -> Cleared | Bounced
+  chequeNumber?: string;
+  chequeDate?: string;
+  bankName?: string;
+  chequeStatus?: ChequeStatus;
+  chequeReceivedAt?: string;
+  clearedAt?: string;
+  bouncedAt?: string;
+  bounceReason?: string;
+  /** Invoices this payment settles; the rest is an advance. */
+  allocations?: ReceiptAllocation[];
   isDeleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
@@ -182,6 +201,32 @@ export interface Receipt {
   updatedBy?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type ChequeStatus = "Pending" | "Cleared" | "Bounced";
+
+export interface ReceiptAllocation {
+  invoiceId: string;
+  invoiceNumber?: string;
+  amount: number;
+}
+
+/** One row of the invoice_balances view: where an invoice stands on payment. */
+export interface InvoiceBalance {
+  invoiceId: string;
+  invoiceNumber: string;
+  customerId: string;
+  invoiceDate: string;
+  dueDate: string;
+  creditDays: number;
+  grandTotal: number;
+  paidAmount: number;
+  pendingCheques: number;
+  outstanding: number;
+  availableToAllocate: number;
+  paymentState: "Paid" | "Cheque pending" | "Partly paid" | "Unpaid";
+  isOverdue: boolean;
+  daysOverdue: number;
 }
 
 export type ExpenseCategory =

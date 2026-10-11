@@ -115,6 +115,27 @@ export async function GET(request: Request) {
     });
 
     const invoices = (data || []).map((row: any) => mapInvoiceFromDb(row, salesmanMap));
+
+    // Payment position of each invoice (paid, open amount, overdue) from invoice_balances.
+    const ids = invoices.map((inv: any) => inv.id).filter(Boolean);
+    for (let i = 0; i < ids.length; i += 150) {
+      const { data: balRows } = await queryClient
+        .from("invoice_balances")
+        .select("invoice_id, paid_amount, pending_cheques, outstanding, payment_state, is_overdue, days_overdue, due_date")
+        .in("invoice_id", ids.slice(i, i + 150));
+      (balRows || []).forEach((b: any) => {
+        const inv: any = invoices.find((x: any) => x.id === b.invoice_id);
+        if (!inv) return;
+        inv.paidAmount = Number(b.paid_amount) || 0;
+        inv.pendingCheques = Number(b.pending_cheques) || 0;
+        inv.outstandingAmount = Number(b.outstanding) || 0;
+        inv.paymentStatus = b.payment_state;
+        inv.isOverdue = Boolean(b.is_overdue);
+        inv.daysOverdue = Number(b.days_overdue) || 0;
+        inv.dueDate = b.due_date || undefined;
+      });
+    }
+
     return NextResponse.json(invoices);
   } catch (error: any) {
     if (error instanceof AuthError) {
@@ -176,7 +197,7 @@ export async function POST(request: Request) {
     if (customerId) {
       let { data: fetchedCust, error: custErr } = await supabase
         .from("customers")
-        .select("id, country, assigned_salesman_id")
+        .select("id, country, assigned_salesman_id, cash_only")
         .eq("id", customerId)
         .maybeSingle();
 
@@ -185,7 +206,7 @@ export async function POST(request: Request) {
         if (adminClient) {
           const { data: adminCust } = await adminClient
             .from("customers")
-            .select("id, country, assigned_salesman_id")
+            .select("id, country, assigned_salesman_id, cash_only")
             .eq("id", customerId)
             .maybeSingle();
           fetchedCust = adminCust;
@@ -211,6 +232,18 @@ export async function POST(request: Request) {
           { error: "Forbidden: Cannot create invoice for customer in another country" },
           { status: 403 }
         );
+      }
+
+      // A customer flagged cash only (after a bounced cheque) gets no credit and no cheque payments.
+      if (custRow.cash_only) {
+        const requestedStatus = invoiceData.status || payload.status || "Paid";
+        const requestedMethod = invoiceData.paymentMethod || payload.paymentMethod || "Cash";
+        if (requestedStatus === "Credit" || requestedMethod === "Cheque") {
+          return NextResponse.json(
+            { error: "This customer is cash only after a bounced cheque: credit invoices and cheque payments are blocked until an admin removes the flag." },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -588,6 +621,8 @@ export async function POST(request: Request) {
             amount_paid: actualPaymentAmount,
             payment_date: issueDate,
             payment_method: paymentMethod,
+            // A cheque taken at invoice time counts as paid only once it clears.
+            cheque_status: paymentMethod === "Cheque" ? "Pending" : null,
             reference_number: `Auto-generated for Invoice ${invoiceNumber}`,
             notes: notes || `Automatic payment receipt for Invoice ${invoiceNumber}`,
             country: profile.country,

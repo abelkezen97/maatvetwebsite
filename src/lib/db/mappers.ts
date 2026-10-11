@@ -1,5 +1,6 @@
 import {
   Customer,
+  InvoiceBalance,
   Product,
   ProductCategory,
   Quote,
@@ -64,6 +65,8 @@ export function mapCustomerFromDb(row: any, salesmanMap?: Map<string, string>): 
         : parseFloat(row.pending_balance) || 0,
     notes: row.notes || "",
     is_active: row.is_active !== false,
+    cashOnly: Boolean(row.cash_only),
+    cashOnlyReason: row.cash_only_reason || undefined,
     createdBy: row.created_by || undefined,
     updatedBy: row.updated_by || undefined,
     createdAt: row.created_at || "",
@@ -434,6 +437,21 @@ export function mapReceiptFromDb(row: any, salesmanMap?: Map<string, string>): R
     referenceNo: row.reference_number || row.reference_no || "",
     notes: row.notes || "",
     country: countryVal,
+    chequeNumber: row.cheque_number || undefined,
+    chequeDate: row.cheque_date || undefined,
+    bankName: row.bank_name || undefined,
+    chequeStatus: row.cheque_status || undefined,
+    chequeReceivedAt: row.cheque_received_at || undefined,
+    clearedAt: row.cleared_at || undefined,
+    bouncedAt: row.bounced_at || undefined,
+    bounceReason: row.bounce_reason || undefined,
+    allocations: Array.isArray(row.receipt_allocations)
+      ? row.receipt_allocations.map((a: any) => ({
+          invoiceId: a.invoice_id,
+          invoiceNumber: a.invoices?.invoice_number,
+          amount: Number(a.amount) || 0,
+        }))
+      : undefined,
     isDeleted: Boolean(row.is_deleted),
     deletedAt: row.deleted_at || undefined,
     deletedBy: row.deleted_by || undefined,
@@ -454,6 +472,10 @@ export function mapReceiptToDb(receipt: Partial<Receipt>): Record<string, any> {
   if (receipt.paymentMethod !== undefined) payload.payment_method = receipt.paymentMethod;
   if (receipt.referenceNo !== undefined) payload.reference_number = receipt.referenceNo;
   if (receipt.notes !== undefined) payload.notes = receipt.notes;
+  if (receipt.chequeNumber !== undefined) payload.cheque_number = receipt.chequeNumber || null;
+  if (receipt.chequeDate !== undefined) payload.cheque_date = receipt.chequeDate || null;
+  if (receipt.bankName !== undefined) payload.bank_name = receipt.bankName || null;
+  if (receipt.chequeStatus !== undefined) payload.cheque_status = receipt.chequeStatus || null;
   if (receipt.createdBy !== undefined) payload.created_by = receipt.createdBy || null;
   if (receipt.country !== undefined) payload.country = receipt.country === "Oman" ? "Oman" : "UAE";
   payload.updated_at = new Date().toISOString();
@@ -757,4 +779,24 @@ export function mapInventoryMovementToDb(mv: Partial<InventoryMovement>): Record
   }
   if (mv.createdBy !== undefined) payload.created_by = mv.createdBy;
   return payload;
+}
+
+/** Row of the invoice_balances view. */
+export function mapInvoiceBalanceFromDb(row: any): InvoiceBalance {
+  return {
+    invoiceId: row.invoice_id,
+    invoiceNumber: row.invoice_number || "",
+    customerId: row.customer_id || "",
+    invoiceDate: row.invoice_date || "",
+    dueDate: row.due_date || "",
+    creditDays: Number(row.credit_days) || 0,
+    grandTotal: Number(row.grand_total) || 0,
+    paidAmount: Number(row.paid_amount) || 0,
+    pendingCheques: Number(row.pending_cheques) || 0,
+    outstanding: Number(row.outstanding) || 0,
+    availableToAllocate: Number(row.available_to_allocate) || 0,
+    paymentState: row.payment_state || "Unpaid",
+    isOverdue: Boolean(row.is_overdue),
+    daysOverdue: Number(row.days_overdue) || 0,
+  };
 }

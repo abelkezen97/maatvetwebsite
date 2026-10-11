@@ -163,16 +163,28 @@ export default function InvoicesPage() {
     {
       header: t("statusCol") || "Payment Status",
       accessor: (row: Invoice) => {
+        // Payment position from invoice_balances: Paid / Cheque pending / Partly paid / Unpaid (+ overdue)
+        const state = row.paymentStatus || row.status;
         let badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
-        if (row.status === "Paid") badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
+        if (state === "Paid") badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200";
+        else if (row.isOverdue) badgeColor = "bg-rose-50 text-rose-700 border-rose-200";
+        else if (state === "Cheque pending") badgeColor = "bg-sky-50 text-sky-700 border-sky-200";
 
         return (
-          <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${badgeColor}`}>
-            {translateBusinessText(row.status)}
-          </span>
+          <div className="flex flex-col items-center gap-0.5">
+            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${badgeColor}`}>
+              {translateBusinessText(state)}
+            </span>
+            {row.isOverdue && (
+              <span className="text-[10px] font-bold text-rose-600">{row.daysOverdue}d overdue</span>
+            )}
+            {state !== "Paid" && (row.outstandingAmount ?? 0) > 0 && (
+              <span className="text-[10px] font-semibold text-slate-500">Open {formatCurrency(row.outstandingAmount)}</span>
+            )}
+          </div>
         );
       },
-      className: "w-36 text-center",
+      className: "w-40 text-center",
     },
     {
       header: t("grandTotalCol") || "Grand Total",
@@ -192,6 +204,15 @@ export default function InvoicesPage() {
         const options: ActionOption[] = [
           { label: t("view") || "View Details", onClick: () => setSelectedInvoice(row) },
         ];
+
+        // Money still open on this invoice: go straight to a receipt pre-filled for it.
+        if ((row.outstandingAmount ?? 0) > 0 && row.paymentStatus !== "Cheque pending") {
+          options.push({
+            label: "Record payment",
+            onClick: () =>
+              router.push(`/receipts/new?invoiceId=${encodeURIComponent(row.id)}&customerId=${encodeURIComponent(row.customerId)}`),
+          });
+        }
 
         if (canEdit) {
           options.push({

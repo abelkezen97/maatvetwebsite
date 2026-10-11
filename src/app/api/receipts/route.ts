@@ -8,9 +8,13 @@ import { createAdminClient } from "@/utils/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { profile, supabase: userClient } = await requireAuth();
+    const { searchParams } = new URL(request.url);
+    // ?cheques=pending  -> cheques not yet cleared or bounced
+    // ?cheques=in-hand  -> pending cheques still with the salesperson (not received by the office)
+    const chequeFilter = searchParams.get("cheques");
 
     if (!Permissions.canViewReceipts(profile)) {
       return NextResponse.json({ error: "Forbidden: Cannot view receipts" }, { status: 403 });
@@ -20,7 +24,7 @@ export async function GET() {
 
     let query = queryClient
       .from("receipts")
-      .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!left(invoice_number, salesman_id)")
+      .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!fk_receipts_invoice(invoice_number, salesman_id), receipt_allocations(invoice_id, amount, invoices(invoice_number))")
       .order("created_at", { ascending: false });
 
     if (profile.role === "salesperson") {
@@ -29,13 +33,21 @@ export async function GET() {
       query = query.eq("country", profile.country);
     }
 
+    if (chequeFilter === "pending" || chequeFilter === "in-hand") {
+      query = query.eq("cheque_status", "Pending");
+    }
+    if (chequeFilter === "in-hand") {
+      query = query.is("cheque_received_at", null);
+      if (profile.role === "salesperson") query = query.eq("created_by", profile.id);
+    }
+
     let { data, error } = await query.eq("is_deleted", false);
 
     // Resilient fallback if is_deleted or country column does not exist yet in live DB
     if (error && (error.message.includes("is_deleted") || error.message.includes("country"))) {
       let fallbackQuery = queryClient
         .from("receipts")
-        .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!left(invoice_number, salesman_id)")
+        .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!fk_receipts_invoice(invoice_number, salesman_id), receipt_allocations(invoice_id, amount, invoices(invoice_number))")
         .order("created_at", { ascending: false });
 
       if (profile.role === "salesperson" || isCountryStaff(profile)) {
@@ -124,6 +136,25 @@ export async function POST(request: Request) {
     const referenceNo = payload.referenceNo || payload.reference_number || "";
     const notes = payload.notes || "";
 
+    // Cheques: number and date are required; the cheque counts as paid only once cleared.
+    const isCheque = paymentMethod === "Cheque";
+    const chequeNumber = String(payload.chequeNumber || "").trim();
+    const chequeDate = String(payload.chequeDate || "").trim();
+    const bankName = String(payload.bankName || "").trim();
+    if (isCheque && (!chequeNumber || !chequeDate)) {
+      return NextResponse.json({ error: "Cheque number and cheque date are required for cheque payments." }, { status: 400 });
+    }
+
+    // Allocations: which invoices this payment settles. Older clients send a single invoiceId.
+    type RequestedAllocation = { invoiceId: string; amount?: number };
+    const requestedAllocations: RequestedAllocation[] = Array.isArray(payload.allocations)
+      ? payload.allocations
+          .filter((a: any) => a && a.invoiceId)
+          .map((a: any) => ({ invoiceId: String(a.invoiceId), amount: a.amount === undefined || a.amount === null || a.amount === "" ? undefined : Number(a.amount) }))
+      : invoiceId
+        ? [{ invoiceId: String(invoiceId) }]
+        : [];
+
     // 1. Invoice & Customer Integrity & Ownership Verification
     if (invoiceId) {
       const { data: invRow, error: invErr } = await supabase
@@ -161,7 +192,7 @@ export async function POST(request: Request) {
     if (customerId) {
       let { data: fetchedCust, error: custErr } = await supabase
         .from("customers")
-        .select("id, country, assigned_salesman_id")
+        .select("id, country, assigned_salesman_id, cash_only")
         .eq("id", customerId)
         .maybeSingle();
 
@@ -170,7 +201,7 @@ export async function POST(request: Request) {
         if (adminClient) {
           const { data: adminCust } = await adminClient
             .from("customers")
-            .select("id, country, assigned_salesman_id")
+            .select("id, country, assigned_salesman_id, cash_only")
             .eq("id", customerId)
             .maybeSingle();
           fetchedCust = adminCust;
@@ -197,17 +228,72 @@ export async function POST(request: Request) {
           { status: 403 }
         );
       }
+
+      if (isCheque && custRow.cash_only) {
+        return NextResponse.json(
+          { error: "This customer is cash only after a bounced cheque. Cheque payments are not accepted until an admin removes the flag." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (!customerId) {
+      return NextResponse.json({ error: "A customer is required for a receipt." }, { status: 400 });
+    }
+
+    // Validate allocations against what is still open on each invoice.
+    const allocationRows: Array<{ invoice_id: string; amount: number }> = [];
+    if (requestedAllocations.length > 0) {
+      const balClient = createAdminClient() || supabase;
+      const { data: balRows, error: balErr } = await balClient
+        .from("invoice_balances")
+        .select("invoice_id, invoice_number, customer_id, country, available_to_allocate")
+        .in("invoice_id", requestedAllocations.map((a) => a.invoiceId));
+
+      if (balErr) {
+        return NextResponse.json({ error: `Could not check invoices: ${balErr.message}` }, { status: 500 });
+      }
+
+      let remaining = amountPaid;
+      for (const req of requestedAllocations) {
+        const bal = (balRows || []).find((b: any) => b.invoice_id === req.invoiceId);
+        if (!bal) {
+          return NextResponse.json({ error: "One of the selected invoices is not open (paid, cancelled or deleted)." }, { status: 400 });
+        }
+        if (bal.customer_id !== customerId || bal.country !== profile.country) {
+          return NextResponse.json({ error: `Invoice ${bal.invoice_number} belongs to another customer.` }, { status: 400 });
+        }
+        const available = Number(bal.available_to_allocate) || 0;
+        const amount = req.amount === undefined ? Math.min(available, remaining) : req.amount;
+        if (!(amount > 0)) continue;
+        if (amount > available + 0.0005) {
+          return NextResponse.json(
+            { error: `Invoice ${bal.invoice_number} has only ${available} open; cannot apply ${amount}.` },
+            { status: 400 }
+          );
+        }
+        remaining -= amount;
+        if (remaining < -0.0005) {
+          return NextResponse.json({ error: "Allocated amounts are more than the payment amount." }, { status: 400 });
+        }
+        allocationRows.push({ invoice_id: req.invoiceId, amount: Math.round(amount * 1000) / 1000 });
+      }
     }
 
     const insertPayload = mapReceiptToDb({
       receiptNumber,
       customerId,
-      invoiceId,
+      // Informational link to the first invoice; the allocations below are authoritative.
+      invoiceId: allocationRows[0]?.invoice_id || undefined,
       amountPaid,
       paymentDate,
       paymentMethod,
-      referenceNo,
+      referenceNo: referenceNo || (isCheque ? chequeNumber : ""),
       notes,
+      chequeNumber: isCheque ? chequeNumber : undefined,
+      chequeDate: isCheque ? chequeDate : undefined,
+      bankName: isCheque ? bankName : undefined,
+      chequeStatus: isCheque ? "Pending" : undefined,
     });
 
     // SERVER IS SOURCE OF TRUTH (Client payload ignored for country, created_by, updated_by)
@@ -259,6 +345,19 @@ export async function POST(request: Request) {
 
     if (!inserted) {
       throw new Error("Failed to insert receipt after multiple concurrency retries.");
+    }
+
+    // Save allocations. If that fails, remove the receipt so a half-saved payment
+    // never counts against the wrong invoice.
+    if (allocationRows.length > 0) {
+      const allocClient = createAdminClient() || supabase;
+      const { error: allocErr } = await allocClient.from("receipt_allocations").insert(
+        allocationRows.map((a) => ({ ...a, receipt_id: inserted.id, created_by: profile.id }))
+      );
+      if (allocErr) {
+        await allocClient.from("receipts").delete().eq("id", inserted.id);
+        return NextResponse.json({ error: `Receipt not saved: could not apply it to invoices (${allocErr.message}).` }, { status: 500 });
+      }
     }
 
     // Recalculate customer balance from single source of truth

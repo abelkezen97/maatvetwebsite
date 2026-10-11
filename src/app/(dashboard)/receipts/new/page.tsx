@@ -2,10 +2,10 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, ArrowLeft, CheckCircle2, X, Plus, FileText } from "lucide-react";
+import { Search, ArrowLeft, CheckCircle2, X, Plus, FileText, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
-import { Customer, Receipt, Invoice } from "@/types";
+import { Customer, Receipt, Invoice, InvoiceBalance } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { currencyFor, decimalsFor } from "@/lib/currency";
@@ -48,6 +48,18 @@ export default function NewReceiptPage() {
   const [formCustName, setFormCustName] = useState("");
   const [formCustLocation, setFormCustLocation] = useState("");
   const [isCustSubmitting, setIsCustSubmitting] = useState(false);
+
+  // Allocation: which open invoices this payment settles (invoiceId -> amount typed)
+  const [openInvoices, setOpenInvoices] = useState<InvoiceBalance[]>([]);
+  const [openLoading, setOpenLoading] = useState(false);
+  const [allocations, setAllocations] = useState<Record<string, string>>({});
+  const [customerCashOnly, setCustomerCashOnly] = useState<{ cashOnly: boolean; reason?: string }>({ cashOnly: false });
+  const [chequesPending, setChequesPending] = useState(0);
+
+  // Cheque details (payment method "Cheque")
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [chequeDate, setChequeDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [bankName, setBankName] = useState("");
 
   useEffect(() => {
     async function loadData() {
@@ -137,6 +149,68 @@ export default function NewReceiptPage() {
   const currencyCountry = selectedCustomer?.country || user?.country;
   const currencySymbol = currencyFor(currencyCountry);
   const dp = decimalsFor(currencyCountry);
+
+  // Load the customer's open invoices whenever the customer changes.
+  useEffect(() => {
+    setAllocations({});
+    setOpenInvoices([]);
+    setCustomerCashOnly({ cashOnly: false });
+    setChequesPending(0);
+    if (!selectedCustomerId) return;
+
+    let cancelled = false;
+    setOpenLoading(true);
+    fetch(`/api/customers/${selectedCustomerId}/open-invoices`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then((data) => {
+        if (cancelled) return;
+        const list: InvoiceBalance[] = data.invoices || [];
+        setOpenInvoices(list);
+        setCustomerCashOnly({ cashOnly: Boolean(data.customer?.cashOnly), reason: data.customer?.cashOnlyReason });
+        setChequesPending(Number(data.summary?.chequesPending) || 0);
+        // Coming from an invoice's "Record payment": pre-fill that invoice.
+        const pre = list.find((inv) => inv.invoiceId === selectedInvoiceId);
+        if (pre && pre.availableToAllocate > 0) {
+          setAllocations({ [pre.invoiceId]: String(pre.availableToAllocate) });
+          setAmountPaid((prev) => prev || String(pre.availableToAllocate));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOpenInvoices([]);
+      })
+      .finally(() => {
+        if (!cancelled) setOpenLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCustomerId, selectedInvoiceId]);
+
+  const numericAmount = parseFloat(amountPaid) || 0;
+  const allocatedTotal = useMemo(
+    () => (Object.values(allocations) as string[]).reduce((sum: number, v: string) => sum + (parseFloat(v) || 0), 0),
+    [allocations]
+  );
+  const unallocated = Math.max(0, numericAmount - allocatedTotal);
+  const overAllocated = allocatedTotal - numericAmount > 0.0005;
+  const allocationErrors = openInvoices.filter(
+    (inv) => (parseFloat(allocations[inv.invoiceId] || "") || 0) - inv.availableToAllocate > 0.0005
+  );
+
+  // Fill invoices oldest first until the payment amount is used up.
+  const autoAllocate = () => {
+    let remaining = numericAmount;
+    const next: Record<string, string> = {};
+    for (const inv of openInvoices) {
+      if (remaining <= 0.0005) break;
+      const amt = Math.min(inv.availableToAllocate, remaining);
+      if (amt > 0) {
+        next[inv.invoiceId] = amt.toFixed(dp);
+        remaining -= amt;
+      }
+    }
+    setAllocations(next);
+  };
 
   const selectedInvoice = useMemo(() => {
     return invoicesList.find((i) => i.id === selectedInvoiceId);
@@ -228,6 +302,25 @@ export default function NewReceiptPage() {
       return;
     }
 
+    if (overAllocated) {
+      setErrorMessage("The amounts applied to invoices are more than the payment.");
+      return;
+    }
+    if (allocationErrors.length > 0) {
+      setErrorMessage(`Invoice ${allocationErrors[0].invoiceNumber} has less open than the amount applied.`);
+      return;
+    }
+    if (paymentMethod === "Cheque") {
+      if (customerCashOnly.cashOnly) {
+        setErrorMessage("This customer is cash only after a bounced cheque. Cheques can't be accepted.");
+        return;
+      }
+      if (!chequeNumber.trim() || !chequeDate) {
+        setErrorMessage("Enter the cheque number and cheque date.");
+        return;
+      }
+    }
+
     setIsSaving(true);
     setErrorMessage(null);
 
@@ -237,7 +330,12 @@ export default function NewReceiptPage() {
     const payload = {
       receiptNumber: receiptNumber.trim(),
       customerId: targetCustId,
-      invoiceId: selectedInvoiceId || undefined,
+      allocations: (Object.entries(allocations) as Array<[string, string]>)
+        .map(([invoiceId, v]) => ({ invoiceId, amount: parseFloat(v) || 0 }))
+        .filter((a) => a.amount > 0),
+      chequeNumber: paymentMethod === "Cheque" ? chequeNumber.trim() : undefined,
+      chequeDate: paymentMethod === "Cheque" ? chequeDate : undefined,
+      bankName: paymentMethod === "Cheque" ? bankName.trim() || undefined : undefined,
       customerName: selectedCustomer?.name || selectedInvoice?.customerName,
       companyName: selectedCustomer?.company || selectedInvoice?.companyName || customerSearchQuery.replace(/\s*\([^)]*\)/, "").trim(),
       amountPaid: numericAmount,
@@ -377,107 +475,11 @@ export default function NewReceiptPage() {
             </div>
           </div>
 
-          {/* Invoice Selector Section */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                1. Select Invoice (Optional)
-              </h3>
-              {selectedInvoiceId && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedInvoiceId("");
-                    setInvoiceSearchQuery("");
-                  }}
-                  className="text-xs font-bold text-rose-500 hover:text-rose-700 transition"
-                >
-                  Clear Selected Invoice
-                </button>
-              )}
-            </div>
-
-            <div className="relative">
-              <div className="relative flex items-center">
-                <FileText className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search invoice number or customer name..."
-                  value={invoiceSearchQuery}
-                  onChange={(e) => {
-                    setInvoiceSearchQuery(e.target.value);
-                    setShowInvoiceDropdown(true);
-                  }}
-                  onFocus={() => setShowInvoiceDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowInvoiceDropdown(false), 200)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
-                />
-              </div>
-
-              {showInvoiceDropdown && (
-                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-                  {filteredInvoices.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-slate-400 text-center font-medium">
-                      No invoices found
-                    </div>
-                  ) : (
-                    filteredInvoices.map((inv) => (
-                      <button
-                        key={inv.id}
-                        type="button"
-                        onClick={() => handleSelectInvoice(inv)}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between"
-                      >
-                        <div>
-                          <div className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                            <span>{inv.invoiceNumber}</span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${inv.status === "Paid" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
-                              {inv.status}
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-500 font-medium">{inv.companyName}</div>
-                        </div>
-                        <div className="text-right">
-                          <span className="block text-xs font-black text-slate-800">
-                            {currencySymbol} {inv.grandTotal.toFixed(dp)}
-                          </span>
-                          <span className="text-[11px] font-semibold text-slate-400">
-                            Date: {inv.date}
-                          </span>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Selected Invoice Banner */}
-            {selectedInvoice && (
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 animate-in fade-in duration-200 text-xs">
-                <div>
-                  <span className="block text-slate-400 font-bold uppercase tracking-wider">Invoice Ref</span>
-                  <span className="font-bold text-slate-800 text-sm">{selectedInvoice.invoiceNumber}</span>
-                </div>
-                <div>
-                  <span className="block text-slate-400 font-bold uppercase tracking-wider">Invoice Grand Total</span>
-                  <span className="font-bold text-slate-800 text-sm">{currencySymbol} {selectedInvoice.grandTotal.toFixed(dp)}</span>
-                </div>
-                <div>
-                  <span className="block text-slate-400 font-bold uppercase tracking-wider">Remaining Outstanding</span>
-                  <span className={`font-black text-sm ${invoiceOutstanding > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    {currencySymbol} {invoiceOutstanding.toFixed(dp)}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Customer Selection */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                2. Select Customer
+                1. Select Customer
               </h3>
               <button
                 type="button"
@@ -559,6 +561,16 @@ export default function NewReceiptPage() {
             )}
           </div>
 
+          {selectedCustomer && customerCashOnly.cashOnly && (
+            <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Cash only.</span>{" "}
+                {customerCashOnly.reason || "A cheque from this customer bounced."} Cheque payments are not accepted until an admin removes the flag.
+              </div>
+            </div>
+          )}
+
           {/* Payment Details Form */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
             <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
@@ -601,18 +613,55 @@ export default function NewReceiptPage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Reference / Cheque # (Optional)
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Cheque #884920 or Transfer Ref TRX-928"
-                value={referenceNo}
-                onChange={(e) => setReferenceNo(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-              />
-            </div>
+            {paymentMethod === "Cheque" ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cheque Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={chequeNumber}
+                    onChange={(e) => setChequeNumber(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent/15"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cheque Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={chequeDate}
+                    onChange={(e) => setChequeDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent/15"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Bank</label>
+                  <input
+                    type="text"
+                    value={bankName}
+                    onChange={(e) => setBankName(e.target.value)}
+                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15"
+                  />
+                </div>
+                <p className="md:col-span-3 text-xs font-semibold text-slate-500">
+                  A cheque counts as paid only when the office marks it cleared. Until then its invoices show "Cheque pending".
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  Reference (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Transfer Ref TRX-928"
+                  value={referenceNo}
+                  onChange={(e) => setReferenceNo(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
@@ -627,6 +676,94 @@ export default function NewReceiptPage() {
               />
             </div>
           </div>
+          {/* Apply to invoices */}
+          {selectedCustomer && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
+                  3. Apply to Invoices
+                </h3>
+                <button
+                  type="button"
+                  onClick={autoAllocate}
+                  disabled={!numericAmount || openInvoices.length === 0}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                >
+                  Apply oldest first
+                </button>
+              </div>
+
+              {openLoading ? (
+                <p className="text-sm text-slate-400 font-medium">Loading open invoices...</p>
+              ) : openInvoices.length === 0 ? (
+                <p className="text-sm text-slate-500 font-medium">
+                  No open invoices. The whole payment will be kept as an advance (or settle the opening balance).
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+                        <th className="text-start py-2 pe-3">Invoice</th>
+                        <th className="text-start py-2 pe-3">Due</th>
+                        <th className="text-end py-2 pe-3">Total</th>
+                        <th className="text-end py-2 pe-3">Open</th>
+                        <th className="text-end py-2 w-40">Apply ({currencySymbol})</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {openInvoices.map((inv) => {
+                        const typed = allocations[inv.invoiceId] ?? "";
+                        const tooMuch = (parseFloat(typed) || 0) - inv.availableToAllocate > 0.0005;
+                        return (
+                          <tr key={inv.invoiceId}>
+                            <td className="py-2.5 pe-3">
+                              <div className="font-bold text-slate-800">{inv.invoiceNumber}</div>
+                              <div className="text-[11px] text-slate-400 font-medium">{inv.invoiceDate}</div>
+                            </td>
+                            <td className="py-2.5 pe-3">
+                              <span className={`text-xs font-bold ${inv.isOverdue ? "text-rose-600" : "text-slate-500"}`}>
+                                {inv.dueDate}{inv.isOverdue ? ` · ${inv.daysOverdue}d overdue` : ""}
+                              </span>
+                            </td>
+                            <td className="py-2.5 pe-3 text-end text-slate-500 font-medium">{inv.grandTotal.toFixed(dp)}</td>
+                            <td className="py-2.5 pe-3 text-end">
+                              <div className="font-bold text-slate-800">{inv.availableToAllocate.toFixed(dp)}</div>
+                              {inv.pendingCheques > 0 && (
+                                <div className="text-[11px] text-amber-600 font-semibold">{inv.pendingCheques.toFixed(dp)} in pending cheques</div>
+                              )}
+                            </td>
+                            <td className="py-2.5 text-end">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                inputMode="decimal"
+                                value={typed}
+                                placeholder="0"
+                                onChange={(e) => setAllocations((prev) => ({ ...prev, [inv.invoiceId]: e.target.value }))}
+                                className={`w-36 px-3 py-2 text-end bg-white border rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent/15 ${tooMuch ? "border-rose-400 text-rose-600" : "border-slate-200 text-slate-800"}`}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 text-sm pt-2 border-t border-slate-100">
+                <span className="text-slate-500 font-medium">
+                  Applied: <span className="font-bold text-slate-800">{currencySymbol} {allocatedTotal.toFixed(dp)}</span>
+                </span>
+                <span className={`font-medium ${overAllocated ? "text-rose-600" : "text-slate-500"}`}>
+                  {overAllocated ? "Over-applied by " : "Kept as advance: "}
+                  <span className="font-bold">{currencySymbol} {Math.abs(numericAmount - allocatedTotal).toFixed(dp)}</span>
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Summary Sidebar (1/3) */}
@@ -657,11 +794,27 @@ export default function NewReceiptPage() {
                   </span>
                 </div>
 
+                {chequesPending > 0 && (
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-slate-500 font-medium">Cheques pending:</span>
+                    <span className="font-bold text-amber-600">
+                      {currencySymbol} {chequesPending.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
+                    </span>
+                  </div>
+                )}
+
                 <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 mt-4 space-y-1">
-                  <span className="block text-[11px] font-bold text-emerald-700 uppercase tracking-wider">New Outstanding Balance</span>
+                  <span className="block text-[11px] font-bold text-emerald-700 uppercase tracking-wider">
+                    {paymentMethod === "Cheque" ? "Balance once the cheque clears" : "New Outstanding Balance"}
+                  </span>
                   <span className="text-lg font-black text-emerald-800">
                     {currencySymbol} {Math.max(0, (selectedCustomer.pendingBillwiseAmount || 0) - (parseFloat(amountPaid) || 0)).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
                   </span>
+                  {paymentMethod === "Cheque" && (
+                    <span className="block text-[11px] font-semibold text-emerald-700">
+                      Until then the balance stays at {currencySymbol} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}.
+                    </span>
+                  )}
                 </div>
               </div>
             ) : (
@@ -675,7 +828,7 @@ export default function NewReceiptPage() {
               disabled={isSaving || !selectedCustomerId || !amountPaid}
               className="w-full py-4 bg-[#1B2A4A] hover:bg-[#15223c] text-white font-extrabold rounded-xl transition shadow-lg shadow-[#1B2A4A]/10 disabled:opacity-50 cursor-pointer text-sm"
             >
-              {isSaving ? "Saving & Deducting..." : "Save Receipt & Deduct Credit"}
+              {isSaving ? "Saving..." : paymentMethod === "Cheque" ? "Save Receipt (Cheque Pending)" : "Save Receipt & Deduct Credit"}
             </button>
           </div>
         </div>

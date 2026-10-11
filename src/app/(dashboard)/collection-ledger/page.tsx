@@ -31,6 +31,7 @@ import {
 import { buildCollectionLedgerPDF } from "@/lib/pdfCollectionLedgerHelper";
 import { getNormalizedDateRange, PeriodType, formatDateToISOString } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/PageHeader";
+import { ChequesInHand } from "@/components/ChequesInHand";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -525,6 +526,7 @@ export default function CollectionLedgerPage() {
       />
 
       <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
+        <ChequesInHand canReceive={profile?.role === "super_admin" || profile?.role === "accountant"} />
 
       {/* Filter Toolbar: Salesperson Selector + Period Presets + Year/Month Navigation */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">

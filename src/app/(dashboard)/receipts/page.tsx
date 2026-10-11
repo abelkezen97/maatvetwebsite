@@ -12,12 +12,52 @@ import { Plus, Download, FileText, RotateCw, X } from "lucide-react";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { printReceiptThermalBill } from "@/lib/thermalPrintHelper";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
+  const { isSuperAdmin, isAccountant } = useAuth();
+  // Admins and accountants manage cheques (received / cleared / bounced).
+  const canManageCheques = isSuperAdmin || isAccountant;
+  const [chequeFilter, setChequeFilter] = useState<"all" | "pending" | "bounced">("all");
+  const [actionMessage, setActionMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+
+  const chequeAction = async (receipt: Receipt, action: "received" | "clear" | "bounce") => {
+    let reason: string | undefined;
+    if (action === "bounce") {
+      const input = window.prompt(
+        `Cheque ${receipt.chequeNumber || receipt.receiptNumber} bounced.\n\nIts invoices will reopen and ${receipt.companyName} will be set to cash only.\n\nReason (optional):`
+      );
+      if (input === null) return;
+      reason = input;
+    } else if (action === "clear") {
+      if (!window.confirm(`Mark cheque ${receipt.chequeNumber || receipt.receiptNumber} as cleared?`)) return;
+    }
+    setActionMessage(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}/cheque`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Cheque update failed");
+      setActionMessage({
+        type: "ok",
+        text:
+          action === "received" ? `Cheque ${receipt.chequeNumber} received from the salesperson.`
+          : action === "clear" ? `Cheque ${receipt.chequeNumber} cleared. Its invoices are now paid.`
+          : `Cheque ${receipt.chequeNumber} bounced. Invoices reopened; ${receipt.companyName} is now cash only.`,
+      });
+      setSelectedReceipt(null);
+      loadReceipts(true);
+    } catch (err: any) {
+      setActionMessage({ type: "error", text: err.message || "Cheque update failed" });
+    }
+  };
 
   const loadReceipts = async (forceRefresh = false) => {
     const local = localStorage.getItem("maat_receipts");
@@ -53,6 +93,8 @@ export default function ReceiptsPage() {
 
   const filteredReceipts = useMemo(() => {
     let list = receipts;
+    if (chequeFilter === "pending") list = list.filter((r) => r.chequeStatus === "Pending");
+    if (chequeFilter === "bounced") list = list.filter((r) => r.chequeStatus === "Bounced");
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       list = list.filter(
@@ -68,7 +110,7 @@ export default function ReceiptsPage() {
       if (timeA !== timeB) return timeB - timeA;
       return b.receiptNumber.localeCompare(a.receiptNumber);
     });
-  }, [receipts, searchQuery]);
+  }, [receipts, searchQuery, chequeFilter]);
 
   const handleDownloadPDF = (receipt: Receipt) => {
     try {
@@ -115,11 +157,29 @@ export default function ReceiptsPage() {
     {
       header: t("paymentMethodCol") || "Payment Method",
       accessor: (row: Receipt) => (
-        <span className="text-xs font-bold text-slate-700">
-          {translateBusinessText(row.paymentMethod || "Cash")}
-        </span>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-bold text-slate-700">
+            {translateBusinessText(row.paymentMethod || "Cash")}
+            {row.chequeNumber ? ` #${row.chequeNumber}` : ""}
+          </span>
+          {row.chequeStatus && (
+            <span
+              className={`inline-block w-fit text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                row.chequeStatus === "Cleared"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : row.chequeStatus === "Bounced"
+                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                  : "bg-amber-50 text-amber-700 border-amber-200"
+              }`}
+            >
+              {row.chequeStatus === "Pending"
+                ? `Pending${row.chequeDate ? ` · ${formatDate(row.chequeDate)}` : ""}${row.chequeReceivedAt ? "" : " · with salesperson"}`
+                : row.chequeStatus}
+            </span>
+          )}
+        </div>
       ),
-      className: "w-32",
+      className: "w-44",
     },
     {
       header: t("paidCol") || "Amount Paid",
@@ -143,6 +203,15 @@ export default function ReceiptsPage() {
             { label: t("view") || "View Details", onClick: () => setSelectedReceipt(row) },
             { label: t("print") || "Print Receipt (80mm)", onClick: () => printReceiptThermalBill(row) },
             { label: "Download PDF", onClick: () => handleDownloadPDF(row) },
+            ...(canManageCheques && row.chequeStatus === "Pending"
+              ? [
+                  ...(!row.chequeReceivedAt
+                    ? [{ label: "Cheque received from salesperson", onClick: () => chequeAction(row, "received") }]
+                    : []),
+                  { label: "Mark cheque cleared", onClick: () => chequeAction(row, "clear") },
+                  { label: "Mark cheque bounced", onClick: () => chequeAction(row, "bounce"), danger: true },
+                ]
+              : []),
           ]}
         />
       ),
@@ -184,7 +253,29 @@ export default function ReceiptsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
             onClear={() => setSearchQuery("")}
           />
+          <div className="flex items-center gap-1 bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600">
+            {([
+              ["all", "All"],
+              ["pending", `Cheques pending (${receipts.filter((r) => r.chequeStatus === "Pending").length})`],
+              ["bounced", "Bounced"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setChequeFilter(key)}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer ${chequeFilter === key ? "bg-slate-900 text-white" : "hover:text-slate-900"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {actionMessage && (
+          <div className={`rounded-xl border p-3 text-sm font-semibold ${actionMessage.type === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-rose-50 border-rose-200 text-rose-700"}`}>
+            {actionMessage.text}
+          </div>
+        )}
 
         {loading ? (
           <LoadingSkeleton type="table" />
@@ -231,6 +322,37 @@ export default function ReceiptsPage() {
                 <span className="text-sm font-bold text-emerald-800">{t("paidCol")}:</span>
                 <span className="text-xl font-extrabold text-emerald-600">{formatCurrency(selectedReceipt.amountPaid)}</span>
               </div>
+
+              {selectedReceipt.chequeStatus && (
+                <div className="grid grid-cols-2 gap-3 text-sm bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  <div><span className="block text-xs font-bold text-slate-400 uppercase">Cheque</span><span className="font-bold text-slate-800">#{selectedReceipt.chequeNumber}{selectedReceipt.bankName ? ` · ${selectedReceipt.bankName}` : ""}</span></div>
+                  <div><span className="block text-xs font-bold text-slate-400 uppercase">Cheque date</span><span className="font-bold text-slate-800">{selectedReceipt.chequeDate ? formatDate(selectedReceipt.chequeDate) : "-"}</span></div>
+                  <div><span className="block text-xs font-bold text-slate-400 uppercase">Status</span><span className="font-bold text-slate-800">{selectedReceipt.chequeStatus}{selectedReceipt.chequeStatus === "Pending" && !selectedReceipt.chequeReceivedAt ? " (with salesperson)" : ""}</span></div>
+                  {selectedReceipt.bounceReason && (
+                    <div><span className="block text-xs font-bold text-slate-400 uppercase">Bounce reason</span><span className="font-bold text-rose-700">{selectedReceipt.bounceReason}</span></div>
+                  )}
+                </div>
+              )}
+
+              {selectedReceipt.allocations && selectedReceipt.allocations.length > 0 && (
+                <div className="text-sm">
+                  <span className="block text-xs font-bold text-slate-400 uppercase mb-2">Applied to invoices</span>
+                  <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl">
+                    {selectedReceipt.allocations.map((a) => (
+                      <div key={a.invoiceId} className="flex justify-between px-3 py-2">
+                        <span className="font-bold text-slate-700">{a.invoiceNumber || "Invoice"}</span>
+                        <span className="font-bold text-slate-800">{formatCurrency(a.amount)}</span>
+                      </div>
+                    ))}
+                    {selectedReceipt.amountPaid - selectedReceipt.allocations.reduce((s, a) => s + a.amount, 0) > 0.0005 && (
+                      <div className="flex justify-between px-3 py-2 text-slate-500">
+                        <span className="font-semibold">Kept as advance</span>
+                        <span className="font-bold">{formatCurrency(selectedReceipt.amountPaid - selectedReceipt.allocations.reduce((s, a) => s + a.amount, 0))}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6">

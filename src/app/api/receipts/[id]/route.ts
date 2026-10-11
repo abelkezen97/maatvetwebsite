@@ -24,7 +24,7 @@ export async function GET(
 
     let query = supabase
       .from("receipts")
-      .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!left(invoice_number, salesman_id)")
+      .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!fk_receipts_invoice(invoice_number, salesman_id)")
       .eq("id", id);
 
     if (profile.role === "salesperson" || isCountryStaff(profile)) {
@@ -36,7 +36,7 @@ export async function GET(
     if (error && (error.message.includes("is_deleted") || error.message.includes("country"))) {
       const res = await supabase
         .from("receipts")
-        .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!left(invoice_number, salesman_id)")
+        .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!fk_receipts_invoice(invoice_number, salesman_id)")
         .eq("id", id)
         .maybeSingle();
       data = res.data;
@@ -88,7 +88,7 @@ export async function PATCH(
 
     let { data: existing, error: fetchErr } = await supabase
       .from("receipts")
-      .select("*, customers!left(assigned_salesman_id), invoices!left(salesman_id)")
+      .select("*, customers!left(assigned_salesman_id), invoices!fk_receipts_invoice(salesman_id)")
       .eq("id", id)
       .maybeSingle();
 
