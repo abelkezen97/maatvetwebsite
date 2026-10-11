@@ -9,9 +9,9 @@ import { createAdminClient } from "@/utils/supabase/admin";
  */
 export async function generateNextDocumentNumber(
   supabase: SupabaseClient,
-  table: "invoices" | "quotations" | "receipts" | "expenses" | "cash_handovers",
-  column: "invoice_number" | "quotation_number" | "receipt_number" | "expense_number" | "handover_number",
-  prefix: "INV" | "QT" | "REC" | "EXP" | "CH" | "CF" | "D",
+  table: "invoices" | "quotations" | "receipts" | "expenses" | "cash_handovers" | "credit_notes",
+  column: "invoice_number" | "quotation_number" | "receipt_number" | "expense_number" | "handover_number" | "credit_note_number",
+  prefix: "INV" | "QT" | "REC" | "EXP" | "CH" | "CF" | "D" | "CN",
   padLength: number = 6
 ): Promise<string> {
   const year = new Date().getFullYear();
