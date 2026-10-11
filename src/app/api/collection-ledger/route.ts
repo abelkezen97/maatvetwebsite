@@ -56,6 +56,14 @@ export async function GET(req: NextRequest) {
       if (!Permissions.canViewAllLedgers(profile)) {
         return NextResponse.json({ error: "Forbidden: Cannot view another salesperson's ledger" }, { status: 403 });
       }
+      const { data: target } = await supabase
+        .from("profiles")
+        .select("country")
+        .eq("id", targetSalespersonId)
+        .maybeSingle();
+      if (!target || target.country !== profile.country) {
+        return NextResponse.json({ error: "Forbidden: Salesperson is in another country" }, { status: 403 });
+      }
       effectiveSalespersonId = targetSalespersonId;
     }
 

@@ -11,7 +11,7 @@ export async function POST(
   try {
     const { profile, supabase } = await requireAuth();
     if (!Permissions.canApproveExpense(profile)) {
-      return NextResponse.json({ error: "Forbidden: Only Accountant or Super Admin can approve expenses" }, { status: 403 });
+      return NextResponse.json({ error: "Forbidden: Only an Accountant or Admin of this country can approve expenses" }, { status: 403 });
     }
 
     const { id } = await params;
@@ -30,6 +30,7 @@ export async function POST(
       .from("expenses")
       .update(updatePayload)
       .eq("id", id)
+      .eq("country", profile.country)
       .select()
       .single();
 
@@ -42,6 +43,7 @@ export async function POST(
         .from("expenses")
         .update(fallbackPayload)
         .eq("id", id)
+      .eq("country", profile.country)
         .select()
         .single();
       data = retry.data;

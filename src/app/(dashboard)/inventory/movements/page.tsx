@@ -4,11 +4,13 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { History, ArrowLeft, RefreshCw, Filter, Search, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { InventoryMovement } from "@/types";
+import { InventoryMovement, UserCountry } from "@/types";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function StockMovementsPage() {
   const { profile } = useAuth();
+  // There is no global role: stock is managed per country, in the user's own country only.
+  const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,8 +99,7 @@ export default function StockMovementsPage() {
                 className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500"
               >
                 <option value="ALL">All Countries</option>
-                <option value="UAE">UAE</option>
-                <option value="Oman">Oman</option>
+                {ownCountry === "Oman" ? <option value="Oman">Oman</option> : <option value="UAE">UAE</option>}
               </select>
             </div>
           )}

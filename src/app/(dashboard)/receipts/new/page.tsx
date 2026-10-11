@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Customer, Receipt, Invoice } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 export default function NewReceiptPage() {
   const router = useRouter();
@@ -133,7 +134,9 @@ export default function NewReceiptPage() {
     return customers.find((c) => c.id === selectedCustomerId);
   }, [selectedCustomerId, customers]);
 
-  const currencySymbol = selectedCustomer?.country === "Oman" ? "OMR" : "AED";
+  const currencyCountry = selectedCustomer?.country || user?.country;
+  const currencySymbol = currencyFor(currencyCountry);
+  const dp = decimalsFor(currencyCountry);
 
   const selectedInvoice = useMemo(() => {
     return invoicesList.find((i) => i.id === selectedInvoiceId);
@@ -436,7 +439,7 @@ export default function NewReceiptPage() {
                         </div>
                         <div className="text-right">
                           <span className="block text-xs font-black text-slate-800">
-                            {currencySymbol} {inv.grandTotal.toFixed(2)}
+                            {currencySymbol} {inv.grandTotal.toFixed(dp)}
                           </span>
                           <span className="text-[11px] font-semibold text-slate-400">
                             Date: {inv.date}
@@ -458,12 +461,12 @@ export default function NewReceiptPage() {
                 </div>
                 <div>
                   <span className="block text-slate-400 font-bold uppercase tracking-wider">Invoice Grand Total</span>
-                  <span className="font-bold text-slate-800 text-sm">{currencySymbol} {selectedInvoice.grandTotal.toFixed(2)}</span>
+                  <span className="font-bold text-slate-800 text-sm">{currencySymbol} {selectedInvoice.grandTotal.toFixed(dp)}</span>
                 </div>
                 <div>
                   <span className="block text-slate-400 font-bold uppercase tracking-wider">Remaining Outstanding</span>
                   <span className={`font-black text-sm ${invoiceOutstanding > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    {currencySymbol} {invoiceOutstanding.toFixed(2)}
+                    {currencySymbol} {invoiceOutstanding.toFixed(dp)}
                   </span>
                 </div>
               </div>
@@ -526,7 +529,7 @@ export default function NewReceiptPage() {
                         </div>
                         <div className="text-right">
                           <span className={`text-xs font-extrabold ${(c.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                            Pending: {c.country === "Oman" ? "OMR" : "AED"} {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            Pending: {c.country === "Oman" ? "OMR" : "AED"} {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
                           </span>
                         </div>
                       </button>
@@ -549,7 +552,7 @@ export default function NewReceiptPage() {
                     Current Pending Billwise
                   </span>
                   <span className={`text-base font-black ${Math.max(0, selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    {currencySymbol} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {currencySymbol} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
                   </span>
                 </div>
               </div>
@@ -565,7 +568,7 @@ export default function NewReceiptPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Amount Paid (AED) *
+                  Amount Paid ({currencySymbol}) *
                 </label>
                 <input
                   type="number"
@@ -643,21 +646,21 @@ export default function NewReceiptPage() {
                 <div className="flex justify-between items-center py-1">
                   <span className="text-slate-500 font-medium">Current Credit:</span>
                   <span className="font-bold text-rose-600">
-                    AED {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    {currencySymbol} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp })}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center py-1 border-t border-dashed border-slate-200 pt-3">
                   <span className="text-slate-500 font-medium">Amount Received:</span>
                   <span className="font-black text-emerald-600 text-base">
-                    - AED {(parseFloat(amountPaid) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    - {currencySymbol} {(parseFloat(amountPaid) || 0).toLocaleString(undefined, { minimumFractionDigits: dp })}
                   </span>
                 </div>
 
                 <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 mt-4 space-y-1">
                   <span className="block text-[11px] font-bold text-emerald-700 uppercase tracking-wider">New Outstanding Balance</span>
                   <span className="text-lg font-black text-emerald-800">
-                    AED {Math.max(0, (selectedCustomer.pendingBillwiseAmount || 0) - (parseFloat(amountPaid) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {currencySymbol} {Math.max(0, (selectedCustomer.pendingBillwiseAmount || 0) - (parseFloat(amountPaid) || 0)).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
                   </span>
                 </div>
               </div>

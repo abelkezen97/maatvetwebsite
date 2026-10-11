@@ -21,7 +21,7 @@ export async function GET(
       .eq("id", id)
       .single();
 
-    if (error || !data) {
+    if (error || !data || data.country !== profile.country) {
       return NextResponse.json({ error: "Expense not found" }, { status: 404 });
     }
 
@@ -55,7 +55,7 @@ export async function PUT(
       .eq("id", id)
       .single();
 
-    if (fetchErr || !existing) {
+    if (fetchErr || !existing || existing.country !== profile.country) {
       return NextResponse.json({ error: "Expense not found" }, { status: 404 });
     }
 
@@ -105,7 +105,7 @@ export async function DELETE(
   try {
     const { profile, supabase } = await requireAuth();
     if (!Permissions.canSoftDeleteExpense(profile)) {
-      return NextResponse.json({ error: "Forbidden: Only Accountant or Super Admin can soft-delete expenses" }, { status: 403 });
+      return NextResponse.json({ error: "Forbidden: Only an Accountant or Admin can delete expenses" }, { status: 403 });
     }
 
     const { id } = await params;
@@ -120,10 +120,11 @@ export async function DELETE(
     let { error } = await adminClient
       .from("expenses")
       .update(deletePayload)
-      .eq("id", id);
+      .eq("id", id)
+      .eq("country", profile.country);
 
     if (error && error.message.includes("is_deleted")) {
-      const fallback = await adminClient.from("expenses").delete().eq("id", id);
+      const fallback = await adminClient.from("expenses").delete().eq("id", id).eq("country", profile.country);
       error = fallback.error;
     }
 

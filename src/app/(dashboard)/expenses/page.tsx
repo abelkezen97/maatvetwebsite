@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { currencyFor } from "@/lib/currency";
 import { useLanguage } from "@/context/LanguageContext";
 import { Expense, ExpenseCategory, ExpensePaymentMethod } from "@/types";
 import {
@@ -213,7 +214,7 @@ export default function ExpensesPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Amount (AED)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Amount ({currencyFor(profile?.country)})</label>
                 <input
                   type="number"
                   step="any"

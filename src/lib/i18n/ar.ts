@@ -81,7 +81,7 @@ export const ar = {
   searchGeneralPlaceholder: "البحث في السجلات...",
   medName: "اسم الدواء",
   initialStock: "مستوى المخزون الأولي",
-  unitPrice: "سعر الوحدة (درهم)",
+  unitPrice: "سعر الوحدة",
   productDetails: "تفاصيل المنتج",
   priceCol: "سعر الوحدة",
   stockCol: "مستوى المخزون",

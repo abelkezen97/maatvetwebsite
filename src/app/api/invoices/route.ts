@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
@@ -59,7 +59,7 @@ export async function GET(request: Request) {
       .select("*, invoice_items(*, products(name, unit, sku)), customers!left(company_name, doctor_name, assigned_salesman_id)")
       .order("created_at", { ascending: false });
 
-    if (profile.role === "accountant") {
+    if (isCountryStaff(profile)) {
       query = query.eq("country", profile.country);
     }
 
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
         .select("*, invoice_items(*, products(name, unit, sku)), customers!left(company_name, doctor_name, assigned_salesman_id)")
         .order("created_at", { ascending: false });
 
-      if (profile.role === "accountant") {
+      if (isCountryStaff(profile)) {
         fallbackQuery = fallbackQuery.eq("country", profile.country);
       }
       if (customerId) fallbackQuery = fallbackQuery.eq("customer_id", customerId);
@@ -206,7 +206,7 @@ export async function POST(request: Request) {
             { status: 403 }
           );
         }
-      } else if (profile.role === "accountant" && custRow.country !== profile.country) {
+      } else if (isCountryStaff(profile) && custRow.country !== profile.country) {
         return NextResponse.json(
           { error: "Forbidden: Cannot create invoice for customer in another country" },
           { status: 403 }

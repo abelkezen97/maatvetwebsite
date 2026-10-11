@@ -113,7 +113,22 @@ export function mapCustomerToDb(customer: Partial<Customer>): Record<string, any
  * Database columns: id, sku, barcode, name, category_id, selling_price, cost_price, price_10, price_50, price_100, unit, brand, manufacturer, description, is_active, created_at, updated_at
  * Relational joins: product_categories(id, name)
  */
-export function mapProductFromDb(row: any, categoryMap?: Map<string, string>): Product {
+/** Price columns per country: UAE prices in AED (original columns), Oman prices in OMR. */
+const PRICE_COLUMNS = {
+  UAE:  { selling: "selling_price",     cost: "cost_price",     p10: "price_10",     p50: "price_50",     p100: "price_100" },
+  Oman: { selling: "selling_price_omr", cost: "cost_price_omr", p10: "price_10_omr", p50: "price_50_omr", p100: "price_100_omr" },
+} as const;
+
+const priceColumnsFor = (country?: string) => (country === "Oman" ? PRICE_COLUMNS.Oman : PRICE_COLUMNS.UAE);
+
+const numOrUndefined = (v: any): number | undefined =>
+  v !== null && v !== undefined && v !== "" ? Number(v) : undefined;
+
+/**
+ * `country` picks which price set is returned (the viewer's country).
+ * Defaults to UAE for callers that do not pass it.
+ */
+export function mapProductFromDb(row: any, categoryMap?: Map<string, string>, country?: string): Product {
   const prodCatRaw = row.product_categories;
   const prodCatObj = Array.isArray(prodCatRaw) ? prodCatRaw[0] : prodCatRaw;
 
@@ -125,10 +140,8 @@ export function mapProductFromDb(row: any, categoryMap?: Map<string, string>): P
     categoryName = "General";
   }
 
-  const sellingPrice =
-    typeof row.selling_price === "number"
-      ? row.selling_price
-      : parseFloat(row.selling_price) || 0;
+  const cols = priceColumnsFor(country);
+  const sellingPrice = Number(row[cols.selling]) || 0;
 
   return {
     id: row.id ? String(row.id) : `prod-${Date.now()}`,
@@ -142,10 +155,10 @@ export function mapProductFromDb(row: any, categoryMap?: Map<string, string>): P
     categoryObj: prodCatObj ? { id: prodCatObj.id || row.category_id, name: prodCatObj.name } : undefined,
     price: sellingPrice,
     sellingPrice: sellingPrice,
-    costPrice: row.cost_price !== null && row.cost_price !== undefined ? Number(row.cost_price) : undefined,
-    price10: row.price_10 !== null && row.price_10 !== undefined ? Number(row.price_10) : undefined,
-    price50: row.price_50 !== null && row.price_50 !== undefined ? Number(row.price_50) : undefined,
-    price100: row.price_100 !== null && row.price_100 !== undefined ? Number(row.price_100) : undefined,
+    costPrice: numOrUndefined(row[cols.cost]),
+    price10: numOrUndefined(row[cols.p10]),
+    price50: numOrUndefined(row[cols.p50]),
+    price100: numOrUndefined(row[cols.p100]),
     unit: row.unit || "Item",
     brand: row.brand || row.manufacturer || "",
     manufacturer: row.manufacturer || row.brand || "",
@@ -158,8 +171,10 @@ export function mapProductFromDb(row: any, categoryMap?: Map<string, string>): P
   };
 }
 
-export function mapProductToDb(product: Partial<Product>): Record<string, any> {
+/** `country` decides which price columns the given prices are written to. */
+export function mapProductToDb(product: Partial<Product>, country?: string): Record<string, any> {
   const payload: Record<string, any> = {};
+  const cols = priceColumnsFor(country);
   if (product.sku !== undefined || product.productCode !== undefined) {
     const rawSku = (product.sku ?? product.productCode);
     payload.sku = (rawSku && String(rawSku).trim()) ? String(rawSku).trim() : null;
@@ -171,12 +186,12 @@ export function mapProductToDb(product: Partial<Product>): Record<string, any> {
   if (product.name !== undefined) payload.name = product.name;
   if (product.categoryId !== undefined) payload.category_id = product.categoryId;
   if (product.price !== undefined || product.sellingPrice !== undefined) {
-    payload.selling_price = Number(product.price ?? product.sellingPrice) || 0;
+    payload[cols.selling] = Number(product.price ?? product.sellingPrice) || 0;
   }
-  if (product.costPrice !== undefined) payload.cost_price = Number(product.costPrice);
-  if (product.price10 !== undefined) payload.price_10 = product.price10;
-  if (product.price50 !== undefined) payload.price_50 = product.price50;
-  if (product.price100 !== undefined) payload.price_100 = product.price100;
+  if (product.costPrice !== undefined) payload[cols.cost] = Number(product.costPrice);
+  if (product.price10 !== undefined) payload[cols.p10] = product.price10;
+  if (product.price50 !== undefined) payload[cols.p50] = product.price50;
+  if (product.price100 !== undefined) payload[cols.p100] = product.price100;
   if (product.unit !== undefined) payload.unit = product.unit;
   if (product.packSize !== undefined || product.unit !== undefined) {
     payload.pack_size = product.packSize ?? product.unit ?? "1";

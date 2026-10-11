@@ -8,6 +8,27 @@ export interface ProfileContext {
 }
 
 /**
+ * Office staff of a country: its admin(s) and accountant(s).
+ * There is no global role: every user, including admins, only reaches
+ * records of their own `country`.
+ */
+export function isCountryStaff(p: Pick<ProfileContext, "role">): boolean {
+  return p.role === "super_admin" || p.role === "accountant";
+}
+
+/** The admin of a country (stored as role "super_admin"). */
+export function isCountryAdmin(p: Pick<ProfileContext, "role">): boolean {
+  return p.role === "super_admin";
+}
+
+/** Display name of a role: "Admin (Oman)", "Accountant", "Salesperson". */
+export function roleLabel(role: string, country?: string | null): string {
+  if (role === "super_admin") return country ? `Admin (${country})` : "Admin";
+  if (role === "accountant") return "Accountant";
+  return "Salesperson";
+}
+
+/**
  * Central Permission Helper Service
  * Used across UI components and API handlers to evaluate access rights.
  */
@@ -53,11 +74,11 @@ export const Permissions = {
   canViewAllLedgers: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
   canViewExpenses: (p: ProfileContext): boolean => p.is_active,
   canCreateExpense: (p: ProfileContext): boolean => p.is_active,
-  canApproveExpense: (p: ProfileContext): boolean => p.is_active,
+  canApproveExpense: (p: ProfileContext): boolean => p.is_active && isCountryStaff(p),
   canSoftDeleteExpense: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
   canViewHandovers: (p: ProfileContext): boolean => p.is_active,
   canCreateHandover: (p: ProfileContext): boolean => p.is_active,
-  canApproveHandover: (p: ProfileContext): boolean => p.is_active,
+  canApproveHandover: (p: ProfileContext): boolean => p.is_active && isCountryStaff(p),
   canSetOpeningBalance: (p: ProfileContext): boolean => p.is_active && (p.role === "super_admin" || p.role === "accountant"),
 
   // Inventory & Stock Management

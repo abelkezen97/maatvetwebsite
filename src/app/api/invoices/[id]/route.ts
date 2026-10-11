@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { QuoteItem } from "@/types";
@@ -31,7 +31,7 @@ export async function GET(
 
     if (profile.role === "salesperson") {
       query = query.eq("country", profile.country).eq("salesman_id", profile.id);
-    } else if (profile.role === "accountant") {
+    } else if (isCountryStaff(profile)) {
       query = query.eq("country", profile.country);
     }
 
@@ -55,7 +55,7 @@ export async function GET(
 
       if (profile.role === "salesperson") {
         numQuery = numQuery.eq("country", profile.country).eq("salesman_id", profile.id);
-      } else if (profile.role === "accountant") {
+      } else if (isCountryStaff(profile)) {
         numQuery = numQuery.eq("country", profile.country);
       }
 
@@ -75,7 +75,7 @@ export async function GET(
       if (data.country !== profile.country || data.salesman_id !== profile.id) {
         return NextResponse.json({ error: "Forbidden: Cannot view another salesperson's invoice" }, { status: 403 });
       }
-    } else if (profile.role === "accountant" && data.country !== profile.country) {
+    } else if (isCountryStaff(profile) && data.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot view invoice in another country" }, { status: 403 });
     }
 
@@ -138,7 +138,7 @@ export async function PATCH(
 
     if (profile.role === "salesperson") {
       return NextResponse.json({ error: "Forbidden: Only Admin/Super Admin can edit invoices or modify payment status" }, { status: 403 });
-    } else if (profile.role === "accountant" && existing.country !== profile.country) {
+    } else if (isCountryStaff(profile) && existing.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot edit invoice in another country" }, { status: 403 });
     }
 
@@ -395,6 +395,7 @@ export async function DELETE(
       .from("invoices")
       .select("id, invoice_number, country, customer_id, is_deleted")
       .eq("id", id)
+      .eq("country", profile.country)
       .maybeSingle();
 
     if (!existing || existing.is_deleted) {
@@ -412,10 +413,10 @@ export async function DELETE(
         deleted_by: profile.id,
         updated_by: profile.id,
       })
-      .eq("id", id);
+      .eq("id", id).eq("country", profile.country);
 
     if (error && (error.message.includes("is_deleted") || error.message.includes("deleted_by"))) {
-      const deleteRes = await supabase.from("invoices").delete().eq("id", id);
+      const deleteRes = await supabase.from("invoices").delete().eq("id", id).eq("country", profile.country);
       error = deleteRes.error;
     }
 

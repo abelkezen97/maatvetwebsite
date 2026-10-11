@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { Customer, Invoice, Receipt } from "@/types";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 interface FinancialSummaryData {
   pendingBalance: number;
@@ -45,7 +46,8 @@ export const buildCustomerLedgerPDF = (
   const GREEN = [16, 185, 129];
   const RED = [225, 29, 72];
 
-  const currencySymbol = customer.country === "Oman" ? "OMR" : "AED";
+  const currencySymbol = currencyFor(customer.country);
+  const dp = decimalsFor(customer.country);
 
   // Build sorted transactions
   interface Transaction {
@@ -140,11 +142,11 @@ export const buildCustomerLedgerPDF = (
 
   doc.setFontSize(11);
   doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-  doc.text(`${currencySymbol} ${financialSummary.totalInvoiced.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 20, y + 13);
+  doc.text(`${currencySymbol} ${financialSummary.totalInvoiced.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 20, y + 13);
   doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
-  doc.text(`${currencySymbol} ${financialSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 85, y + 13);
+  doc.text(`${currencySymbol} ${financialSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 85, y + 13);
   doc.setTextColor(financialSummary.pendingBalance > 0 ? RED[0] : GREEN[0], financialSummary.pendingBalance > 0 ? RED[1] : GREEN[1], financialSummary.pendingBalance > 0 ? RED[2] : GREEN[2]);
-  doc.text(`${currencySymbol} ${financialSummary.pendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 145, y + 13);
+  doc.text(`${currencySymbol} ${financialSummary.pendingBalance.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 145, y + 13);
 
   y += 24;
 
@@ -204,12 +206,12 @@ export const buildCustomerLedgerPDF = (
     doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
     doc.text(tx.refNo, 75, y + 5);
 
-    doc.text(tx.debit > 0 ? `${tx.debit.toFixed(2)}` : "—", 125, y + 5, { align: "right" });
-    doc.text(tx.credit > 0 ? `${tx.credit.toFixed(2)}` : "—", 158, y + 5, { align: "right" });
+    doc.text(tx.debit > 0 ? `${tx.debit.toFixed(dp)}` : "—", 125, y + 5, { align: "right" });
+    doc.text(tx.credit > 0 ? `${tx.credit.toFixed(dp)}` : "—", 158, y + 5, { align: "right" });
 
     doc.setFont("helvetica", "bold");
     doc.setTextColor(runningBalance > 0 ? RED[0] : TEXT_DARK[0], runningBalance > 0 ? RED[1] : TEXT_DARK[1], runningBalance > 0 ? RED[2] : TEXT_DARK[2]);
-    doc.text(`${runningBalance.toFixed(2)}`, 192, y + 5, { align: "right" });
+    doc.text(`${runningBalance.toFixed(dp)}`, 192, y + 5, { align: "right" });
 
     doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
     doc.line(14, y + 7, 196, y + 7);
@@ -271,7 +273,8 @@ export const buildPendingInvoicesPDF = (
   const GREEN = [16, 185, 129];
   const RED = [225, 29, 72];
 
-  const currencySymbol = customer.country === "Oman" ? "OMR" : "AED";
+  const currencySymbol = currencyFor(customer.country);
+  const dp = decimalsFor(customer.country);
 
   // Page Header Generator
   const drawHeader = () => {
@@ -330,9 +333,9 @@ export const buildPendingInvoicesPDF = (
   doc.setTextColor(RED[0], RED[1], RED[2]);
   doc.text(`${outstandingInvoices.length} Invoices`, 20, y + 13);
   doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-  doc.text(`${currencySymbol} ${financialSummary.creditInvoicesSum.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 85, y + 13);
+  doc.text(`${currencySymbol} ${financialSummary.creditInvoicesSum.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 85, y + 13);
   doc.setTextColor(RED[0], RED[1], RED[2]);
-  doc.text(`${currencySymbol} ${financialSummary.pendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 145, y + 13);
+  doc.text(`${currencySymbol} ${financialSummary.pendingBalance.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 145, y + 13);
 
   y += 24;
 
@@ -395,13 +398,13 @@ export const buildPendingInvoicesPDF = (
       doc.text(statusStr, 88, y + 5);
     }
 
-    doc.text(`${inv.grandTotal.toFixed(2)}`, 132, y + 5, { align: "right" });
+    doc.text(`${inv.grandTotal.toFixed(dp)}`, 132, y + 5, { align: "right" });
     doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
-    doc.text(`${inv.paidAmount.toFixed(2)}`, 162, y + 5, { align: "right" });
+    doc.text(`${inv.paidAmount.toFixed(dp)}`, 162, y + 5, { align: "right" });
 
     doc.setFont("helvetica", "bold");
     doc.setTextColor(RED[0], RED[1], RED[2]);
-    doc.text(`${inv.outstandingAmount.toFixed(2)}`, 192, y + 5, { align: "right" });
+    doc.text(`${inv.outstandingAmount.toFixed(dp)}`, 192, y + 5, { align: "right" });
 
     doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
     doc.line(14, y + 7, 196, y + 7);

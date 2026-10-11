@@ -21,7 +21,7 @@ export async function GET() {
         companyEmail: "sales@maatvet.com",
         companyPhone: "+971 50 123 4567",
         companyAddress: "Ajman Free Zone, United Arab Emirates",
-        currency: "AED",
+        currency: profile.country === "Oman" ? "OMR" : "AED",
       },
       documentSettings: docData || {
         quotePrefix: "QT-2026-",

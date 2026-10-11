@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { CollectionLedgerEntry, CollectionLedgerSummary } from "@/types";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 const formatDateStr = (dateStr?: string): string => {
   if (!dateStr) return new Date().toISOString().split("T")[0];
@@ -34,7 +35,8 @@ export const buildCollectionLedgerPDF = (
   const LIGHT_BG = [248, 250, 252];
   const BORDER_COLOR = [226, 232, 240];
 
-  const currencySymbol = summary.country === "Oman" ? "OMR" : "AED";
+  const currencySymbol = currencyFor(summary.country);
+  const dp = decimalsFor(summary.country);
 
   // Header Banner Generator
   const drawHeader = () => {
@@ -110,7 +112,7 @@ export const buildCollectionLedgerPDF = (
   doc.setTextColor(4, 120, 87); // Emerald Dark
   doc.text("CASH IN HAND", 18, y + 5.5);
   doc.setFontSize(10.5);
-  doc.text(`${currencySymbol} ${summary.currentCashInHand.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, 18, y + 13);
+  doc.text(`${currencySymbol} ${summary.currentCashInHand.toLocaleString("en-US", { minimumFractionDigits: dp })}`, 18, y + 13);
 
   // Card 2: Cash Collected (Soft Blue)
   doc.setFillColor(240, 249, 255);
@@ -121,7 +123,7 @@ export const buildCollectionLedgerPDF = (
   doc.setTextColor(3, 105, 161); // Blue Dark
   doc.text("CASH COLLECTED", 14 + cardW + gap + 4, y + 5.5);
   doc.setFontSize(10);
-  doc.text(`${currencySymbol} ${summary.totalCashCollected.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, 14 + cardW + gap + 4, y + 13);
+  doc.text(`${currencySymbol} ${summary.totalCashCollected.toLocaleString("en-US", { minimumFractionDigits: dp })}`, 14 + cardW + gap + 4, y + 13);
 
   // Card 3: Approved Expenses (Soft Rose)
   doc.setFillColor(255, 241, 242);
@@ -132,7 +134,7 @@ export const buildCollectionLedgerPDF = (
   doc.setTextColor(190, 18, 60); // Rose Dark
   doc.text("APPROVED EXPENSES", 14 + (cardW + gap) * 2 + 4, y + 5.5);
   doc.setFontSize(10);
-  doc.text(`${currencySymbol} ${summary.totalCashExpenses.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, 14 + (cardW + gap) * 2 + 4, y + 13);
+  doc.text(`${currencySymbol} ${summary.totalCashExpenses.toLocaleString("en-US", { minimumFractionDigits: dp })}`, 14 + (cardW + gap) * 2 + 4, y + 13);
 
   // Card 4: Cash Handed Over (Soft Slate)
   doc.setFillColor(248, 250, 252);
@@ -143,7 +145,7 @@ export const buildCollectionLedgerPDF = (
   doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
   doc.text("CASH HANDED OVER", 14 + (cardW + gap) * 3 + 4, y + 5.5);
   doc.setFontSize(10);
-  doc.text(`${currencySymbol} ${summary.totalCashHandedOver.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, 14 + (cardW + gap) * 3 + 4, y + 13);
+  doc.text(`${currencySymbol} ${summary.totalCashHandedOver.toLocaleString("en-US", { minimumFractionDigits: dp })}`, 14 + (cardW + gap) * 3 + 4, y + 13);
 
   // 3. Table Headers & Layout
   y += 24;
@@ -228,7 +230,7 @@ export const buildCollectionLedgerPDF = (
     if (entry.inAmount > 0) {
       doc.setFont("helvetica", "bold");
       doc.setTextColor(16, 185, 129);
-      doc.text(`+${entry.inAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, colX.in, y + 4.5, { align: "right" });
+      doc.text(`+${entry.inAmount.toLocaleString("en-US", { minimumFractionDigits: dp })}`, colX.in, y + 4.5, { align: "right" });
     } else {
       doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
       doc.text("—", colX.in, y + 4.5, { align: "right" });
@@ -238,7 +240,7 @@ export const buildCollectionLedgerPDF = (
     if (entry.outAmount > 0) {
       doc.setFont("helvetica", "bold");
       doc.setTextColor(225, 29, 72);
-      doc.text(`-${entry.outAmount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, colX.out, y + 4.5, { align: "right" });
+      doc.text(`-${entry.outAmount.toLocaleString("en-US", { minimumFractionDigits: dp })}`, colX.out, y + 4.5, { align: "right" });
     } else {
       doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
       doc.text("—", colX.out, y + 4.5, { align: "right" });
@@ -247,7 +249,7 @@ export const buildCollectionLedgerPDF = (
     // Running Balance (Navy Bold)
     doc.setFont("helvetica", "bold");
     doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
-    doc.text(entry.balance.toLocaleString("en-US", { minimumFractionDigits: 2 }), colX.bal, y + 4.5, { align: "right" });
+    doc.text(entry.balance.toLocaleString("en-US", { minimumFractionDigits: dp }), colX.bal, y + 4.5, { align: "right" });
 
     y += 6.5;
   });

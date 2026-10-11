@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
+import { currencyFor } from "@/lib/currency";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { generateProductsPdf } from "@/lib/utils/exportProductsPdf";
@@ -572,7 +573,7 @@ export default function ProductsPage() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Selling Price (AED) *
+                    Selling Price ({currencyFor(profile?.country)}) *
                   </label>
                   <input
                     type="number"

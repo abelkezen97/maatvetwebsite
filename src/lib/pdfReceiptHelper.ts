@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { Receipt } from "@/types";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 export const buildReceiptPDF = (receipt: Receipt): jsPDF => {
   const doc = new jsPDF();
@@ -52,7 +53,8 @@ export const buildReceiptPDF = (receipt: Receipt): jsPDF => {
   const custNameStr = receipt.companyName + (receipt.customerName ? ` (${receipt.customerName})` : "");
   doc.text(custNameStr, 75, boxY);
 
-  const currencySymbol = receipt.country === "Oman" ? "OMR" : "AED";
+  const currencySymbol = currencyFor(receipt.country);
+  const dp = decimalsFor(receipt.country);
 
   // Row 2: Amount Received
   boxY += 10;
@@ -60,7 +62,7 @@ export const buildReceiptPDF = (receipt: Receipt): jsPDF => {
   doc.text("Amount Received:", 22, boxY);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(greenHeaderColor[0], greenHeaderColor[1], greenHeaderColor[2]);
-  doc.text(`${currencySymbol} ${(receipt.amountPaid || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 75, boxY);
+  doc.text(`${currencySymbol} ${(receipt.amountPaid || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`, 75, boxY);
 
   // Row 3: Payment Method
   doc.setTextColor(greyDark[0], greyDark[1], greyDark[2]);
@@ -90,7 +92,7 @@ export const buildReceiptPDF = (receipt: Receipt): jsPDF => {
   } else {
     doc.setTextColor(16, 122, 87); // Emerald green for zero balance
   }
-  doc.text(`${currencySymbol} ${remAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 75, boxY);
+  doc.text(`${currencySymbol} ${remAmt.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`, 75, boxY);
   doc.setTextColor(greyDark[0], greyDark[1], greyDark[2]);
 
   // Notes section

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { UserRole, UserCountry } from "@/types";
+import { UserRole } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,19 @@ export async function PATCH(
 
     const body = await request.json();
     const { full_name, phone, role, country, is_active, password } = body;
+
+    // Admins manage users of their own country only, and cannot move them to another country.
+    const { data: targetUser } = await supabase
+      .from("profiles")
+      .select("id, country")
+      .eq("id", id)
+      .maybeSingle();
+    if (!targetUser || targetUser.country !== adminProfile.country) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    if (country !== undefined && country !== adminProfile.country) {
+      return NextResponse.json({ error: "Users cannot be moved to another country." }, { status: 400 });
+    }
 
     // Passwords are reset through POST /api/admin/users/:id/reset-password,
     // which reports failures instead of silently ignoring them.
@@ -38,7 +51,7 @@ export async function PATCH(
       }
       if (role && role !== "super_admin") {
         return NextResponse.json(
-          { error: "Self-lockout prevented: You cannot remove your own Super Admin role." },
+          { error: "Self-lockout prevented: You cannot remove your own Admin role." },
           { status: 400 }
         );
       }
@@ -57,11 +70,12 @@ export async function PATCH(
           .from("profiles")
           .select("id")
           .eq("role", "super_admin")
+          .eq("country", adminProfile.country)
           .eq("is_active", true);
 
         if (!activeAdmins || activeAdmins.length <= 1) {
           return NextResponse.json(
-            { error: "Governance Error: System must maintain at least one active Super Admin user." },
+            { error: "Each country must keep at least one active Admin." },
             { status: 400 }
           );
         }
@@ -76,9 +90,6 @@ export async function PATCH(
     if (phone !== undefined) updatePayload.phone = String(phone).trim();
     if (role !== undefined && ["super_admin", "accountant", "salesperson"].includes(role)) {
       updatePayload.role = role as UserRole;
-    }
-    if (country !== undefined && ["UAE", "Oman"].includes(country)) {
-      updatePayload.country = country as UserCountry;
     }
     if (is_active !== undefined) {
       updatePayload.is_active = Boolean(is_active);
@@ -139,23 +150,28 @@ export async function DELETE(
       );
     }
 
-    // ACTIVE SUPER ADMIN GUARANTEE
+    // ACTIVE ADMIN GUARANTEE (per country)
     const { data: targetProfile } = await supabase
       .from("profiles")
-      .select("role")
+      .select("role, country")
       .eq("id", id)
       .maybeSingle();
+
+    if (!targetProfile || targetProfile.country !== adminProfile.country) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
 
     if (targetProfile?.role === "super_admin") {
       const { data: activeAdmins } = await supabase
         .from("profiles")
         .select("id")
         .eq("role", "super_admin")
+        .eq("country", adminProfile.country)
         .eq("is_active", true);
 
       if (!activeAdmins || activeAdmins.length <= 1) {
         return NextResponse.json(
-          { error: "Governance Error: System must maintain at least one active Super Admin user." },
+          { error: "Each country must keep at least one active Admin." },
           { status: 400 }
         );
       }

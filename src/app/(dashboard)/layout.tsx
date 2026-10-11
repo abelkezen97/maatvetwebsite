@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { PageGuard } from "@/components/PageGuard";
 import { SidebarProvider } from "@/components/SidebarContext";
@@ -12,8 +12,13 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading } = useAuth();
-  const { t } = useLanguage();
+  const { user, profile, loading } = useAuth();
+  const { t, setCurrencyCountry } = useLanguage();
+
+  // Amounts across the app use the signed-in user's country currency (AED or OMR).
+  useEffect(() => {
+    setCurrencyCountry(profile?.country ?? null);
+  }, [profile?.country, setCurrencyCountry]);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 

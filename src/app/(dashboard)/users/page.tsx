@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Profile, UserRole, UserCountry } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
+import { roleLabel } from "@/lib/auth/permissions";
 import { PageHeader } from "@/components/PageHeader";
 
 interface UserStats extends Profile {
@@ -196,7 +197,7 @@ export default function UsersManagementPage() {
                           ? "bg-blue-50 text-blue-700 border-blue-200"
                           : "bg-slate-100 text-slate-700 border-slate-200"
                       }`}>
-                        {u.role === "super_admin" ? "Super Admin" : u.role === "accountant" ? "Accountant" : "Salesperson"}
+                        {roleLabel(u.role, u.country)}
                       </span>
                     </td>
 

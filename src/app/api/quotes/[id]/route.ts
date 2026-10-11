@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapQuoteFromDb, mapQuoteToDb } from "@/lib/db/mappers";
 import { QuoteItem } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -32,7 +32,7 @@ export async function GET(
 
     if (profile.role === "salesperson") {
       query = query.eq("country", profile.country).eq("salesman_id", profile.id);
-    } else if (profile.role === "accountant") {
+    } else if (isCountryStaff(profile)) {
       query = query.eq("country", profile.country);
     }
 
@@ -57,7 +57,7 @@ export async function GET(
       if (data.country !== profile.country || data.salesman_id !== profile.id) {
         return NextResponse.json({ error: "Forbidden: Cannot view another salesperson's quotation" }, { status: 403 });
       }
-    } else if (profile.role === "accountant" && data.country !== profile.country) {
+    } else if (isCountryStaff(profile) && data.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot view quotation in another country" }, { status: 403 });
     }
 
@@ -102,7 +102,7 @@ export async function PATCH(
       if (existing.country !== profile.country || existing.salesman_id !== profile.id) {
         return NextResponse.json({ error: "Forbidden: Cannot edit another salesperson's quotation" }, { status: 403 });
       }
-    } else if (profile.role === "accountant" && existing.country !== profile.country) {
+    } else if (isCountryStaff(profile) && existing.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot edit quotation in another country" }, { status: 403 });
     }
 
@@ -260,10 +260,10 @@ export async function DELETE(
         deleted_by: profile.id,
         updated_by: profile.id,
       })
-      .eq("id", id);
+      .eq("id", id).eq("country", profile.country);
 
     if (error && (error.message.includes("is_deleted") || error.message.includes("deleted_by"))) {
-      const deleteRes = await supabase.from("quotations").delete().eq("id", id);
+      const deleteRes = await supabase.from("quotations").delete().eq("id", id).eq("country", profile.country);
       error = deleteRes.error;
     }
 

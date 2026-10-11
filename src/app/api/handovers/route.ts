@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
+import { formatMoney } from "@/lib/currency";
 import { mapHandoverFromDb, mapHandoverToDb } from "@/lib/db/mappers";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     if (profile.role === "salesperson") {
       rows = rows.filter((r: any) => (r.salesperson_id || r.created_by) === profile.id);
-    } else if (profile.role === "accountant") {
+    } else if (isCountryStaff(profile)) {
       rows = rows.filter((r: any) => r.country === profile.country || !r.country);
     }
 
@@ -99,10 +100,10 @@ export async function POST(req: NextRequest) {
     const requestedAmount = Number(amount);
 
     if (requestedAmount > availableCash) {
-      const formattedAvailable = availableCash.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const formattedAvailable = formatMoney(availableCash, profile.country);
       return NextResponse.json(
         {
-          error: `Insufficient cash available. Current cash balance is AED ${formattedAvailable}. Maximum handover allowed is AED ${formattedAvailable}.`,
+          error: `Insufficient cash available. Current cash balance is ${formattedAvailable}. Maximum handover allowed is ${formattedAvailable}.`,
           availableCash,
         },
         { status: 400 }

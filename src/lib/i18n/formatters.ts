@@ -2,22 +2,19 @@
  * Presentation-layer formatting helpers for MAATWEB (Currency, Dates, Numbers).
  */
 
-/**
- * Formats a currency amount into standard AED presentation.
- * En: "AED 1,740.00"
- * Ar: "1,740.00 د.إ" or "AED 1,740.00" formatted cleanly in Arabic UI
- */
-export function formatCurrency(amount: number | string | null | undefined, locale: "en" | "ar"): string {
-  const num = typeof amount === "number" ? amount : parseFloat(String(amount || 0)) || 0;
-  const formattedNum = num.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+import { formatMoney } from "@/lib/currency";
 
-  if (locale === "ar") {
-    return `${formattedNum} د.إ`;
-  }
-  return `AED ${formattedNum}`;
+/**
+ * Formats an amount in the country's currency.
+ * UAE: "AED 1,740.00" (Ar: "1,740.00 د.إ")
+ * Oman: "OMR 1,740.000" (Ar: "1,740.000 ر.ع.")
+ */
+export function formatCurrency(
+  amount: number | string | null | undefined,
+  locale: "en" | "ar",
+  country?: string | null
+): string {
+  return formatMoney(amount, country, locale);
 }
 
 /**

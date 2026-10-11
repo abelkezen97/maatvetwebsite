@@ -1,4 +1,5 @@
 import { Invoice, Receipt } from "@/types";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 function formatDisplayDate(dateStr: string): string {
   if (!dateStr) return "";
@@ -20,6 +21,8 @@ function formatDisplayDate(dateStr: string): string {
  * Stays strictly client-side and is NOT saved or uploaded to Google Drive.
  */
 export const printInvoiceThermalBill = (invoice: Invoice) => {
+  const cur = currencyFor(invoice.country);
+  const dp = decimalsFor(invoice.country);
   const printWindow = window.open("", "_blank", "width=400,height=600");
   if (!printWindow) {
     alert("Please allow popups to print the thermal bill.");
@@ -33,8 +36,8 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
         <td colspan="2" style="font-weight: bold; padding-top: 4px;">${item.productName}</td>
       </tr>
       <tr>
-        <td style="padding-left: 8px; color: #333;">${item.quantity} x AED ${item.discount.toFixed(2)}</td>
-        <td style="text-align: right; font-weight: bold;">AED ${item.total.toFixed(2)}</td>
+        <td style="padding-left: 8px; color: #333;">${item.quantity} x ${cur} ${item.discount.toFixed(dp)}</td>
+        <td style="text-align: right; font-weight: bold;">${cur} ${item.total.toFixed(dp)}</td>
       </tr>
     `
     )
@@ -103,13 +106,13 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
 
         <div class="divider"></div>
 
-        <div class="row"><span>Subtotal:</span><span>AED ${invoice.subtotal.toFixed(2)}</span></div>
-        ${invoice.discountTotal > 0 ? `<div class="row"><span>Discount:</span><span>-AED ${invoice.discountTotal.toFixed(2)}</span></div>` : ""}
+        <div class="row"><span>Subtotal:</span><span>${cur} ${invoice.subtotal.toFixed(dp)}</span></div>
+        ${invoice.discountTotal > 0 ? `<div class="row"><span>Discount:</span><span>-${cur} ${invoice.discountTotal.toFixed(dp)}</span></div>` : ""}
         
         <div class="total-box">
           <div class="grand-total">
             <span>TOTAL:</span>
-            <span>AED ${invoice.grandTotal.toFixed(2)}</span>
+            <span>${cur} ${invoice.grandTotal.toFixed(dp)}</span>
           </div>
         </div>
 
@@ -135,6 +138,8 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
  * Stays strictly client-side and is NOT saved or uploaded to Google Drive.
  */
 export const printReceiptThermalBill = (receipt: Receipt) => {
+  const cur = currencyFor(receipt.country);
+  const dp = decimalsFor(receipt.country);
   const printWindow = window.open("", "_blank", "width=400,height=600");
   if (!printWindow) {
     alert("Please allow popups to print the thermal receipt.");
@@ -190,7 +195,7 @@ export const printReceiptThermalBill = (receipt: Receipt) => {
 
         <div class="amount-box">
           <div class="amount-title">AMOUNT RECEIVED</div>
-          <div class="amount-val">AED ${receipt.amountPaid.toFixed(2)}</div>
+          <div class="amount-val">${cur} ${receipt.amountPaid.toFixed(dp)}</div>
         </div>
 
         <div class="double-divider"></div>

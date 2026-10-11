@@ -37,7 +37,7 @@ export async function GET() {
       if (c.id && c.name) categoryMap.set(c.id, c.name);
     });
 
-    const products = (data || []).map((row: any) => mapProductFromDb(row, categoryMap));
+    const products = (data || []).map((row: any) => mapProductFromDb(row, categoryMap, profile.country));
     return NextResponse.json({ products, source: "supabase" });
   } catch (error: any) {
     if (error instanceof AuthError) {
@@ -152,7 +152,7 @@ export async function POST(request: Request) {
       manufacturer: manufacturer.trim(),
       description: description.trim(),
       isAvailable: isActive,
-    });
+    }, profile.country);
     const { data, error } = await supabase
       .from("products")
       .insert([insertPayload])
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message || "Failed to insert product" }, { status: 500 });
     }
 
-    const newProduct = mapProductFromDb(data);
+    const newProduct = mapProductFromDb(data, undefined, profile.country);
     return NextResponse.json({ success: true, product: newProduct });
   } catch (error: any) {
     if (error instanceof AuthError) {

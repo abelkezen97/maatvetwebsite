@@ -80,9 +80,14 @@ export function DashboardCard({
 
   // Format value text cleanly
   const valueStr = String(value);
-  const isAED = valueStr.startsWith("AED ");
-  const cleanValue = isAED ? valueStr.replace("AED ", "") : valueStr;
-  const currencyLabel = isRtl ? "د.إ" : "AED";
+  // Money values arrive as "AED 1,740.00" / "OMR 1,740.000" (or "1,740.00 د.إ" in Arabic):
+  // split the currency off so it can be shown as a tag above the number.
+  const codeFirst = valueStr.match(/^(AED|OMR) (.+)$/);
+  const codeLast = valueStr.match(/^(.+) (د\.إ|ر\.ع\.)$/);
+  const isAED = Boolean(codeFirst || codeLast);
+  const cleanValue = codeFirst ? codeFirst[2] : codeLast ? codeLast[1] : valueStr;
+  const code = codeFirst ? codeFirst[1] : codeLast ? (codeLast[2] === "د.إ" ? "AED" : "OMR") : "AED";
+  const currencyLabel = isRtl ? (code === "OMR" ? "ر.ع." : "د.إ") : code;
 
   const content = (
     <div className="relative overflow-hidden bg-white border border-slate-200/90 rounded-2xl p-5 md:p-6 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_30px_-6px_rgba(0,0,0,0.08)] hover:border-slate-300/90 transition-all duration-300 group flex flex-col justify-between h-full text-start">

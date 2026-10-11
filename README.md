@@ -52,13 +52,19 @@ The `@/` import alias points at `src/`.
 
 ## Roles
 
-| Role | Scope |
-| --- | --- |
-| `super_admin` | Everything, all countries, user management |
-| `accountant` | Finance views, approvals, ledgers |
-| `salesperson` | Own customers and documents in their country |
+Every user belongs to one country (UAE or Oman) and only ever sees that country's data. There is no global owner account.
 
-Access is enforced three times: the middleware redirects signed-out users, every API route checks role with `requireAuth()`, and Postgres RLS policies limit rows per user and country.
+| Role | Shown as | Scope (own country only) |
+| --- | --- | --- |
+| `super_admin` | Admin (UAE) / Admin (Oman) | Users, products and prices, stock, editing or cancelling invoices and receipts, settings |
+| `accountant` | Accountant | Finance views, approvals, ledgers, opening balances, own-country prices |
+| `salesperson` | Salesperson | Own customers and documents |
+
+Products are one shared list; UAE prices are in AED (`selling_price`, `price_10`…) and Oman prices in OMR (`selling_price_omr`, `price_10_omr`…). Money is stored with 3 decimals so OMR amounts are exact; screens and documents show AED with 2 and OMR with 3.
+
+Access is enforced three times: the middleware redirects signed-out users, every API route checks role and country, and Postgres RLS policies (`is_country_staff()`, `is_country_admin()`) limit rows per user and country. Nobody can change their own role or country, and an admin cannot move a user to the other country.
+
+If the only admin of a country is locked out, fix it from the Supabase dashboard (Authentication → Users, or the `profiles` table).
 
 ## Database changes
 
