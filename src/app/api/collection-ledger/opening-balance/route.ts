@@ -45,9 +45,14 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Country Validation & Isolation
-    const targetCountry = (country === "Oman" || country === "UAE")
-      ? country
-      : (targetProfile.country === "Oman" ? "Oman" : "UAE");
+    // Staff set opening balances only for salespeople of their own country.
+    if (targetProfile.country !== profile.country || (country && country !== profile.country)) {
+      return NextResponse.json(
+        { error: "Forbidden: Salesperson is in another country" },
+        { status: 403 }
+      );
+    }
+    const targetCountry = profile.country === "Oman" ? "Oman" : "UAE";
 
     // 6. Atomic Upsert Check (salesperson_id + country + effective_date)
     const { data: existingOb } = await supabase

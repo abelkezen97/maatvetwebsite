@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { Quote, Invoice } from "@/types";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 export const buildPDF = (quote: Quote): jsPDF => {
   const doc = new jsPDF({
@@ -16,7 +17,8 @@ export const buildPDF = (quote: Quote): jsPDF => {
   const TEAL_ACCENT  = [97, 152, 155]; // #61989B
   const WHITE        = [255, 255, 255];// #FFFFFF
 
-  const currencySymbol = quote.country === "Oman" ? "OMR" : "AED";
+  const currencySymbol = currencyFor(quote.country);
+  const dp = decimalsFor(quote.country);
 
   // Helper date formatting
   const formatDateStr = (dateStr?: string): string => {
@@ -168,14 +170,14 @@ export const buildPDF = (quote: Quote): jsPDF => {
     doc.text(`${qtyVal}`, 115, yPos, { align: "right" });
 
     if (hasItemDiscounts) {
-      doc.text(`${unitPriceVal.toFixed(2)}`, 142, yPos, { align: "right" });
-      const discText = discountVal > 0 ? discountVal.toFixed(2) : "—";
+      doc.text(`${unitPriceVal.toFixed(dp)}`, 142, yPos, { align: "right" });
+      const discText = discountVal > 0 ? discountVal.toFixed(dp) : "—";
       doc.text(discText, 168, yPos, { align: "right" });
     } else {
-      doc.text(`${unitPriceVal.toFixed(2)}`, 160, yPos, { align: "right" });
+      doc.text(`${unitPriceVal.toFixed(dp)}`, 160, yPos, { align: "right" });
     }
 
-    doc.text(`${totalVal.toFixed(2)}`, 192, yPos, { align: "right" });
+    doc.text(`${totalVal.toFixed(dp)}`, 192, yPos, { align: "right" });
 
     const rowHeight = splitName.length * 4;
     yPos += rowHeight + 2;
@@ -204,7 +206,7 @@ export const buildPDF = (quote: Quote): jsPDF => {
   doc.text("Subtotal", totalsLabelX, yPos);
 
   doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-  doc.text(`${(quote.subtotal || 0).toFixed(2)}`, totalsValX, yPos, { align: "right" });
+  doc.text(`${(quote.subtotal || 0).toFixed(dp)}`, totalsValX, yPos, { align: "right" });
   yPos += 5.5;
 
   // Discount Total (if applicable)
@@ -214,7 +216,7 @@ export const buildPDF = (quote: Quote): jsPDF => {
     doc.text("Discount Total", totalsLabelX, yPos);
 
     doc.setTextColor(220, 38, 38); // Red / emerald accent
-    doc.text(`-${quote.discountTotal.toFixed(2)}`, totalsValX, yPos, { align: "right" });
+    doc.text(`-${quote.discountTotal.toFixed(dp)}`, totalsValX, yPos, { align: "right" });
     yPos += 5.5;
   }
 
@@ -227,7 +229,7 @@ export const buildPDF = (quote: Quote): jsPDF => {
     doc.text("VAT", totalsLabelX, yPos);
 
     doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-    doc.text(`${quote.taxTotal.toFixed(2)}`, totalsValX, yPos, { align: "right" });
+    doc.text(`${quote.taxTotal.toFixed(dp)}`, totalsValX, yPos, { align: "right" });
     yPos += 5.5;
   }
 
@@ -241,7 +243,7 @@ export const buildPDF = (quote: Quote): jsPDF => {
   doc.setFont("helvetica", "bold");
   doc.setTextColor(NAVY_PRIMARY[0], NAVY_PRIMARY[1], NAVY_PRIMARY[2]);
   doc.text(`Grand Total (${currencySymbol})`, totalsLabelX, yPos + 2);
-  doc.text(`${(quote.grandTotal || 0).toFixed(2)}`, totalsValX, yPos + 2, { align: "right" });
+  doc.text(`${(quote.grandTotal || 0).toFixed(dp)}`, totalsValX, yPos + 2, { align: "right" });
 
   // 5. Notes & Footer Disclaimer
   yPos += 14;
@@ -281,6 +283,8 @@ export const buildPDF = (quote: Quote): jsPDF => {
 };
 
 export const buildInvoicePDF = (invoice: Invoice): jsPDF => {
+  const currencySymbol = currencyFor(invoice.country);
+  const dp = decimalsFor(invoice.country);
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -334,8 +338,8 @@ export const buildInvoicePDF = (invoice: Invoice): jsPDF => {
     doc.setTextColor(WHITE[0], WHITE[1], WHITE[2]);
     doc.text("ITEM / PRODUCT DETAILS", 18, y + 5.5);
     doc.text("QTY", 125, y + 5.5, { align: "right" });
-    doc.text("UNIT PRICE", 160, y + 5.5, { align: "right" });
-    doc.text("TOTAL", 192, y + 5.5, { align: "right" });
+    doc.text(`UNIT PRICE (${currencySymbol})`, 160, y + 5.5, { align: "right" });
+    doc.text(`TOTAL (${currencySymbol})`, 192, y + 5.5, { align: "right" });
   };
 
   // Helper date formatting
@@ -490,8 +494,8 @@ export const buildInvoicePDF = (invoice: Invoice): jsPDF => {
 
     doc.text(splitName, 18, yPos);
     doc.text(`${qtyVal}`, 125, yPos, { align: "right" });
-    doc.text(`${effectiveUnitPrice.toFixed(2)}`, 160, yPos, { align: "right" });
-    doc.text(`${totalVal.toFixed(2)}`, 192, yPos, { align: "right" });
+    doc.text(`${effectiveUnitPrice.toFixed(dp)}`, 160, yPos, { align: "right" });
+    doc.text(`${totalVal.toFixed(dp)}`, 192, yPos, { align: "right" });
 
     let rowHeight = splitName.length * 4;
 
@@ -529,7 +533,7 @@ export const buildInvoicePDF = (invoice: Invoice): jsPDF => {
   doc.text("Subtotal", totalsLabelX, yPos);
 
   doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-  doc.text(`${(invoice.subtotal || 0).toFixed(2)}`, totalsValX, yPos, { align: "right" });
+  doc.text(`${(invoice.subtotal || 0).toFixed(dp)}`, totalsValX, yPos, { align: "right" });
   yPos += 5.5;
 
   // Discount Total (if applicable)
@@ -539,7 +543,7 @@ export const buildInvoicePDF = (invoice: Invoice): jsPDF => {
     doc.text("Discount Total", totalsLabelX, yPos);
 
     doc.setTextColor(220, 38, 38);
-    doc.text(`-${invoice.discountTotal.toFixed(2)}`, totalsValX, yPos, { align: "right" });
+    doc.text(`-${invoice.discountTotal.toFixed(dp)}`, totalsValX, yPos, { align: "right" });
     yPos += 5.5;
   }
 
@@ -551,7 +555,7 @@ export const buildInvoicePDF = (invoice: Invoice): jsPDF => {
 
     const vatVal = invoice.taxTotal !== undefined && invoice.taxTotal >= 0 ? invoice.taxTotal : 0;
     doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-    doc.text(`${vatVal.toFixed(2)}`, totalsValX, yPos, { align: "right" });
+    doc.text(`${vatVal.toFixed(dp)}`, totalsValX, yPos, { align: "right" });
     yPos += 5.5;
   }
 
@@ -564,8 +568,8 @@ export const buildInvoicePDF = (invoice: Invoice): jsPDF => {
   doc.setFontSize(10.5);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(NAVY_PRIMARY[0], NAVY_PRIMARY[1], NAVY_PRIMARY[2]);
-  doc.text("Grand Total", totalsLabelX, yPos + 1);
-  doc.text(`${(invoice.grandTotal || 0).toFixed(2)}`, totalsValX, yPos + 1, { align: "right" });
+  doc.text(`Grand Total (${currencySymbol})`, totalsLabelX, yPos + 1);
+  doc.text(`${(invoice.grandTotal || 0).toFixed(dp)}`, totalsValX, yPos + 1, { align: "right" });
 
   // 6. Minimal Footer on all pages
   const pageCount = doc.getNumberOfPages();

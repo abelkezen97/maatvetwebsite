@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Permissions } from "@/lib/auth/permissions";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 interface InvoiceItemWithManual extends QuoteItem {
   manualDiscount?: number | string;
@@ -24,6 +25,8 @@ function NewInvoiceForm() {
   const editInvoiceNumber = searchParams.get("edit");
   const fromQuoteNumber = searchParams.get("fromQuote");
   const { user, profile } = useAuth();
+  const currencyCode = currencyFor(profile?.country);
+  const dp = decimalsFor(profile?.country);
   
   // Form states
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -202,7 +205,7 @@ function NewInvoiceForm() {
     // Mode A: EDIT EXISTING INVOICE
     if (editInvoiceNumber) {
       if (profile && !Permissions.canEditInvoice(profile)) {
-        alert("Forbidden: Only Super Admins can edit existing invoices.");
+        alert("Forbidden: Only an Admin can edit existing invoices.");
         router.push("/invoices");
         return;
       }
@@ -453,7 +456,7 @@ function NewInvoiceForm() {
       const discPriceNum = parseFloat(valStr);
       if (!isNaN(discPriceNum)) {
         if (discPriceNum > unitPrice) {
-          setErrorMessage(`Discount Price (AED ${discPriceNum.toFixed(2)}) cannot be greater than Unit Price (AED ${unitPrice.toFixed(2)})`);
+          setErrorMessage(`Discount Price (${currencyCode} ${discPriceNum.toFixed(dp)}) cannot be greater than Unit Price (${currencyCode} ${unitPrice.toFixed(dp)})`);
         } else {
           setErrorMessage(null);
         }
@@ -852,7 +855,7 @@ function NewInvoiceForm() {
                           )}
                           {(c.pendingBillwiseAmount || 0) > 0 && (
                             <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                              Pending: AED {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              Pending: {currencyCode} {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp })}
                             </span>
                           )}
                         </div>
@@ -874,7 +877,7 @@ function NewInvoiceForm() {
                 <div className="text-right">
                   <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Pending Billwise Amount</span>
                   <span className={`text-sm font-extrabold ${Math.max(0, selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    AED {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {currencyCode} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
                   </span>
                 </div>
               </div>
@@ -946,7 +949,7 @@ function NewInvoiceForm() {
                               {language === "en" ? "Already in List" : "مضاف في القائمة"}
                             </span>
                           )}
-                          <span className="font-bold text-sm text-[#1B2A4A]">AED {p.price.toFixed(2)}</span>
+                          <span className="font-bold text-sm text-[#1B2A4A]">{currencyCode} {p.price.toFixed(dp)}</span>
                         </div>
                       </button>
                     );
@@ -995,7 +998,7 @@ function NewInvoiceForm() {
                             </td>
                           <td className="px-2 py-4">
                             <div className="relative flex items-center w-28 mx-auto">
-                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">AED</span>
+                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencyCode}</span>
                               <input
                                 type="number"
                                 min="0"
@@ -1038,7 +1041,7 @@ function NewInvoiceForm() {
                           <td className="px-2 py-4">
                             <div className="relative flex flex-col items-center w-32 mx-auto">
                               <div className="relative flex items-center w-full">
-                                <span className="absolute left-2.5 text-xs font-bold text-slate-400">AED</span>
+                                <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencyCode}</span>
                                 <input
                                   type="number"
                                   min="0"
@@ -1067,12 +1070,12 @@ function NewInvoiceForm() {
                               </div>
                               {item.discount > 0 && (
                                 <span className="text-[10px] font-bold text-emerald-600 mt-1">
-                                  Disc: AED {item.discount.toFixed(2)}/unit
+                                  Disc: {currencyCode} {item.discount.toFixed(dp)}/unit
                                 </span>
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-4 text-right font-bold text-slate-800">AED {item.total.toFixed(2)}</td>
+                          <td className="px-4 py-4 text-right font-bold text-slate-800">{currencyCode} {item.total.toFixed(dp)}</td>
                           <td className="px-4 py-4 text-center">
                             <button
                               type="button"
@@ -1105,18 +1108,18 @@ function NewInvoiceForm() {
               </div>
               <div className="flex justify-between text-slate-500">
                 <span>Subtotal:</span>
-                <span>AED {subtotal.toFixed(2)}</span>
+                <span>{currencyCode} {subtotal.toFixed(dp)}</span>
               </div>
               {discountTotal > 0 && (
                 <div className="flex justify-between text-slate-500">
                   <span>Discount Total:</span>
-                  <span className="text-emerald-600">-{discountTotal.toFixed(2)}</span>
+                  <span className="text-emerald-600">-{discountTotal.toFixed(dp)}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-lg font-bold text-slate-900 border-t border-slate-100 pt-4 mt-2">
                 <span>Grand Total:</span>
-                <span>AED {grandTotal.toFixed(2)}</span>
+                <span>{currencyCode} {grandTotal.toFixed(dp)}</span>
               </div>
             </div>
 

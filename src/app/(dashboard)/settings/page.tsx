@@ -127,7 +127,7 @@ export default function SettingsPage() {
               <ArrowRight className="w-4 h-4" />
             </Link>
           ) : (
-            <span className="text-[11px] font-bold text-slate-400 italic">Super Admin Restricted</span>
+            <span className="text-[11px] font-bold text-slate-400 italic">Admin Only</span>
           )}
         </div>
 

@@ -25,6 +25,8 @@ import { generateProductsPdf } from "@/lib/utils/exportProductsPdf";
 
 export default function InventoryDashboardPage() {
   const { profile, permissions } = useAuth();
+  // There is no global role: stock is managed per country, in the user's own country only.
+  const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
 
   const isSuperAdmin = profile?.role === "super_admin";
   const canViewGlobal = profile?.role === "super_admin" || profile?.role === "accountant";
@@ -71,6 +73,9 @@ export default function InventoryDashboardPage() {
   // Modal form states
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [selectedCountry, setSelectedCountry] = useState<UserCountry>("UAE");
+  useEffect(() => {
+    setSelectedCountry(ownCountry);
+  }, [ownCountry]);
   const [quantityInput, setQuantityInput] = useState<string>("");
   const [reasonInput, setReasonInput] = useState<string>("");
   const [notesInput, setNotesInput] = useState<string>("");
@@ -303,8 +308,7 @@ export default function InventoryDashboardPage() {
                 className="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 font-semibold"
               >
                 <option value="ALL">All Countries</option>
-                <option value="UAE">UAE</option>
-                <option value="Oman">Oman</option>
+                {ownCountry === "Oman" ? <option value="Oman">Oman</option> : <option value="UAE">UAE</option>}
               </select>
             </div>
           )}
@@ -450,8 +454,7 @@ export default function InventoryDashboardPage() {
                     onChange={(e) => setSelectedCountry(e.target.value as UserCountry)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="UAE">UAE</option>
-                    <option value="Oman">Oman</option>
+                    {ownCountry === "Oman" ? <option value="Oman">Oman</option> : <option value="UAE">UAE</option>}
                   </select>
                 </div>
 
@@ -549,8 +552,7 @@ export default function InventoryDashboardPage() {
                     onChange={(e) => setSelectedCountry(e.target.value as UserCountry)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="UAE">UAE Warehouse</option>
-                    <option value="Oman">Oman Warehouse</option>
+                    {ownCountry === "Oman" ? <option value="Oman">Oman Warehouse</option> : <option value="UAE">UAE Warehouse</option>}
                   </select>
                 </div>
 

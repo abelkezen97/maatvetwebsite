@@ -40,7 +40,7 @@ export async function getAllProductsStockSummary(
   // Fetch all active products with categories
   const { data: productsData, error: prodErr } = await client
     .from("products")
-    .select("id, sku, name, selling_price, unit, product_categories(name)")
+    .select("id, sku, name, selling_price, selling_price_omr, unit, product_categories(name)")
     .order("name", { ascending: true });
 
   if (prodErr) {
@@ -81,7 +81,8 @@ export async function getAllProductsStockSummary(
   let lowStockProducts = 0;
   let outOfStockProducts = 0;
 
-  const isSalesperson = profile?.role === "salesperson";
+  // Every signed-in role sees only its own country's stock (no global admin).
+  const isScoped = Boolean(profile);
   const userCountry = profile?.country;
 
   const summaries: ProductStockSummary[] = (productsData || []).map((p: any) => {
@@ -94,9 +95,9 @@ export async function getAllProductsStockSummary(
     const omanStock = stocks ? stocks.oman : 0;
 
     // Role-based stock visibility masking
-    const visibleUaeStock = (isSalesperson && userCountry === "Oman") ? 0 : uaeStock;
-    const visibleOmanStock = (isSalesperson && userCountry === "UAE") ? 0 : omanStock;
-    const totalStock = isSalesperson
+    const visibleUaeStock = (isScoped && userCountry === "Oman") ? 0 : uaeStock;
+    const visibleOmanStock = (isScoped && userCountry === "UAE") ? 0 : omanStock;
+    const totalStock = isScoped
       ? (userCountry === "Oman" ? visibleOmanStock : visibleUaeStock)
       : uaeStock + omanStock;
 
@@ -123,7 +124,7 @@ export async function getAllProductsStockSummary(
       omanStock: visibleOmanStock,
       totalStock,
       status,
-      masterPrice: Number(p.selling_price) || 0,
+      masterPrice: Number(userCountry === "Oman" ? p.selling_price_omr : p.selling_price) || 0,
       unit: p.unit || "Item",
     };
   });

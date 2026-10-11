@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapExpenseFromDb, mapExpenseToDb } from "@/lib/db/mappers";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
         const spId = row.salesperson_id || row.employee_id || row.created_by;
         return spId === profile.id;
       });
-    } else if (profile.role === "accountant") {
+    } else if (isCountryStaff(profile)) {
       rows = rows.filter((row: any) => row.country === profile.country || !row.country);
     }
 

@@ -16,7 +16,6 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const productId = searchParams.get("productId");
-    const country = searchParams.get("country");
     const movementType = searchParams.get("movementType") || searchParams.get("transactionType");
     const limit = searchParams.get("limit");
 
@@ -27,12 +26,8 @@ export async function GET(request: Request) {
       .select("*, products(name, sku), profiles!created_by(full_name)")
       .order("created_at", { ascending: false });
 
-    // Salesperson MUST BE filtered strictly by assigned country. Server is source of truth!
-    if (profile.role === "salesperson") {
-      query = query.eq("country", profile.country);
-    } else if (country && (country === "UAE" || country === "Oman")) {
-      query = query.eq("country", country);
-    }
+    // Every role sees only its own country (there is no global admin).
+    query = query.eq("country", profile.country);
 
     if (productId) {
       query = query.eq("product_id", productId);

@@ -38,11 +38,12 @@ export async function POST(
 
     const { data: target } = await supabase
       .from("profiles")
-      .select("id, full_name, email, is_active")
+      .select("id, full_name, email, is_active, country")
       .eq("id", id)
       .maybeSingle();
 
-    if (!target) {
+    // Admins reset passwords only for users of their own country.
+    if (!target || target.country !== adminProfile.country) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 

@@ -8,14 +8,16 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const { supabase } = await requireAuth(["super_admin"]);
+    const { profile: adminProfile, supabase } = await requireAuth(["super_admin"]);
 
     const adminClient = createAdminClient();
     
     if (adminClient) {
+      // Admins manage users of their own country only.
       const { data: profiles, error } = await adminClient
         .from("profiles")
         .select("*")
+        .eq("country", adminProfile.country)
         .order("created_at", { ascending: false });
 
       if (!error && profiles) {
@@ -33,6 +35,7 @@ export async function GET() {
     const { data: profiles, error } = await supabase
       .from("profiles")
       .select("*")
+      .eq("country", adminProfile.country)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -78,7 +81,11 @@ export async function POST(request: Request) {
     }
 
     const validRole: UserRole = ["super_admin", "accountant", "salesperson"].includes(role) ? role : "salesperson";
-    const validCountry: UserCountry = ["UAE", "Oman"].includes(country) ? country : "UAE";
+    // New users always belong to the admin's own country.
+    if (country && country !== adminProfile.country) {
+      return NextResponse.json({ error: `You can only create users in ${adminProfile.country}.` }, { status: 403 });
+    }
+    const validCountry: UserCountry = adminProfile.country === "Oman" ? "Oman" : "UAE";
 
     // 0. Check if user with this email already exists in profiles
     const { data: existingProfile } = await supabase

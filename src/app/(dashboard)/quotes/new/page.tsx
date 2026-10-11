@@ -9,6 +9,7 @@ import { Product, Customer, QuoteItem, Quote } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { buildPDF } from "@/lib/pdfHelper";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 interface QuoteItemWithManual extends QuoteItem {
   manualUnitPrice?: number;
@@ -141,7 +142,8 @@ function NewQuoteForm() {
   }, [selectedCustomerId, customers]);
 
   const activeCountry = selectedCustomer?.country || user?.country || "UAE";
-  const currencySymbol = activeCountry === "Oman" ? "OMR" : "AED";
+  const currencySymbol = currencyFor(activeCountry);
+  const dp = decimalsFor(activeCountry);
 
   // Filter customers by search query
   const filteredCustomers = useMemo(() => {
@@ -311,7 +313,7 @@ function NewQuoteForm() {
       const discPriceNum = parseFloat(valStr);
       if (!isNaN(discPriceNum)) {
         if (discPriceNum > unitPrice) {
-          setErrorMessage(`Discount Price (${currencySymbol} ${discPriceNum.toFixed(2)}) cannot be greater than Unit Price (${currencySymbol} ${unitPrice.toFixed(2)})`);
+          setErrorMessage(`Discount Price (${currencySymbol} ${discPriceNum.toFixed(dp)}) cannot be greater than Unit Price (${currencySymbol} ${unitPrice.toFixed(dp)})`);
         } else {
           setErrorMessage(null);
         }
@@ -523,7 +525,7 @@ function NewQuoteForm() {
                           )}
                           {(c.pendingBillwiseAmount || 0) > 0 && (
                             <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                              Pending: AED {(c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                              Pending: {currencySymbol} {(c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp })}
                             </span>
                           )}
                         </div>
@@ -545,7 +547,7 @@ function NewQuoteForm() {
                 <div className="text-right">
                   <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Pending Billwise Amount</span>
                   <span className={`text-sm font-extrabold ${(selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    AED {(selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {currencySymbol} {(selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
                   </span>
                 </div>
               </div>
@@ -625,7 +627,7 @@ function NewQuoteForm() {
                               {language === "en" ? "Already in List" : "مضاف في القائمة"}
                             </span>
                           )}
-                          <span className="font-bold text-sm text-[#1B2A4A]">AED {p.price.toFixed(2)}</span>
+                          <span className="font-bold text-sm text-[#1B2A4A]">{currencySymbol} {p.price.toFixed(dp)}</span>
                         </div>
                       </button>
                     );
@@ -733,13 +735,13 @@ function NewQuoteForm() {
                               </div>
                               {item.discount > 0 && (
                                 <span className="text-[10px] font-bold text-emerald-600 mt-1">
-                                  Disc: {currencySymbol} {item.discount.toFixed(2)}/unit
+                                  Disc: {currencySymbol} {item.discount.toFixed(dp)}/unit
                                 </span>
                               )}
                             </div>
                           </td>
                           <td className="px-4 py-4 text-right font-extrabold text-slate-900 text-sm">
-                            {currencySymbol} {item.total.toFixed(2)}
+                            {currencySymbol} {item.total.toFixed(dp)}
                           </td>
                           <td className="px-4 py-4 text-center">
                             <button
@@ -773,18 +775,18 @@ function NewQuoteForm() {
               </div>
               <div className="flex justify-between text-slate-500">
                 <span>Subtotal:</span>
-                <span>{currencySymbol} {subtotal.toFixed(2)}</span>
+                <span>{currencySymbol} {subtotal.toFixed(dp)}</span>
               </div>
               {discountTotal > 0 && (
                 <div className="flex justify-between text-slate-500">
                   <span>Discount Total:</span>
-                  <span className="text-emerald-600">-{currencySymbol} {discountTotal.toFixed(2)}</span>
+                  <span className="text-emerald-600">-{currencySymbol} {discountTotal.toFixed(dp)}</span>
                 </div>
               )}
 
               <div className="flex justify-between text-lg font-bold text-slate-900 border-t border-slate-100 pt-4 mt-2">
                 <span>Grand Total:</span>
-                <span>{currencySymbol} {grandTotal.toFixed(2)}</span>
+                <span>{currencySymbol} {grandTotal.toFixed(dp)}</span>
               </div>
             </div>
 

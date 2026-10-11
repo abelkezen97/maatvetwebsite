@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     // SUPER ADMIN ONLY authority for manual stock adjustments
     if (!Permissions.canManageInventory(profile)) {
       return NextResponse.json(
-        { error: "Forbidden: Only Super Admin has authority to perform manual stock adjustments." },
+        { error: "Forbidden: Only an Admin can perform manual stock adjustments." },
         { status: 403 }
       );
     }
@@ -21,9 +21,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { productId, country, adjustmentAction, quantity, reason, notes } = body;
 
-    if (!productId || !country || !adjustmentAction || !quantity) {
+    if (!productId || !adjustmentAction || !quantity) {
       return NextResponse.json(
-        { error: "Missing required fields (productId, country, adjustmentAction, quantity)" },
+        { error: "Missing required fields (productId, adjustmentAction, quantity)" },
         { status: 400 }
       );
     }
@@ -33,7 +33,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Quantity must be a positive number" }, { status: 400 });
     }
 
-    const targetCountry: UserCountry = country === "Oman" ? "Oman" : "UAE";
+    // Admins adjust stock of their own country only; a different `country` in the body is refused.
+    if (country && country !== profile.country) {
+      return NextResponse.json({ error: "Forbidden: Cannot adjust stock in another country" }, { status: 403 });
+    }
+    const targetCountry: UserCountry = profile.country === "Oman" ? "Oman" : "UAE";
 
     let movementType: InventoryMovementType = "ADJUSTMENT_IN";
     let finalQty = numQty;
@@ -76,7 +80,7 @@ export async function POST(request: Request) {
       movementType,
       quantity: finalQty,
       referenceType: "MANUAL_ADJUSTMENT",
-      reason: reason || "Manual Super Admin Adjustment",
+      reason: reason || "Manual Admin Adjustment",
       notes: notes || "",
       createdBy: profile.id,
     });

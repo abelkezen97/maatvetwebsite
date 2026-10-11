@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapReceiptFromDb, mapReceiptToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
@@ -25,7 +25,7 @@ export async function GET() {
 
     if (profile.role === "salesperson") {
       query = query.eq("country", profile.country);
-    } else if (profile.role === "accountant") {
+    } else if (isCountryStaff(profile)) {
       query = query.eq("country", profile.country);
     }
 
@@ -38,7 +38,7 @@ export async function GET() {
         .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!left(invoice_number, salesman_id)")
         .order("created_at", { ascending: false });
 
-      if (profile.role === "salesperson" || profile.role === "accountant") {
+      if (profile.role === "salesperson" || isCountryStaff(profile)) {
         fallbackQuery = fallbackQuery.eq("country", profile.country);
       }
       const res = await fallbackQuery;
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
             { status: 403 }
           );
         }
-      } else if (profile.role === "accountant" && invRow.country !== profile.country) {
+      } else if (isCountryStaff(profile) && invRow.country !== profile.country) {
         return NextResponse.json(
           { error: "Forbidden: Cannot create receipt for invoice in another country" },
           { status: 403 }
@@ -191,7 +191,7 @@ export async function POST(request: Request) {
             { status: 403 }
           );
         }
-      } else if (profile.role === "accountant" && custRow.country !== profile.country) {
+      } else if (isCountryStaff(profile) && custRow.country !== profile.country) {
         return NextResponse.json(
           { error: "Forbidden: Cannot create receipt for customer in another country" },
           { status: 403 }

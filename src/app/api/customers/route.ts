@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapCustomerFromDb, mapCustomerToDb } from "@/lib/db/mappers";
 import { syncAllCustomerBalances } from "@/lib/db/balances";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -89,7 +89,7 @@ export async function GET() {
 
     if (profile.role === "salesperson") {
       query = query.eq("country", profile.country).eq("assigned_salesman_id", profile.id);
-    } else if (profile.role === "accountant") {
+    } else if (isCountryStaff(profile)) {
       query = query.eq("country", profile.country);
     }
 
@@ -107,7 +107,7 @@ export async function GET() {
 
         if (profile.role === "salesperson") {
           adminQuery = adminQuery.eq("country", profile.country).eq("assigned_salesman_id", profile.id);
-        } else if (profile.role === "accountant") {
+        } else if (isCountryStaff(profile)) {
           adminQuery = adminQuery.eq("country", profile.country);
         }
 
@@ -330,7 +330,7 @@ export async function PUT(request: Request) {
       if (existing.country !== profile.country || existing.assigned_salesman_id !== profile.id) {
         return NextResponse.json({ error: "Forbidden: Cannot edit customer belonging to another salesperson" }, { status: 403 });
       }
-    } else if (profile.role === "accountant" && existing.country !== profile.country) {
+    } else if (isCountryStaff(profile) && existing.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot edit customer in another country" }, { status: 403 });
     }
 
@@ -441,7 +441,7 @@ export async function DELETE(request: Request) {
       if (existing.country !== profile.country || existing.assigned_salesman_id !== profile.id) {
         return NextResponse.json({ error: "Forbidden: Cannot delete customer belonging to another salesperson" }, { status: 403 });
       }
-    } else if (profile.role === "accountant" && existing.country !== profile.country) {
+    } else if (isCountryStaff(profile) && existing.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot delete customer in another country" }, { status: 403 });
     }
 

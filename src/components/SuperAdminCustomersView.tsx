@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 
 import { useLanguage } from "@/context/LanguageContext";
+import { useAuth } from "@/hooks/useAuth";
+import { formatMoney } from "@/lib/currency";
 
 const COUNTRY_OPTIONS: UserCountry[] = ["UAE", "Oman"];
 
@@ -73,7 +75,13 @@ export function SuperAdminCustomersView({
   const [formPhone, setFormPhone] = useState("");
   const [formLocation, setFormLocation] = useState("");
   const [formCity, setFormCity] = useState("");
-  const [formCountry, setFormCountry] = useState<UserCountry>("UAE");
+  // Each admin works in their own country only.
+  const { profile: viewerProfile } = useAuth();
+  const ownCountry: UserCountry = viewerProfile?.country === "Oman" ? "Oman" : "UAE";
+  const [formCountry, setFormCountry] = useState<UserCountry>(ownCountry);
+  useEffect(() => {
+    setFormCountry(ownCountry);
+  }, [ownCountry]);
   const [formCreditLimit, setFormCreditLimit] = useState("");
   const [formAssignedSalesmanId, setFormAssignedSalesmanId] = useState("");
   const [formNotes, setFormNotes] = useState("");
@@ -230,7 +238,7 @@ export function SuperAdminCustomersView({
     setFormPhone("");
     setFormLocation("");
     setFormCity("");
-    setFormCountry("UAE");
+    setFormCountry(ownCountry);
     setFormCreditLimit("0");
     setFormAssignedSalesmanId("");
     setFormNotes("");
@@ -335,13 +343,7 @@ export function SuperAdminCustomersView({
     }
   };
 
-  const formatCurrency = (amount: number, country: UserCountry) => {
-    const symbol = country === "Oman" ? "OMR" : "AED";
-    return `${symbol} ${amount.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  };
+  const formatCurrency = (amount: number, country: UserCountry) => formatMoney(amount, country);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return "—";
@@ -440,13 +442,8 @@ export function SuperAdminCustomersView({
               </p>
               <div className="mt-1">
                 <div className="text-lg font-black text-rose-600">
-                  AED {kpis.uaeOutstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  {formatMoney(ownCountry === "Oman" ? kpis.omanOutstanding : kpis.uaeOutstanding, ownCountry)}
                 </div>
-                {kpis.omanOutstanding > 0 && (
-                  <div className="text-xs font-extrabold text-rose-500">
-                    OMR {kpis.omanOutstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </div>
-                )}
               </div>
             </div>
             <div className="p-2.5 bg-rose-50 rounded-xl text-rose-600">
@@ -462,13 +459,14 @@ export function SuperAdminCustomersView({
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs relative overflow-hidden">
           <div className="flex justify-between items-start mb-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-              Country Breakdown
+              Your Country
             </p>
             <div className="p-2 bg-slate-100 rounded-xl text-slate-600">
               <MapPin className="w-4 h-4" />
             </div>
           </div>
           <div className="space-y-2 text-xs font-semibold">
+            {ownCountry === "UAE" ? (
             <div className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <span>🇦🇪 UAE</span>
@@ -477,10 +475,10 @@ export function SuperAdminCustomersView({
                 </span>
               </div>
               <span className="text-rose-600 font-extrabold">
-                AED {kpis.uaeOutstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {formatMoney(kpis.uaeOutstanding, "UAE")}
               </span>
             </div>
-
+            ) : (
             <div className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <span>🇴🇲 Oman</span>
@@ -489,9 +487,10 @@ export function SuperAdminCustomersView({
                 </span>
               </div>
               <span className="text-rose-600 font-extrabold">
-                OMR {kpis.omanOutstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {formatMoney(kpis.omanOutstanding, "Oman")}
               </span>
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -511,37 +510,6 @@ export function SuperAdminCustomersView({
 
           {/* Filters Bar */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Country Filter */}
-            <div className="flex items-center gap-1 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700">
-              <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider mr-1">
-                Country:
-              </span>
-              <button
-                onClick={() => setCountryFilter("all")}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  countryFilter === "all" ? "bg-white text-slate-900 shadow-2xs" : "hover:text-slate-900"
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setCountryFilter("UAE")}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  countryFilter === "UAE" ? "bg-slate-900 text-white shadow-2xs" : "hover:text-slate-900"
-                }`}
-              >
-                UAE
-              </button>
-              <button
-                onClick={() => setCountryFilter("Oman")}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  countryFilter === "Oman" ? "bg-slate-900 text-white shadow-2xs" : "hover:text-slate-900"
-                }`}
-              >
-                Oman
-              </button>
-            </div>
-
             {/* Status Filter */}
             <div className="flex items-center gap-1 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700">
               <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider mr-1">
@@ -983,6 +951,7 @@ export function SuperAdminCustomersView({
                       </label>
                       <select
                         value={formCountry}
+                        disabled
                         onChange={(e) => {
                           const newCountry = e.target.value as UserCountry;
                           setFormCountry(newCountry);
@@ -990,7 +959,7 @@ export function SuperAdminCustomersView({
                         }}
                         className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[#1B2A4A]/20 transition-all cursor-pointer"
                       >
-                        {COUNTRY_OPTIONS.map((c) => (
+                        {COUNTRY_OPTIONS.filter((c) => c === ownCountry).map((c) => (
                           <option key={c} value={c}>
                             {c === "Oman" ? "🇴🇲 Oman" : "🇦🇪 UAE"}
                           </option>

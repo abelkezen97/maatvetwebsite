@@ -19,9 +19,12 @@ import {
 } from "lucide-react";
 import { Profile, UserRole, UserCountry } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
+import { roleLabel } from "@/lib/auth/permissions";
 
 export default function UserManagementPage() {
-  const { isSuperAdmin, loading: authLoading } = useAuth();
+  const { isSuperAdmin, profile, loading: authLoading } = useAuth();
+  // Admins create and manage users of their own country only.
+  const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -85,7 +88,7 @@ export default function UserManagementPage() {
       const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, country: ownCountry }),
       });
 
       const data = await res.json();
@@ -237,7 +240,7 @@ export default function UserManagementPage() {
       full_name: "",
       phone: "",
       role: "salesperson",
-      country: "UAE",
+      country: ownCountry,
       is_active: true,
     });
   };
@@ -372,7 +375,7 @@ export default function UserManagementPage() {
                           : "bg-slate-100 text-slate-700 border border-slate-200"
                       }`}>
                         <ShieldCheck className="w-3.5 h-3.5" />
-                        {p.role === "super_admin" ? "Super Admin" : p.role === "accountant" ? "Accountant" : "Salesperson"}
+                        {roleLabel(p.role, p.country)}
                       </span>
                     </td>
                     <td className="py-4 px-6">
@@ -503,7 +506,7 @@ export default function UserManagementPage() {
                   >
                     <option value="salesperson">Salesperson</option>
                     <option value="accountant">Accountant</option>
-                    <option value="super_admin">Super Admin</option>
+                    <option value="super_admin">Admin ({ownCountry})</option>
                   </select>
                 </div>
 
@@ -512,12 +515,12 @@ export default function UserManagementPage() {
                     Country Governance *
                   </label>
                   <select
-                    value={formData.country}
+                    value={ownCountry}
+                    disabled
                     onChange={(e) => setFormData({ ...formData, country: e.target.value as UserCountry })}
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-[#1B2A4A]"
                   >
-                    <option value="UAE">UAE</option>
-                    <option value="Oman">Oman</option>
+                    <option value={ownCountry}>{ownCountry}</option>
                   </select>
                 </div>
               </div>

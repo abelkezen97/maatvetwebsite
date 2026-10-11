@@ -10,6 +10,8 @@ import { ProductStockSummary, UserCountry } from "@/types";
 export default function StockAdjustmentPage() {
   const router = useRouter();
   const { profile, permissions } = useAuth();
+  // There is no global role: stock is managed per country, in the user's own country only.
+  const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
 
   const isSuperAdmin = profile?.role === "super_admin";
 
@@ -19,6 +21,9 @@ export default function StockAdjustmentPage() {
   // Form State
   const [productId, setProductId] = useState<string>("");
   const [location, setLocation] = useState<UserCountry>("UAE");
+  useEffect(() => {
+    setLocation(ownCountry);
+  }, [ownCountry]);
   const [adjustmentAction, setAdjustmentAction] = useState<"ADD" | "DEDUCT" | "DAMAGE" | "EXPIRY" | "SALE_RETURN">("DEDUCT");
   const [quantity, setQuantity] = useState<string>("");
   const [reason, setReason] = useState<string>("");
@@ -122,7 +127,7 @@ export default function StockAdjustmentPage() {
         </div>
         <h2 className="text-xl font-bold text-slate-900 mb-2">Access Restricted</h2>
         <p className="text-sm text-slate-500 mb-6">
-          Only Super Admin has authority to perform manual stock adjustments.
+          Only an Admin can perform manual stock adjustments.
         </p>
         <Link
           href="/inventory"
@@ -206,8 +211,7 @@ export default function StockAdjustmentPage() {
                   onChange={(e) => setLocation(e.target.value as UserCountry)}
                   className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 font-medium"
                 >
-                  <option value="UAE">UAE Warehouse</option>
-                  <option value="Oman">Oman Warehouse</option>
+                  {ownCountry === "Oman" ? <option value="Oman">Oman Warehouse</option> : <option value="UAE">UAE Warehouse</option>}
                 </select>
               </div>
 

@@ -532,9 +532,8 @@ export async function getMultiSalespersonLedgerSummaries(
     .select("id, full_name, country, role")
     .eq("is_active", true);
 
-  if (userRole === "accountant") {
-    query = query.eq("country", userCountry);
-  }
+  // Every role is limited to its own country (no global admin).
+  query = query.eq("country", userCountry);
 
   const { data: profiles, error } = await query;
   if (error || !profiles) {

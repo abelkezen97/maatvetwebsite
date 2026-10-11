@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapQuoteFromDb, mapQuoteToDb } from "@/lib/db/mappers";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
 import { QuoteItem, QuoteStatus } from "@/types";
@@ -26,7 +26,7 @@ export async function GET() {
     // Salesperson filters by assigned country and own salesman_id
     if (profile.role === "salesperson") {
       query = query.eq("country", profile.country).eq("salesman_id", profile.id);
-    } else if (profile.role === "accountant") {
+    } else if (isCountryStaff(profile)) {
       query = query.eq("country", profile.country);
     }
 
@@ -41,7 +41,7 @@ export async function GET() {
 
       if (profile.role === "salesperson") {
         fallbackQuery = fallbackQuery.eq("country", profile.country).eq("salesman_id", profile.id);
-      } else if (profile.role === "accountant") {
+      } else if (isCountryStaff(profile)) {
         fallbackQuery = fallbackQuery.eq("country", profile.country);
       }
       const res = await fallbackQuery;
@@ -163,7 +163,7 @@ export async function POST(request: Request) {
             { status: 403 }
           );
         }
-      } else if (profile.role === "accountant" && custRow.country !== profile.country) {
+      } else if (isCountryStaff(profile) && custRow.country !== profile.country) {
         return NextResponse.json(
           { error: "Forbidden: Cannot create quotation for customer in another country" },
           { status: 403 }

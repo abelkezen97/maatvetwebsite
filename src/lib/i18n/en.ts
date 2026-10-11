@@ -81,7 +81,7 @@ export const en = {
   searchGeneralPlaceholder: "Search records...",
   medName: "Medicine Name",
   initialStock: "Initial Stock Level",
-  unitPrice: "Unit Price (AED)",
+  unitPrice: "Unit Price",
   productDetails: "Product Details",
   priceCol: "Unit Price",
   stockCol: "Stock Level",

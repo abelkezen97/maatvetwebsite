@@ -35,7 +35,7 @@ export async function GET(
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
-    const product = mapProductFromDb(productRow);
+    const product = mapProductFromDb(productRow, undefined, profile.country);
 
     // 2. Fetch Inventory Transactions for this Product
     let movementsQuery = queryClient
@@ -44,9 +44,8 @@ export async function GET(
       .eq("product_id", id)
       .order("created_at", { ascending: false });
 
-    if (profile.role === "salesperson") {
-      movementsQuery = movementsQuery.eq("country", profile.country);
-    }
+    // Every role sees only its own country's movements.
+    movementsQuery = movementsQuery.eq("country", profile.country);
 
     let { data: movementsData, error: movErr } = await movementsQuery;
     if (movErr) {
@@ -107,9 +106,7 @@ export async function GET(
     });
 
     // Authoritative stock is calculated strictly from transaction ledger
-    const totalStock = profile.role === "salesperson"
-      ? (profile.country === "Oman" ? omanStock : uaeStock)
-      : (uaeStock + omanStock);
+    const totalStock = profile.country === "Oman" ? omanStock : uaeStock;
 
     // 4. Fetch Confirmed Sales (Invoices + Invoice Items) for this Product
     let invItemsQuery = queryClient
@@ -117,8 +114,9 @@ export async function GET(
       .select("*, invoices!inner(id, invoice_number, created_at, country, status, is_deleted, customer_id, salesman_id, customers!left(id, doctor_name, company_name))")
       .eq("product_id", id);
 
+    invItemsQuery = invItemsQuery.eq("invoices.country", profile.country);
     if (profile.role === "salesperson") {
-      invItemsQuery = invItemsQuery.eq("invoices.country", profile.country).eq("invoices.salesman_id", profile.id);
+      invItemsQuery = invItemsQuery.eq("invoices.salesman_id", profile.id);
     }
 
     const { data: rawInvItems } = await invItemsQuery;
@@ -236,7 +234,8 @@ export async function GET(
     // 5. Calculate Relative / Fallback Movement Velocity Status
     const { data: allActive30dSales } = await queryClient
       .from("invoice_items")
-      .select("product_id, quantity, invoices!inner(created_at, is_deleted, status)")
+      .select("product_id, quantity, invoices!inner(created_at, is_deleted, status, country)")
+      .eq("invoices.country", profile.country)
       .gte("invoices.created_at", d30.toISOString());
 
     const product30dMap = new Map<string, number>();
@@ -297,7 +296,8 @@ export async function GET(
     }
 
     // 7. Location Scoped Stock
-    const canViewGlobal = profile.role === "super_admin" || profile.role === "accountant";
+    // No global role: everyone sees only their own country's stock.
+    const canViewGlobal = false;
     const userCountry = profile.country;
 
     const locationStock = {
@@ -412,20 +412,18 @@ export async function PATCH(
     let updatePayload: Record<string, any> = {};
 
     if (profile.role === "accountant") {
+      // Accountants change their own country's prices only.
+      const priceOnly: Record<string, any> = {};
       if (body.price !== undefined || body.sellingPrice !== undefined || body.selling_price !== undefined) {
-        updatePayload.selling_price = Number(body.price ?? body.sellingPrice ?? body.selling_price) || 0;
+        priceOnly.price = Number(body.price ?? body.sellingPrice ?? body.selling_price) || 0;
       }
-      if (body.price10 !== undefined || body.price_10 !== undefined) {
-        updatePayload.price_10 = body.price10 ?? body.price_10;
-      }
-      if (body.price50 !== undefined || body.price_50 !== undefined) {
-        updatePayload.price_50 = body.price50 ?? body.price_50;
-      }
-      if (body.price100 !== undefined || body.price_100 !== undefined) {
-        updatePayload.price_100 = body.price100 ?? body.price_100;
-      }
+      if (body.price10 !== undefined || body.price_10 !== undefined) priceOnly.price10 = body.price10 ?? body.price_10;
+      if (body.price50 !== undefined || body.price_50 !== undefined) priceOnly.price50 = body.price50 ?? body.price_50;
+      if (body.price100 !== undefined || body.price_100 !== undefined) priceOnly.price100 = body.price100 ?? body.price_100;
+      updatePayload = mapProductToDb(priceOnly, profile.country);
     } else {
-      updatePayload = mapProductToDb(body);
+      // Admins edit the shared product details and their own country's prices.
+      updatePayload = mapProductToDb(body, profile.country);
     }
 
     updatePayload.updated_at = new Date().toISOString();
@@ -442,7 +440,7 @@ export async function PATCH(
       return NextResponse.json({ error: error.message || "Failed to update product" }, { status: 500 });
     }
 
-    const updatedProduct = mapProductFromDb(data);
+    const updatedProduct = mapProductFromDb(data, undefined, profile.country);
     return NextResponse.json({ success: true, product: updatedProduct });
   } catch (error: any) {
     if (error instanceof AuthError) {

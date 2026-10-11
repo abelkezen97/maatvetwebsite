@@ -45,4 +45,6 @@ PDFs (quotes, invoices, receipts, ledgers) are generated in the browser with jsP
 
 ## Countries
 
-Profiles, customers, products' stock and documents carry a `country` (`UAE` or `Oman`). Salespeople only see their own country; RLS and the API both enforce this.
+Profiles, customers, stock and documents carry a `country` (`UAE` or `Oman`). **Every** role, admins included, sees only its own country: the API filters by `profile.country` (helper `isCountryStaff()` in `src/lib/auth/permissions.ts`) and RLS does the same in the database (`is_country_staff()`, `is_country_admin()`, `is_own_country()`). The admin role is still stored as `super_admin`, but it is country-scoped and shown as "Admin (UAE)" / "Admin (Oman)".
+
+Products are shared; prices are per country (AED columns for UAE, `*_omr` columns for Oman). A trigger stops an admin or accountant from changing the other country's prices. Currency formatting lives in `src/lib/currency.ts` (AED 2 decimals, OMR 3).

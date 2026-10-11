@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapReceiptFromDb, mapReceiptToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 
@@ -27,7 +27,7 @@ export async function GET(
       .select("*, customers!left(company_name, doctor_name, pending_balance, assigned_salesman_id), invoices!left(invoice_number, salesman_id)")
       .eq("id", id);
 
-    if (profile.role === "salesperson" || profile.role === "accountant") {
+    if (profile.role === "salesperson" || isCountryStaff(profile)) {
       query = query.eq("country", profile.country);
     }
 
@@ -55,7 +55,7 @@ export async function GET(
       if (data.country !== profile.country || (!isCreatedBy && !isInvoiceOwner && !isCustomerOwner)) {
         return NextResponse.json({ error: "Forbidden: Cannot access another salesperson's receipt" }, { status: 403 });
       }
-    } else if (profile.role === "accountant" && data.country !== profile.country) {
+    } else if (isCountryStaff(profile) && data.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot access receipt in another country" }, { status: 403 });
     }
 
@@ -103,7 +103,7 @@ export async function PATCH(
       if (existing.country !== profile.country || (!isCreatedBy && !isInvoiceOwner && !isCustomerOwner)) {
         return NextResponse.json({ error: "Forbidden: Cannot edit another salesperson's receipt" }, { status: 403 });
       }
-    } else if (profile.role === "accountant" && existing.country !== profile.country) {
+    } else if (isCountryStaff(profile) && existing.country !== profile.country) {
       return NextResponse.json({ error: "Forbidden: Cannot edit receipt in another country" }, { status: 403 });
     }
 
@@ -230,6 +230,7 @@ export async function DELETE(
       .from("receipts")
       .select("id, customer_id, amount_paid, is_deleted")
       .eq("id", id)
+      .eq("country", profile.country)
       .maybeSingle();
 
     if (!existing || existing.is_deleted) {
@@ -245,10 +246,10 @@ export async function DELETE(
         deleted_by: profile.id,
         updated_by: profile.id,
       })
-      .eq("id", id);
+      .eq("id", id).eq("country", profile.country);
 
     if (deleteErr && (deleteErr.message.includes("is_deleted") || deleteErr.message.includes("deleted_by"))) {
-      const deleteRes = await supabase.from("receipts").delete().eq("id", id);
+      const deleteRes = await supabase.from("receipts").delete().eq("id", id).eq("country", profile.country);
       deleteErr = deleteRes.error;
     }
 

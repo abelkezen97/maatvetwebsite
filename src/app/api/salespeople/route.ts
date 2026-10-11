@@ -8,7 +8,6 @@ export async function GET(request: Request) {
     const { profile, supabase } = await requireAuth();
 
     const { searchParams } = new URL(request.url);
-    const country = searchParams.get("country");
 
     let query = supabase
       .from("profiles")
@@ -17,11 +16,8 @@ export async function GET(request: Request) {
       .eq("is_active", true)
       .order("full_name", { ascending: true });
 
-    if (country) {
-      query = query.eq("country", country);
-    } else if (profile.role === "salesperson") {
-      query = query.eq("country", profile.country);
-    }
+    // Every role sees only its own country (there is no global admin).
+    query = query.eq("country", profile.country);
 
     const { data, error } = await query;
 

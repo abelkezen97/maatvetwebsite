@@ -17,7 +17,11 @@ interface LanguageContextProps {
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
   translateBusinessText: (value: string | null | undefined) => string;
-  formatCurrency: (amount: number | string | null | undefined) => string;
+  /** Formats in the signed-in user's currency, or in `country`'s currency when given. */
+  formatCurrency: (amount: number | string | null | undefined, country?: string | null) => string;
+  /** Country whose currency is used by default (set from the signed-in user's profile). */
+  currencyCountry: string | null;
+  setCurrencyCountry: (country: string | null) => void;
   formatDate: (dateVal: string | Date | null | undefined) => string;
   formatNumber: (num: number | string | null | undefined) => string;
   isRtl: boolean;
@@ -29,6 +33,7 @@ export { translations };
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>("en");
+  const [currencyCountry, setCurrencyCountry] = useState<string | null>(null);
 
   useEffect(() => {
     // Read saved language preference if any
@@ -64,8 +69,8 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     return translateBusinessTextFn(value, language);
   };
 
-  const formatCurrency = (amount: number | string | null | undefined): string => {
-    return formatCurrencyFn(amount, language);
+  const formatCurrency = (amount: number | string | null | undefined, country?: string | null): string => {
+    return formatCurrencyFn(amount, language, country ?? currencyCountry);
   };
 
   const formatDate = (dateVal: string | Date | null | undefined): string => {
@@ -88,6 +93,8 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
         formatCurrency, 
         formatDate, 
         formatNumber, 
+        currencyCountry,
+        setCurrencyCountry,
         isRtl 
       }}
     >

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import {
   mapCustomerFromDb,
   mapInvoiceFromDb,
@@ -62,7 +62,7 @@ export async function GET(
           { status: 403 }
         );
       }
-    } else if (profile.role === "accountant") {
+    } else if (isCountryStaff(profile)) {
       if (customerRow.country !== profile.country) {
         return NextResponse.json(
           { error: "Forbidden: Cannot access customer in another country" },

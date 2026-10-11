@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     // SUPER ADMIN ONLY authority for adding Opening Stock or Stock Received
     if (!Permissions.canManageInventory(profile)) {
       return NextResponse.json(
-        { error: "Forbidden: Only Super Admin can add opening stock or receive stock from suppliers." },
+        { error: "Forbidden: Only an Admin can add opening stock or receive stock from suppliers." },
         { status: 403 }
       );
     }
@@ -39,8 +39,12 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { productId, country, movementType, quantity, reason, notes } = body;
 
-    if (!productId || !country || !movementType || !quantity) {
-      return NextResponse.json({ error: "Missing required fields (productId, country, movementType, quantity)" }, { status: 400 });
+    if (!productId || !movementType || !quantity) {
+      return NextResponse.json({ error: "Missing required fields (productId, movementType, quantity)" }, { status: 400 });
+    }
+
+    if (country && country !== profile.country) {
+      return NextResponse.json({ error: "Forbidden: Cannot add stock in another country" }, { status: 403 });
     }
 
     const numQty = Number(quantity);
@@ -55,7 +59,7 @@ export async function POST(request: Request) {
 
     const movement = await recordInventoryMovement(supabase, {
       productId,
-      country: country === "Oman" ? "Oman" : "UAE",
+      country: profile.country === "Oman" ? "Oman" : "UAE",
       movementType,
       quantity: numQty, // Addition IN (+qty)
       referenceType: movementType === "OPENING_STOCK" ? "OPENING" : "STOCK_RECEIVING",

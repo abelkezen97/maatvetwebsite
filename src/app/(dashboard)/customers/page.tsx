@@ -12,6 +12,7 @@ import { Plus, X, CheckCircle2, RotateCw, AlertTriangle, Eye } from "lucide-reac
 import { useRouter } from "next/navigation";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { useAuth } from "@/hooks/useAuth";
+import { formatMoney } from "@/lib/currency";
 import { SuperAdminCustomersView } from "@/components/SuperAdminCustomersView";
 
 const COUNTRY_OPTIONS: UserCountry[] = ["UAE", "Oman"];
@@ -289,7 +290,7 @@ export default function CustomersPage() {
         const amt = Math.max(0, row.pendingBillwiseAmount || 0);
         return (
           <span className={`font-extrabold ${amt > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-            AED {amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {formatMoney(amt, row.country)}
           </span>
         );
       },

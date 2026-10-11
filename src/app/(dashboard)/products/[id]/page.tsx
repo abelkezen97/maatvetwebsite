@@ -31,7 +31,9 @@ import {
 } from "lucide-react";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { useAuth } from "@/hooks/useAuth";
+import { UserCountry } from "@/types";
 import { PageHeader } from "@/components/PageHeader";
+import { currencyFor, decimalsFor } from "@/lib/currency";
 
 interface ProductDetailData {
   product: {
@@ -159,6 +161,10 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const productId = params?.id as string;
   const { isSuperAdmin, isAccountant, isSalesperson, profile } = useAuth();
+  // There is no global role: stock is managed per country, in the user's own country only.
+  const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
+  const currencyCode = currencyFor(profile?.country);
+  const dp = decimalsFor(profile?.country);
 
   const [data, setData] = useState<ProductDetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -168,6 +174,9 @@ export default function ProductDetailPage() {
   const [isAdjModalOpen, setIsAdjModalOpen] = useState(false);
   const [adjAction, setAdjAction] = useState<"ADD" | "DEDUCT" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "DAMAGE" | "EXPIRY">("ADD");
   const [adjCountry, setAdjCountry] = useState<"UAE" | "Oman">("UAE");
+  useEffect(() => {
+    setAdjCountry(ownCountry);
+  }, [ownCountry]);
   const [adjQty, setAdjQty] = useState("");
   const [adjReason, setAdjReason] = useState("");
   const [adjNotes, setAdjNotes] = useState("");
@@ -215,7 +224,7 @@ export default function ProductDetailPage() {
           country: adjCountry,
           adjustmentAction: adjAction,
           quantity: Number(adjQty),
-          reason: adjReason.trim() || `Manual ${adjAction} by ${profile?.full_name || "Super Admin"}`,
+          reason: adjReason.trim() || `Manual ${adjAction} by ${profile?.full_name || "Admin"}`,
           notes: adjNotes.trim(),
         }),
       });
@@ -335,7 +344,7 @@ export default function ProductDetailPage() {
             <div className="text-right">
               <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Master Price</div>
               <div className="text-2xl font-black text-white font-mono">
-                AED {product.sellingPrice.toFixed(2)}
+                {currencyCode} {product.sellingPrice.toFixed(dp)}
               </div>
             </div>
           </div>
@@ -649,7 +658,7 @@ export default function ProductDetailPage() {
                       )}
                     </td>
                     <td className="py-3 px-5 font-bold text-slate-800">
-                      AED {cust.lastPurchaseNet.toFixed(2)}
+                      {currencyCode} {cust.lastPurchaseNet.toFixed(dp)}
                     </td>
                     <td className="py-3 px-5 font-semibold text-slate-700">
                       {cust.quantity}
@@ -723,13 +732,13 @@ export default function ProductDetailPage() {
                       {item.quantity}
                     </td>
                     <td className="py-3 px-5 text-right font-bold text-slate-800">
-                      AED {item.unitPrice.toFixed(2)}
+                      {currencyCode} {item.unitPrice.toFixed(dp)}
                     </td>
                     <td className="py-3 px-5 text-right text-slate-500">
-                      {item.discount > 0 ? `AED ${item.discount.toFixed(2)}` : "—"}
+                      {item.discount > 0 ? `${currencyCode} ${item.discount.toFixed(dp)}` : "—"}
                     </td>
                     <td className="py-3 px-5 text-right font-black text-slate-900">
-                      AED {item.lineTotal.toFixed(2)}
+                      {currencyCode} {item.lineTotal.toFixed(dp)}
                     </td>
                   </tr>
                 ))}
@@ -839,8 +848,7 @@ export default function ProductDetailPage() {
                   onChange={(e: any) => setAdjCountry(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-slate-900 outline-none"
                 >
-                  <option value="UAE">UAE Branch</option>
-                  <option value="Oman">Oman Branch</option>
+                  {ownCountry === "Oman" ? <option value="Oman">Oman Branch</option> : <option value="UAE">UAE Branch</option>}
                 </select>
               </div>
 
