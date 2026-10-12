@@ -177,6 +177,10 @@ export interface Invoice {
   isOverdue?: boolean;
   daysOverdue?: number;
   notes?: string;
+  /** UAE: "oman_reg" invoices hold Oman-registered products and print without the header. */
+  billingSeries?: BillingSeries;
+  /** Shared by the two invoices of one split sale. */
+  invoiceGroupId?: string;
   isDeleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;

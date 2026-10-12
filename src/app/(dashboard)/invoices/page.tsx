@@ -23,6 +23,7 @@ export default function InvoicesPage() {
   const { user, profile } = useAuth();
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
+  const [seriesFilter, setSeriesFilter] = useState<"all" | "standard" | "oman_reg">("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -97,6 +98,10 @@ export default function InvoicesPage() {
   const filteredInvoices = useMemo(() => {
     let list = invoices;
 
+    if (seriesFilter !== "all") {
+      list = list.filter((i) => (i.billingSeries || "standard") === seriesFilter);
+    }
+
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       list = list.filter(
@@ -115,7 +120,7 @@ export default function InvoicesPage() {
       if (timeA !== timeB) return timeB - timeA;
       return b.invoiceNumber.localeCompare(a.invoiceNumber, undefined, { numeric: true, sensitivity: "base" });
     });
-  }, [invoices, searchQuery]);
+  }, [invoices, searchQuery, seriesFilter]);
 
   const generatePDF = (invoice: Invoice) => {
     const doc = buildInvoicePDF(invoice);
@@ -127,7 +132,14 @@ export default function InvoicesPage() {
       header: t("invoiceNo") || "Invoice Number",
       accessor: (row: Invoice) => (
         <div className="flex flex-col">
-          <span className="font-bold text-[#1B2A4A]">{row.invoiceNumber}</span>
+          <span className="font-bold text-[#1B2A4A]">
+            {row.invoiceNumber}
+            {row.billingSeries === "oman_reg" && (
+              <span className="ms-1.5 align-middle inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                Oman-reg
+              </span>
+            )}
+          </span>
           {row.quoteNumber && (
             <span className="text-[10px] text-slate-400 font-semibold">From Quote: {row.quoteNumber}</span>
           )}
@@ -283,6 +295,26 @@ export default function InvoicesPage() {
             onClear={() => setSearchQuery("")}
           />
         </div>
+
+        {profile?.country === "UAE" && (
+          <div className="flex flex-wrap gap-2">
+            {([
+              ["all", "All invoices"],
+              ["standard", "UAE-registered"],
+              ["oman_reg", "Oman-registered"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setSeriesFilter(key)}
+                className={`px-4 py-2 rounded-full text-xs font-bold border transition cursor-pointer ${
+                  seriesFilter === key ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Invoices Table */}
         {isLoading ? (

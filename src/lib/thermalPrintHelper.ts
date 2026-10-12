@@ -75,11 +75,15 @@ export const printInvoiceThermalBill = (invoice: Invoice) => {
         </style>
       </head>
       <body>
-        <div class="header">
+        ${
+          invoice.billingSeries === "oman_reg"
+            ? "" /* Oman-registered (UAE): printed without the header */
+            : `<div class="header">
           <p style="font-size: 14px; font-weight: bold; margin: 0; text-transform: uppercase;">INVOICE BILL</p>
         </div>
 
-        <div class="divider"></div>
+        <div class="divider"></div>`
+        }
 
         <div class="row"><span>Inv No:</span><span class="bold">${invoice.invoiceNumber}</span></div>
         <div class="row"><span>Date:</span><span>${formatDisplayDate(invoice.date)}</span></div>

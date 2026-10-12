@@ -4,10 +4,10 @@ import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
-import { nextSeriesNumber, peekSeriesNumber } from "@/lib/db/documentSeries";
-import { QuoteItem, UserCountry } from "@/types";
+import { billingSeriesForProducts, mixedSeriesError, nextSeriesNumber, peekSeriesNumber } from "@/lib/db/documentSeries";
+import { BillingSeries, QuoteItem, UserCountry } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { validateAndProcessInvoiceInventory, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
+import { getProductStock, validateAndProcessInvoiceInventory, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -176,16 +176,18 @@ export async function POST(request: Request) {
     let isEditMode = false;
     let oldCustomerId: string | null = null;
     let oldStatus: string | null = null;
+    let existingSeries: BillingSeries = "standard";
 
     if (targetInvoiceId) {
       const { data: existingById } = await supabase
         .from("invoices")
-        .select("id, invoice_number, customer_id, status")
+        .select("id, invoice_number, customer_id, status, billing_series")
         .eq("id", targetInvoiceId)
         .maybeSingle();
 
       if (existingById?.id) {
         invoiceId = existingById.id;
+        existingSeries = existingById.billing_series === "oman_reg" ? "oman_reg" : "standard";
         invoiceNumber = existingById.invoice_number;
         oldCustomerId = existingById.customer_id || null;
         oldStatus = existingById.status || null;
@@ -330,258 +332,96 @@ export async function POST(request: Request) {
       ? Math.max(0, computedSubtotal - computedDiscountTotal + vatTotal)
       : (rawGrandTotal || Math.max(0, rawSubtotal - rawDiscountTotal + vatTotal));
 
-    const status = invoiceData.status || payload.status || "Paid";
-    const creditDays = invoiceData.creditDays !== undefined ? Number(invoiceData.creditDays) : payload.creditDays !== undefined ? Number(payload.creditDays) : undefined;
-    const notes = invoiceData.notes || payload.notes || "";
-
-    const headerPayload = mapInvoiceToDb({
-      invoiceNumber,
-      quoteNumber: quoteNumber || undefined,
-      customerId: customerId || undefined,
-      customerName,
-      companyName,
-      salesmanName,
-      date: issueDate,
-      subtotal,
-      discountTotal,
-      taxTotal: vatTotal,
-      grandTotal,
-      status,
-      creditDays,
-      notes,
-    });
-
     let finalSalesmanId = profile.id;
     if (profile.role !== "salesperson") {
       finalSalesmanId = invoiceData.salesmanId || payload.salesmanId || quoteRow?.salesman_id || custRow?.assigned_salesman_id || profile.id;
     }
 
-    // Determine if Dr. Kaleemullah is the salesperson for this invoice
-    const KALEEM_PROFILE_ID = "59ce7b2c-156f-4b91-9ee9-a55c05aa160f";
-    let isKaleemullah = false;
+    const admin = createAdminClient() || supabase;
+    const status = invoiceData.status || payload.status || "Paid";
+    const creditDays = invoiceData.creditDays !== undefined ? Number(invoiceData.creditDays) : payload.creditDays !== undefined ? Number(payload.creditDays) : undefined;
+    const notes = invoiceData.notes || payload.notes || "";
+    const paymentMethod = invoiceData.paymentMethod || payload.paymentMethod || "Cash";
 
-    if (finalSalesmanId === KALEEM_PROFILE_ID || profile.id === KALEEM_PROFILE_ID) {
-      isKaleemullah = true;
-    } else if (profile.full_name?.toLowerCase().includes("kaleem") || profile.email?.toLowerCase().includes("kaleem")) {
-      isKaleemullah = true;
-    } else if (finalSalesmanId) {
-      const queryClient = createAdminClient() || supabase;
-      const { data: salesmanProf } = await queryClient
-        .from("profiles")
-        .select("id, full_name, email")
-        .eq("id", finalSalesmanId)
-        .maybeSingle();
+    // ------------------------------------------------------------------
+    // Billing series: in the UAE, Oman-registered products are billed on
+    // their own invoice (own number series, printed without the header).
+    // A mixed sale becomes two invoices linked by invoice_group_id.
+    // ------------------------------------------------------------------
+    const seriesByProduct = await billingSeriesForProducts(
+      admin,
+      targetCountry,
+      items.map((it) => it.productId || "").filter(Boolean)
+    );
+    const seriesOf = (it: QuoteItem): BillingSeries =>
+      (it.productId && seriesByProduct.get(String(it.productId))) || "standard";
 
-      if (salesmanProf && (
-        salesmanProf.id === KALEEM_PROFILE_ID ||
-        salesmanProf.full_name?.toLowerCase().includes("kaleem") ||
-        salesmanProf.email?.toLowerCase().includes("kaleem")
-      )) {
-        isKaleemullah = true;
-      }
+    interface InvoicePart {
+      series: BillingSeries;
+      items: QuoteItem[];
+      rows: any[];
+      subtotal: number;
+      discountTotal: number;
+      grandTotal: number;
     }
-
-    const invPrefix = "D";
-    const invPad = 4;
-
-    if (!isEditMode) {
-      // Server-side reference generation: generate D prefix invoice number (e.g. D0355)
-      if (profile.role === "salesperson" || !invoiceNumber || invoiceNumber.startsWith("INV-")) {
-        invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", "D", 4);
-      } else {
-        const { data: existingByNum } = await supabase
-          .from("invoices")
-          .select("id")
-          .eq("invoice_number", invoiceNumber)
-          .maybeSingle();
-
-        if (existingByNum?.id) {
-          invoiceNumber = await generateNextDocumentNumber(supabase, "invoices", "invoice_number", "D", 4);
-        }
-      }
-      headerPayload.invoice_number = invoiceNumber;
-    }
-
-    // SERVER IS SOURCE OF TRUTH (Client payload enforced for salesman_id, country, created_by, updated_by)
-    headerPayload.salesman_id = finalSalesmanId;
-    headerPayload.updated_by = profile.id;
-    headerPayload.country = profile.country;
-    headerPayload.created_by = profile.id;
-
-    if (isEditMode && invoiceId) {
-      // ON UPDATE: STRIP IMMUTABLE FIELDS
-      delete headerPayload.id;
-      delete headerPayload.invoice_number;
-      delete headerPayload.created_by;
-      delete headerPayload.created_at;
-      delete headerPayload.country;
-      delete headerPayload.is_deleted;
-      delete headerPayload.deleted_at;
-      delete headerPayload.deleted_by;
-
-      headerPayload.updated_at = new Date().toISOString();
-
-      let { error: updateErr } = await supabase
-        .from("invoices")
-        .update(headerPayload)
-        .eq("id", invoiceId);
-
-      if (updateErr && (updateErr.message.includes("updated_by") || updateErr.message.includes("country") || updateErr.message.includes("status"))) {
-        delete headerPayload.updated_by;
-        delete headerPayload.status;
-        const retryUpdate = await supabase
-          .from("invoices")
-          .update(headerPayload)
-          .eq("id", invoiceId);
-        updateErr = retryUpdate.error;
-      }
-
-      if (updateErr) {
-        console.error("Supabase update invoice error:", updateErr);
-      }
-
-      await supabase
-        .from("invoice_items")
-        .delete()
-        .eq("invoice_id", invoiceId);
+    let parts: InvoicePart[] = [];
+    if (items.length === 0) {
+      parts = [{ series: isEditMode ? existingSeries : "standard", items: [], rows: [], subtotal, discountTotal, grandTotal }];
     } else {
-      // ON INSERT: STAMP COUNTRY AND CREATED_BY WITH CONCURRENCY RETRY LOOP
-      let inserted: any = null;
-      let insertAttempts = 0;
-      const maxAttempts = 10;
-
-      while (!inserted && insertAttempts < maxAttempts) {
-        insertAttempts++;
-
-        // The salesman's own series when set up; otherwise the shared D-series.
-        const candidateNum =
-          (await nextSeriesNumber(createAdminClient() || supabase, finalSalesmanId, "invoice", "standard")) ||
-          (await generateNextDocumentNumber(
-            supabase,
-            "invoices",
-            "invoice_number",
-            invPrefix,
-            invPad
-          ));
-
-        const attemptPayload = {
-          ...headerPayload,
-          invoice_number: candidateNum,
-        };
-
-        const { data: createdData, error: insertErr } = await supabase
-          .from("invoices")
-          .insert([attemptPayload])
-          .select("id, invoice_number")
-          .single();
-
-        if (!insertErr && createdData) {
-          inserted = createdData;
-          invoiceNumber = createdData.invoice_number;
-          break;
-        }
-
-        console.error("INVOICE INSERT FAILED:", {
-          attempt: insertAttempts,
-          invoice_number: candidateNum,
-          code: insertErr?.code,
-          message: insertErr?.message,
-          details: insertErr?.details,
-          hint: insertErr?.hint,
-          salesperson_id: finalSalesmanId,
-          user_id: profile.id,
-          user_role: profile.role,
-          country: headerPayload.country,
-          operation: "INSERT_INVOICE_HEADER",
+      (["standard", "oman_reg"] as BillingSeries[]).forEach((series) => {
+        const idxs = items.map((it, i) => (seriesOf(it) === series ? i : -1)).filter((i) => i >= 0);
+        if (idxs.length === 0) return;
+        const rows = idxs.map((i) => validatedItemsPayload[i]);
+        const partSubtotal = rows.reduce((s, r) => s + r.quantity * r.unit_price, 0);
+        const partDiscount = rows.reduce((s, r) => s + r.quantity * r.discount, 0);
+        parts.push({
+          series,
+          items: idxs.map((i) => items[i]),
+          rows,
+          subtotal: partSubtotal,
+          discountTotal: partDiscount,
+          // Splitting only happens in the UAE, where there is no VAT.
+          grandTotal: Math.max(0, partSubtotal - partDiscount + (idxs.length === items.length ? vatTotal : 0)),
         });
+      });
+    }
 
-        const isCollision =
-          insertErr?.code === "23505" ||
-          insertErr?.message?.toLowerCase().includes("unique constraint") ||
-          insertErr?.message?.toLowerCase().includes("already exists") ||
-          insertErr?.message?.toLowerCase().includes("duplicate key");
-
-        if (isCollision) {
-          console.warn(`[Invoice Concurrency Collision] Candidate ${candidateNum} already exists, retrying attempt ${insertAttempts + 1}...`);
-          continue;
-        }
-
-        // Return exact database error immediately for non-collision errors
+    if (isEditMode) {
+      // An existing invoice keeps its series; the other kind needs its own invoice.
+      if (parts.length > 1 || parts[0].series !== existingSeries) {
+        return NextResponse.json({ error: mixedSeriesError(existingSeries) }, { status: 400 });
+      }
+    } else if (parts.some((p) => p.series === "oman_reg")) {
+      const hasSeries = await peekSeriesNumber(admin, finalSalesmanId, "invoice", "oman_reg");
+      if (!hasSeries) {
         return NextResponse.json(
           {
-            error: `Invoice Insert Failed: ${insertErr?.message || "Database insert error"}`,
-            code: insertErr?.code,
-            details: insertErr?.details,
-            hint: insertErr?.hint,
-            attempted_number: candidateNum,
+            error:
+              "This sale has Oman-registered products, but this salesman has no Oman-registered invoice series yet. " +
+              "An admin can set it in Settings → Users → Number series.",
           },
           { status: 400 }
         );
       }
-
-      if (!inserted) {
-        throw new Error("Failed to insert invoice after multiple concurrency retries.");
-      }
-
-      invoiceId = inserted.id;
     }
 
-    if (validatedItemsPayload.length > 0 && invoiceId) {
-      const lineItemsPayload = validatedItemsPayload.map((item) => ({
-        ...item,
-        invoice_id: invoiceId,
-      }));
-
-      const { error: itemsErr } = await supabase
-        .from("invoice_items")
-        .insert(lineItemsPayload);
-
-      if (itemsErr) {
-        console.error("Supabase invoice items insert error:", itemsErr);
-      }
-    }
-
-    // INVENTORY DEDUCTION & RECONCILIATION FOR CONFIRMED INVOICES
-    if (status !== "Draft" && invoiceId) {
-      const inventoryItems = items.map((it) => ({
-        productId: it.productId || "",
-        quantity: Number(it.quantity) || 0,
-        productName: it.productName || "Product",
-      }));
-
-      try {
-        if (isEditMode) {
-          await reconcileInvoiceInventoryOnEdit(
-            supabase,
-            invoiceId,
-            invoiceNumber,
-            inventoryItems,
-            targetCountry,
-            profile.id
-          );
-        } else {
-          await validateAndProcessInvoiceInventory(
-            supabase,
-            inventoryItems,
-            targetCountry,
-            invoiceId,
-            invoiceNumber,
-            profile.id
-          );
+    // All stock is checked before anything is saved, so a split sale never
+    // ends up half saved for lack of stock.
+    if (!isEditMode && status !== "Draft") {
+      const needed = new Map<string, { qty: number; name: string }>();
+      items.forEach((it) => {
+        if (!it.productId || !(Number(it.quantity) > 0)) return;
+        const cur = needed.get(it.productId) || { qty: 0, name: it.productName || "Selected product" };
+        cur.qty += Number(it.quantity);
+        needed.set(it.productId, cur);
+      });
+      for (const [pid, need] of needed) {
+        const available = await getProductStock(admin, pid, targetCountry);
+        if (available < need.qty) {
+          return NextResponse.json({ error: `Insufficient stock for ${need.name}. Available quantity: ${available}.` }, { status: 400 });
         }
-      } catch (invErr: any) {
-        // Rollback created invoice if stock validation fails on new creation
-        if (!isEditMode && invoiceId) {
-          await supabase.from("invoice_items").delete().eq("invoice_id", invoiceId);
-          await supabase.from("invoices").delete().eq("id", invoiceId);
-        }
-        return NextResponse.json({ error: invErr.message || "Insufficient stock" }, { status: 400 });
       }
     }
-
-    // RECEIPT & FINANCIAL RECONCILIATION FOR CONFIRMED INVOICES
-    const paymentMethod = invoiceData.paymentMethod || payload.paymentMethod || "Cash";
-    const actualPaymentAmount = Number(invoiceData.amountPaid ?? payload.amountPaid ?? (status === "Paid" ? grandTotal : 0));
 
     let targetCustId = customerId;
     if (!targetCustId && (companyName || customerName)) {
@@ -595,23 +435,238 @@ export async function POST(request: Request) {
       }
     }
 
-    if (invoiceId) {
-      if (status === "Paid" && actualPaymentAmount > 0) {
-        // Find existing active receipt for this invoice
+    const groupId = parts.length > 1 ? crypto.randomUUID() : null;
+    // Money taken at invoice time goes to the UAE-registered invoice first.
+    let paymentLeft = Number(invoiceData.amountPaid ?? payload.amountPaid ?? (status === "Paid" ? grandTotal : 0));
+
+    const created: Array<{ id: string; invoiceNumber: string; billingSeries: BillingSeries; grandTotal: number }> = [];
+
+    // Removes invoices this request created (used when a later part fails).
+    const rollbackCreated = async () => {
+      for (const c of created) {
+        await admin.from("inventory_transactions").delete().eq("reference_id", c.id);
+        await admin.from("invoice_items").delete().eq("invoice_id", c.id);
+        await admin.from("invoices").delete().eq("id", c.id);
+      }
+    };
+
+    for (const part of parts) {
+      let partInvoiceId: string | null = isEditMode ? invoiceId : null;
+      let partNumber: string = isEditMode ? invoiceNumber : "";
+
+      const headerPayload = mapInvoiceToDb({
+        invoiceNumber: partNumber || undefined,
+        quoteNumber: quoteNumber || undefined,
+        customerId: customerId || undefined,
+        customerName,
+        companyName,
+        salesmanName,
+        date: issueDate,
+        subtotal: part.subtotal,
+        discountTotal: part.discountTotal,
+        taxTotal: parts.length === 1 ? vatTotal : 0,
+        grandTotal: part.grandTotal,
+        status,
+        creditDays,
+        notes,
+      });
+
+      // SERVER IS SOURCE OF TRUTH (Client payload enforced for salesman_id, country, created_by, updated_by)
+      headerPayload.salesman_id = finalSalesmanId;
+      headerPayload.updated_by = profile.id;
+      headerPayload.country = profile.country;
+      headerPayload.created_by = profile.id;
+
+      if (isEditMode && partInvoiceId) {
+        // ON UPDATE: STRIP IMMUTABLE FIELDS
+        delete headerPayload.id;
+        delete headerPayload.invoice_number;
+        delete headerPayload.created_by;
+        delete headerPayload.created_at;
+        delete headerPayload.country;
+        delete headerPayload.is_deleted;
+        delete headerPayload.deleted_at;
+        delete headerPayload.deleted_by;
+
+        headerPayload.updated_at = new Date().toISOString();
+
+        let { error: updateErr } = await supabase
+          .from("invoices")
+          .update(headerPayload)
+          .eq("id", partInvoiceId);
+
+        if (updateErr && (updateErr.message.includes("updated_by") || updateErr.message.includes("country") || updateErr.message.includes("status"))) {
+          delete headerPayload.updated_by;
+          delete headerPayload.status;
+          const retryUpdate = await supabase
+            .from("invoices")
+            .update(headerPayload)
+            .eq("id", partInvoiceId);
+          updateErr = retryUpdate.error;
+        }
+
+        if (updateErr) {
+          console.error("Supabase update invoice error:", updateErr);
+        }
+
+        await supabase
+          .from("invoice_items")
+          .delete()
+          .eq("invoice_id", partInvoiceId);
+      } else {
+        headerPayload.billing_series = part.series;
+        headerPayload.invoice_group_id = groupId;
+
+        // ON INSERT: number from the salesman's series (standard falls back to
+        // the shared D-series), with a retry loop for concurrent saves.
+        let inserted: any = null;
+        let insertAttempts = 0;
+        const maxAttempts = 10;
+
+        while (!inserted && insertAttempts < maxAttempts) {
+          insertAttempts++;
+
+          const candidateNum =
+            (await nextSeriesNumber(admin, finalSalesmanId, "invoice", part.series)) ||
+            (part.series === "standard"
+              ? await generateNextDocumentNumber(supabase, "invoices", "invoice_number", "D", 4)
+              : null);
+          if (!candidateNum) {
+            await rollbackCreated();
+            return NextResponse.json({ error: "No Oman-registered invoice series for this salesman." }, { status: 400 });
+          }
+
+          const { data: createdData, error: insertErr } = await supabase
+            .from("invoices")
+            .insert([{ ...headerPayload, invoice_number: candidateNum }])
+            .select("id, invoice_number")
+            .single();
+
+          if (!insertErr && createdData) {
+            inserted = createdData;
+            break;
+          }
+
+          console.error("INVOICE INSERT FAILED:", {
+            attempt: insertAttempts,
+            invoice_number: candidateNum,
+            code: insertErr?.code,
+            message: insertErr?.message,
+            details: insertErr?.details,
+            hint: insertErr?.hint,
+            salesperson_id: finalSalesmanId,
+            user_id: profile.id,
+            user_role: profile.role,
+            country: headerPayload.country,
+            billing_series: part.series,
+            operation: "INSERT_INVOICE_HEADER",
+          });
+
+          const isCollision =
+            insertErr?.code === "23505" ||
+            insertErr?.message?.toLowerCase().includes("unique constraint") ||
+            insertErr?.message?.toLowerCase().includes("already exists") ||
+            insertErr?.message?.toLowerCase().includes("duplicate key");
+
+          if (isCollision) {
+            console.warn(`[Invoice Concurrency Collision] Candidate ${candidateNum} already exists, retrying attempt ${insertAttempts + 1}...`);
+            continue;
+          }
+
+          await rollbackCreated();
+          return NextResponse.json(
+            {
+              error: `Invoice Insert Failed: ${insertErr?.message || "Database insert error"}`,
+              code: insertErr?.code,
+              details: insertErr?.details,
+              hint: insertErr?.hint,
+              attempted_number: candidateNum,
+            },
+            { status: 400 }
+          );
+        }
+
+        if (!inserted) {
+          await rollbackCreated();
+          throw new Error("Failed to insert invoice after multiple concurrency retries.");
+        }
+
+        partInvoiceId = inserted.id;
+        partNumber = inserted.invoice_number;
+      }
+
+      if (!partInvoiceId) continue;
+
+      if (part.rows.length > 0) {
+        const { error: itemsErr } = await supabase
+          .from("invoice_items")
+          .insert(part.rows.map((row) => ({ ...row, invoice_id: partInvoiceId })));
+
+        if (itemsErr) {
+          console.error("Supabase invoice items insert error:", itemsErr);
+        }
+      }
+
+      // INVENTORY DEDUCTION & RECONCILIATION FOR CONFIRMED INVOICES
+      if (status !== "Draft") {
+        const inventoryItems = part.items.map((it) => ({
+          productId: it.productId || "",
+          quantity: Number(it.quantity) || 0,
+          productName: it.productName || "Product",
+        }));
+
+        try {
+          if (isEditMode) {
+            await reconcileInvoiceInventoryOnEdit(
+              supabase,
+              partInvoiceId,
+              partNumber,
+              inventoryItems,
+              targetCountry,
+              profile.id
+            );
+          } else {
+            await validateAndProcessInvoiceInventory(
+              supabase,
+              inventoryItems,
+              targetCountry,
+              partInvoiceId,
+              partNumber,
+              profile.id
+            );
+          }
+        } catch (invErr: any) {
+          if (!isEditMode) {
+            created.push({ id: partInvoiceId, invoiceNumber: partNumber, billingSeries: part.series, grandTotal: part.grandTotal });
+            await rollbackCreated();
+          }
+          return NextResponse.json({ error: invErr.message || "Insufficient stock" }, { status: 400 });
+        }
+      }
+
+      created.push({ id: partInvoiceId, invoiceNumber: partNumber, billingSeries: part.series, grandTotal: part.grandTotal });
+    }
+
+    // RECEIPT & FINANCIAL RECONCILIATION FOR CONFIRMED INVOICES
+    // One automatic receipt per invoice; it takes its invoice's billing series.
+    for (const inv of created) {
+      const partPayment = status === "Paid" ? Math.min(Math.max(paymentLeft, 0), inv.grandTotal) : 0;
+      paymentLeft -= partPayment;
+
+      if (status === "Paid" && partPayment > 0) {
         const { data: existingRec } = await supabase
           .from("receipts")
           .select("id")
-          .eq("invoice_id", invoiceId)
+          .eq("invoice_id", inv.id)
           .eq("is_deleted", false)
           .maybeSingle();
 
         if (existingRec?.id) {
-          // Update existing receipt
           await supabase
             .from("receipts")
             .update({
               customer_id: targetCustId || null,
-              amount_paid: actualPaymentAmount,
+              amount_paid: partPayment,
               payment_date: issueDate,
               payment_method: paymentMethod,
               country: profile.country,
@@ -620,27 +675,27 @@ export async function POST(request: Request) {
             })
             .eq("id", existingRec.id);
         } else {
-          // Create new receipt for Paid status transition
-          const autoReceiptNumber = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
-          const receiptPayload = {
+          const autoReceiptNumber =
+            (await nextSeriesNumber(admin, finalSalesmanId, "receipt", inv.billingSeries)) ||
+            (await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6));
+          await supabase.from("receipts").insert([{
             receipt_number: autoReceiptNumber,
             customer_id: targetCustId || null,
-            invoice_id: invoiceId,
-            amount_paid: actualPaymentAmount,
+            invoice_id: inv.id,
+            amount_paid: partPayment,
             payment_date: issueDate,
             payment_method: paymentMethod,
             // A cheque taken at invoice time counts as paid only once it clears.
             cheque_status: paymentMethod === "Cheque" ? "Pending" : null,
-            reference_number: `Auto-generated for Invoice ${invoiceNumber}`,
-            notes: notes || `Automatic payment receipt for Invoice ${invoiceNumber}`,
+            reference_number: `Auto-generated for Invoice ${inv.invoiceNumber}`,
+            notes: notes || `Automatic payment receipt for Invoice ${inv.invoiceNumber}`,
             country: profile.country,
             created_by: profile.id,
             updated_by: profile.id,
-          };
-          await supabase.from("receipts").insert([receiptPayload]);
+          }]);
         }
       } else {
-        // Status is Credit or Cancelled: soft-delete any active receipt associated with this invoice
+        // Credit, Cancelled or nothing collected: no active receipt for this invoice.
         await supabase
           .from("receipts")
           .update({
@@ -648,10 +703,11 @@ export async function POST(request: Request) {
             deleted_at: new Date().toISOString(),
             deleted_by: profile.id,
           })
-          .eq("invoice_id", invoiceId)
+          .eq("invoice_id", inv.id)
           .eq("is_deleted", false);
       }
     }
+    invoiceNumber = created[0]?.invoiceNumber || invoiceNumber;
 
     // Recalculate customer outstanding balances (both former and current customer if changed)
     if (oldCustomerId && oldCustomerId !== targetCustId) {
@@ -671,7 +727,11 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, invoiceNumber });
+    return NextResponse.json({
+      success: true,
+      invoiceNumber,
+      invoices: created.map((c) => ({ id: c.id, invoiceNumber: c.invoiceNumber, billingSeries: c.billingSeries, grandTotal: c.grandTotal })),
+    });
   } catch (error: any) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

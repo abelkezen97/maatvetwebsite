@@ -339,6 +339,27 @@ function NewInvoiceForm() {
 
   const taxTotal = 0.00;
 
+  // UAE: Oman-registered products go on their own invoice (no header, own number).
+  const seriesSplit = useMemo(() => {
+    const country = selectedCustomer?.country || user?.country || "UAE";
+    if (country !== "UAE") return null;
+    const regById = new Map(products.map((p) => [String(p.id), p.registeredIn === "Oman"]));
+    const lineTotal = (item: InvoiceItemWithManual) => {
+      const q = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
+      const p = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
+      const d = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
+      return Math.max(0, (p - Math.max(0, d)) * q);
+    };
+    const omanItems = invoiceItems.filter((it) => it.productId && regById.get(String(it.productId)));
+    const uaeItems = invoiceItems.filter((it) => !(it.productId && regById.get(String(it.productId))));
+    return {
+      uaeCount: uaeItems.length,
+      omanCount: omanItems.length,
+      uaeTotal: uaeItems.reduce((s, it) => s + lineTotal(it), 0),
+      omanTotal: omanItems.reduce((s, it) => s + lineTotal(it), 0),
+    };
+  }, [invoiceItems, products, selectedCustomer, user]);
+
   // Handlers
   const handleAddProduct = (product: Product) => {
     const existingIndex = invoiceItems.findIndex((item) => item.productId === product.id);
@@ -597,15 +618,20 @@ function NewInvoiceForm() {
         body: JSON.stringify(payload),
       });
 
+      const resData = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Failed to save invoice");
+        throw new Error(resData.error || "Failed to save invoice");
       }
 
+      // The server gives the real numbers (a mixed UAE sale becomes two invoices).
+      const savedNumbers: string[] = Array.isArray(resData.invoices) && resData.invoices.length > 0
+        ? resData.invoices.map((i: any) => i.invoiceNumber)
+        : [resData.invoiceNumber || newInvoice.invoiceNumber];
+      const numbersText = savedNumbers.join(" and ");
       setSuccessMessage(
         language === "en"
-          ? `Invoice ${newInvoice.invoiceNumber} successfully saved!`
-          : `تم حفظ الفاتورة ${newInvoice.invoiceNumber} بنجاح!`
+          ? `${savedNumbers.length > 1 ? "Invoices" : "Invoice"} ${numbersText} successfully saved!`
+          : `تم حفظ الفاتورة ${numbersText} بنجاح!`
       );
       setIsSaving(false);
 
@@ -691,6 +717,22 @@ function NewInvoiceForm() {
             <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800">
               <X className="w-4 h-4" />
             </button>
+          </div>
+        )}
+
+        {seriesSplit && seriesSplit.omanCount > 0 && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
+            {seriesSplit.uaeCount > 0 ? (
+              <span className="font-semibold">
+                {editInvoiceNumber
+                  ? "This invoice can't mix UAE- and Oman-registered products. Remove one kind and put it on a separate invoice."
+                  : `This sale will be saved as two invoices: UAE-registered (${seriesSplit.uaeCount} item${seriesSplit.uaeCount === 1 ? "" : "s"}, AED ${seriesSplit.uaeTotal.toFixed(2)}) and Oman-registered (${seriesSplit.omanCount} item${seriesSplit.omanCount === 1 ? "" : "s"}, AED ${seriesSplit.omanTotal.toFixed(2)}, printed without the company header).`}
+              </span>
+            ) : (
+              <span className="font-semibold">
+                Oman-registered products only: this will be an Oman-registered invoice with its own number, printed without the company header.
+              </span>
+            )}
           </div>
         )}
 

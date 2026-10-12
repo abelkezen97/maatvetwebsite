@@ -3,7 +3,9 @@ import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
-import { QuoteItem } from "@/types";
+import { BillingSeries, QuoteItem } from "@/types";
+import { createAdminClient } from "@/utils/supabase/admin";
+import { billingSeriesForProducts, mixedSeriesError } from "@/lib/db/documentSeries";
 import { reverseInvoiceInventoryOnCancel, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
 
 export const dynamic = "force-dynamic";
@@ -147,6 +149,21 @@ export async function PATCH(
     const oldGrandTotal = Number(existing.grand_total || 0);
 
     const payload = await request.json();
+
+    // A UAE invoice holds products of one billing series only.
+    if (Array.isArray(payload.items) && existing.country === "UAE") {
+      const invoiceSeries: BillingSeries = existing.billing_series === "oman_reg" ? "oman_reg" : "standard";
+      const seriesMap = await billingSeriesForProducts(
+        createAdminClient() || supabase,
+        existing.country,
+        payload.items.map((it: any) => it?.productId).filter(Boolean)
+      );
+      const wrong = payload.items.some(
+        (it: any) => it?.productId && (seriesMap.get(String(it.productId)) || "standard") !== invoiceSeries
+      );
+      if (wrong) return NextResponse.json({ error: mixedSeriesError(invoiceSeries) }, { status: 400 });
+    }
+
     const headerPayload = mapInvoiceToDb(payload);
 
     // IMMUTABLE / READ-ONLY FIELDS MUST NEVER BE SENT IN UPDATE/PATCH PAYLOAD

@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     // The invoice must be in the caller's country; a salesperson only their own.
     const { data: invoice } = await admin
       .from("invoices")
-      .select("id, invoice_number, customer_id, salesman_id, country, status, is_deleted, customers(assigned_salesman_id)")
+      .select("id, invoice_number, customer_id, salesman_id, country, status, is_deleted, billing_series, customers(assigned_salesman_id)")
       .eq("id", invoiceId)
       .maybeSingle();
 
@@ -139,7 +139,9 @@ export async function POST(request: Request) {
 
     let created: any = null;
     for (let attempt = 0; attempt < 5 && !created; attempt++) {
-      const number = await generateNextDocumentNumber(admin, "credit_notes", "credit_note_number", "CN", 6);
+      // Oman-registered invoices (UAE) get their own credit note series.
+      const cnPrefix = invoice.billing_series === "oman_reg" ? "CNM" : "CN";
+      const number = await generateNextDocumentNumber(admin, "credit_notes", "credit_note_number", cnPrefix, 6);
       const { data, error } = await supabase
         .from("credit_notes")
         .insert([{

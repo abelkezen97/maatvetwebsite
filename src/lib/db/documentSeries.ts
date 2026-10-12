@@ -81,3 +81,33 @@ export async function peekSeriesNumber(
     .maybeSingle();
   return data ? formatSeriesNumber(data.prefix, Number(data.next_number), Number(data.pad_length)) : null;
 }
+
+/**
+ * Billing series of each product for a sale in `country`: in the UAE an
+ * Oman-registered product is "oman_reg"; everything else is "standard".
+ */
+export async function billingSeriesForProducts(
+  client: SupabaseClient,
+  country: UserCountry | string | null | undefined,
+  productIds: string[]
+): Promise<Map<string, BillingSeries>> {
+  const map = new Map<string, BillingSeries>();
+  const ids = Array.from(new Set(productIds.filter(Boolean).map(String)));
+  if (country !== "UAE" || ids.length === 0) return map;
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await client
+      .from("products")
+      .select("id, registered_in")
+      .in("id", ids.slice(i, i + 150));
+    if (error) throw new Error(`Could not read product registration: ${error.message}`);
+    (data || []).forEach((p: any) => map.set(String(p.id), p.registered_in === "Oman" ? "oman_reg" : "standard"));
+  }
+  return map;
+}
+
+/** Message when an invoice's items don't all belong to its billing series. */
+export function mixedSeriesError(invoiceSeries: BillingSeries): string {
+  return invoiceSeries === "oman_reg"
+    ? "This is an Oman-registered invoice: it can only hold Oman-registered products. Put UAE-registered products on a separate invoice."
+    : "This is a UAE-registered invoice: it can only hold UAE-registered products. Put Oman-registered products on a separate invoice.";
+}
