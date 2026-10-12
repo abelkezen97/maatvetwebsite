@@ -12,7 +12,8 @@
 --    customer as credit and lowers their balance.
 -- 4. invoice_balances / customer_balances rebuilt to include credit notes.
 --
--- Contains DROP VIEW: run in the SQL editor, as one script.
+-- Non-destructive and re-runnable: views are replaced in place (new columns
+-- appended at the end), policies are created only if missing.
 -- ==============================================================================
 
 begin;
@@ -67,35 +68,42 @@ create index if not exists credit_note_items_invoice_item_idx on public.credit_n
 alter table public.credit_notes enable row level security;
 alter table public.credit_note_items enable row level security;
 
-drop policy if exists credit_notes_select_policy on public.credit_notes;
-drop policy if exists credit_notes_insert_policy on public.credit_notes;
-drop policy if exists credit_notes_update_policy on public.credit_notes;
-drop policy if exists credit_note_items_select_policy on public.credit_note_items;
-drop policy if exists credit_note_items_insert_policy on public.credit_note_items;
-
-create policy credit_notes_select_policy on public.credit_notes for select to authenticated
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'public' and policyname = 'credit_notes_select_policy') then
+    execute $p$create policy credit_notes_select_policy on public.credit_notes for select to authenticated
   using (
     public.is_country_staff(country::text)
     or (public.is_own_country(country::text)
         and (salesman_id = (select auth.uid()) or requested_by = (select auth.uid())))
-  );
--- Salespeople may only file Pending requests; staff may file approved notes.
-create policy credit_notes_insert_policy on public.credit_notes for insert to authenticated
+  )$p$;
+  end if;
+  -- Salespeople may only file Pending requests; staff may file approved notes.
+  if not exists (select 1 from pg_policies where schemaname = 'public' and policyname = 'credit_notes_insert_policy') then
+    execute $p$create policy credit_notes_insert_policy on public.credit_notes for insert to authenticated
   with check (
     public.is_country_staff(country::text)
     or (public.is_own_country(country::text)
         and requested_by = (select auth.uid())
         and status = 'Pending')
-  );
--- Only staff approve, reject or delete.
-create policy credit_notes_update_policy on public.credit_notes for update to authenticated
+  )$p$;
+  end if;
+  -- Only staff approve, reject or delete.
+  if not exists (select 1 from pg_policies where schemaname = 'public' and policyname = 'credit_notes_update_policy') then
+    execute $p$create policy credit_notes_update_policy on public.credit_notes for update to authenticated
   using (public.is_country_staff(country::text))
-  with check (public.is_country_staff(country::text));
-
-create policy credit_note_items_select_policy on public.credit_note_items for select to authenticated
-  using (exists (select 1 from public.credit_notes cn where cn.id = credit_note_items.credit_note_id));
-create policy credit_note_items_insert_policy on public.credit_note_items for insert to authenticated
-  with check (exists (select 1 from public.credit_notes cn where cn.id = credit_note_items.credit_note_id));
+  with check (public.is_country_staff(country::text))$p$;
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and policyname = 'credit_note_items_select_policy') then
+    execute $p$create policy credit_note_items_select_policy on public.credit_note_items for select to authenticated
+  using (exists (select 1 from public.credit_notes cn where cn.id = credit_note_items.credit_note_id))$p$;
+  end if;
+  if not exists (select 1 from pg_policies where schemaname = 'public' and policyname = 'credit_note_items_insert_policy') then
+    execute $p$create policy credit_note_items_insert_policy on public.credit_note_items for insert to authenticated
+  with check (exists (select 1 from public.credit_notes cn where cn.id = credit_note_items.credit_note_id))$p$;
+  end if;
+end
+$$;
 
 grant select, insert, update on public.credit_notes to authenticated;
 grant select, insert on public.credit_note_items to authenticated;
@@ -104,10 +112,7 @@ revoke all on public.credit_notes, public.credit_note_items from anon;
 -- ---------------------------------------------------------------------------
 -- 3. Balances including credit notes
 -- ---------------------------------------------------------------------------
-drop view if exists public.customer_balances;
-drop view if exists public.invoice_balances;
-
-create view public.invoice_balances
+create or replace view public.invoice_balances
 with (security_invoker = true) as
 with applied as (
   select a.invoice_id,
@@ -168,7 +173,7 @@ select b.invoice_id,
        greatest(b.paid_amount + b.credited_amount - b.grand_total, 0)                     as excess_credit
   from base b;
 
-create view public.customer_balances
+create or replace view public.customer_balances
 with (security_invoker = true) as
 with open_invoices as (
   select customer_id, sum(outstanding) as outstanding, sum(excess_credit) as excess_credit
