@@ -4,7 +4,7 @@ import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
-import { billingSeriesForProducts, mixedSeriesError, nextSeriesNumber, peekSeriesNumber } from "@/lib/db/documentSeries";
+import { billingSeriesForProducts, mixedSeriesError, nextReceiptNumber, nextSeriesNumber, peekSeriesNumber } from "@/lib/db/documentSeries";
 import { BillingSeries, QuoteItem, UserCountry } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getProductStock, validateAndProcessInvoiceInventory, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
@@ -675,9 +675,7 @@ export async function POST(request: Request) {
             })
             .eq("id", existingRec.id);
         } else {
-          const autoReceiptNumber =
-            (await nextSeriesNumber(admin, finalSalesmanId, "receipt", inv.billingSeries)) ||
-            (await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6));
+          const autoReceiptNumber = await nextReceiptNumber(admin, finalSalesmanId, inv.billingSeries);
           await supabase.from("receipts").insert([{
             receipt_number: autoReceiptNumber,
             customer_id: targetCustId || null,

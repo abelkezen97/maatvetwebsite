@@ -18,12 +18,21 @@ export const buildReceiptPDF = (receipt: Receipt): jsPDF => {
   }
   const cleanDate = rawDate || new Date().toISOString().split("T")[0];
 
-  // Top Header Banner in Green (Height 35mm)
-  doc.setFillColor(greenHeaderColor[0], greenHeaderColor[1], greenHeaderColor[2]);
-  doc.rect(0, 0, 210, 35, "F");
+  // UAE: Oman-registered receipts print without the header banner.
+  const plainHeader = receipt.billingSeries === "oman_reg";
 
-  // Title in White
-  doc.setTextColor(255, 255, 255);
+  if (plainHeader) {
+    doc.setTextColor(greyDark[0], greyDark[1], greyDark[2]);
+    doc.setDrawColor(greyBorder[0], greyBorder[1], greyBorder[2]);
+    doc.setLineWidth(0.3);
+    doc.line(15, 31, 195, 31);
+  } else {
+    // Top Header Banner in Green (Height 35mm)
+    doc.setFillColor(greenHeaderColor[0], greenHeaderColor[1], greenHeaderColor[2]);
+    doc.rect(0, 0, 210, 35, "F");
+    // Title in White
+    doc.setTextColor(255, 255, 255);
+  }
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.text("PAYMENT RECEIPT", 15, 16);

@@ -5,7 +5,7 @@ import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { BillingSeries, QuoteItem } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
-import { billingSeriesForProducts, mixedSeriesError } from "@/lib/db/documentSeries";
+import { billingSeriesForProducts, mixedSeriesError, nextReceiptNumber } from "@/lib/db/documentSeries";
 import { reverseInvoiceInventoryOnCancel, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
 
 export const dynamic = "force-dynamic";
@@ -275,8 +275,12 @@ export async function PATCH(
         receiptActionLog = `Updated receipt ${existingReceipt.id} amount to AED ${actualPaymentAmount}`;
       } else {
         // CASE 2: CREDIT -> PAID
-        const generateNextDocumentNumber = (await import("@/lib/db/sequence")).generateNextDocumentNumber;
-        const autoReceiptNumber = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
+        // The salesman's receipt series for this invoice's kind (falls back to REC / RCM).
+        const autoReceiptNumber = await nextReceiptNumber(
+          createAdminClient() || supabase,
+          existing.salesman_id,
+          existing.billing_series === "oman_reg" ? "oman_reg" : "standard"
+        );
         await supabase.from("receipts").insert([{
           receipt_number: autoReceiptNumber,
           customer_id: newCustId,

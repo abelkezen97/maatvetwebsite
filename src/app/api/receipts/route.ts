@@ -3,7 +3,8 @@ import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapReceiptFromDb, mapReceiptToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
-import { generateNextDocumentNumber } from "@/lib/db/sequence";
+import { nextReceiptNumber, nextSeriesNumber } from "@/lib/db/documentSeries";
+import { BillingSeries } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -117,9 +118,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!receiptNumber || isClientNumTaken) {
-      receiptNumber = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
-    }
+    const clientNumberUsable = Boolean(receiptNumber) && !isClientNumTaken;
 
     const customerId = payload.customerId || null;
     const invoiceId = payload.invoiceId || null;
@@ -189,6 +188,7 @@ export async function POST(request: Request) {
       }
     }
 
+    let assignedSalesmanId: string | null = null;
     if (customerId) {
       let { data: fetchedCust, error: custErr } = await supabase
         .from("customers")
@@ -210,6 +210,7 @@ export async function POST(request: Request) {
       }
 
       const custRow = fetchedCust;
+      assignedSalesmanId = custRow?.assigned_salesman_id || null;
 
       if (custErr || !custRow) {
         return NextResponse.json({ error: "Linked customer not found" }, { status: 400 });
@@ -243,11 +244,12 @@ export async function POST(request: Request) {
 
     // Validate allocations against what is still open on each invoice.
     const allocationRows: Array<{ invoice_id: string; amount: number }> = [];
+    const allocationSeries = new Set<BillingSeries>();
     if (requestedAllocations.length > 0) {
       const balClient = createAdminClient() || supabase;
       const { data: balRows, error: balErr } = await balClient
         .from("invoice_balances")
-        .select("invoice_id, invoice_number, customer_id, country, available_to_allocate")
+        .select("invoice_id, invoice_number, customer_id, country, available_to_allocate, billing_series")
         .in("invoice_id", requestedAllocations.map((a) => a.invoiceId));
 
       if (balErr) {
@@ -277,7 +279,40 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "Allocated amounts are more than the payment amount." }, { status: 400 });
         }
         allocationRows.push({ invoice_id: req.invoiceId, amount: Math.round(amount * 1000) / 1000 });
+        allocationSeries.add(bal.billing_series === "oman_reg" ? "oman_reg" : "standard");
       }
+    }
+
+    // Billing series (UAE): a receipt settles invoices of one kind only.
+    if (allocationSeries.size > 1) {
+      return NextResponse.json(
+        { error: "A receipt can't settle UAE-registered and Oman-registered invoices together. Record a separate receipt for each kind." },
+        { status: 400 }
+      );
+    }
+    const requestedSeries: BillingSeries | null =
+      payload.billingSeries === "oman_reg" ? "oman_reg" : payload.billingSeries === "standard" ? "standard" : null;
+    const allocatedSeries = allocationSeries.size === 1 ? Array.from(allocationSeries)[0] : null;
+    if (requestedSeries && allocatedSeries && requestedSeries !== allocatedSeries) {
+      return NextResponse.json(
+        { error: "The selected invoices don't match the receipt type (UAE-registered / Oman-registered)." },
+        { status: 400 }
+      );
+    }
+    const billingSeries: BillingSeries =
+      profile.country === "UAE" ? allocatedSeries || requestedSeries || "standard" : "standard";
+
+    // Number: the salesman's receipt series for this kind when set up; otherwise
+    // the number typed on the form (if free) or the shared REC / RCM sequence.
+    const numberSalesmanId = profile.role === "salesperson" ? profile.id : assignedSalesmanId;
+    const admin = createAdminClient() || supabase;
+    const fromSeries = numberSalesmanId
+      ? await nextSeriesNumber(admin, numberSalesmanId, "receipt", billingSeries)
+      : null;
+    if (fromSeries) {
+      receiptNumber = fromSeries;
+    } else if (!clientNumberUsable || billingSeries === "oman_reg") {
+      receiptNumber = await nextReceiptNumber(admin, null, billingSeries);
     }
 
     const insertPayload = mapReceiptToDb({
@@ -300,6 +335,7 @@ export async function POST(request: Request) {
     insertPayload.country = profile.country;
     insertPayload.created_by = profile.id;
     insertPayload.updated_by = profile.id;
+    insertPayload.billing_series = billingSeries;
 
     let inserted: any = null;
     let insertAttempts = 0;
@@ -308,7 +344,7 @@ export async function POST(request: Request) {
     while (!inserted && insertAttempts < maxAttempts) {
       insertAttempts++;
       if (insertAttempts > 1) {
-        insertPayload.receipt_number = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
+        insertPayload.receipt_number = await nextReceiptNumber(admin, numberSalesmanId, billingSeries);
         receiptNumber = insertPayload.receipt_number;
       }
 

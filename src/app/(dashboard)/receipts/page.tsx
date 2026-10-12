@@ -128,7 +128,14 @@ export default function ReceiptsPage() {
       header: t("receiptNo") || "Receipt Ref",
       accessor: (row: Receipt) => (
         <div className="flex flex-col">
-          <span className="font-bold text-emerald-700">{row.receiptNumber}</span>
+          <span className="font-bold text-emerald-700">
+            {row.receiptNumber}
+            {row.billingSeries === "oman_reg" && (
+              <span className="ms-1.5 align-middle inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                Oman-reg
+              </span>
+            )}
+          </span>
           <span className="text-[10px] text-slate-400 font-semibold">{row.country || "UAE"}</span>
         </div>
       ),

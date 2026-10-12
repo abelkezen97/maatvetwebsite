@@ -210,6 +210,8 @@ export interface Receipt {
   chequeDate?: string;
   bankName?: string;
   chequeStatus?: ChequeStatus;
+  /** UAE: "oman_reg" receipts settle Oman-registered invoices and print without the header. */
+  billingSeries?: BillingSeries;
   chequeReceivedAt?: string;
   clearedAt?: string;
   bouncedAt?: string;
@@ -250,6 +252,7 @@ export interface InvoiceBalance {
   paymentState: "Paid" | "Cheque pending" | "Partly paid" | "Unpaid";
   isOverdue: boolean;
   daysOverdue: number;
+  billingSeries: BillingSeries;
 }
 
 export type ExpenseCategory =

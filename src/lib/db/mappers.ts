@@ -445,6 +445,7 @@ export function mapReceiptFromDb(row: any, salesmanMap?: Map<string, string>): R
     chequeDate: row.cheque_date || undefined,
     bankName: row.bank_name || undefined,
     chequeStatus: row.cheque_status || undefined,
+    billingSeries: row.billing_series === "oman_reg" ? "oman_reg" : "standard",
     chequeReceivedAt: row.cheque_received_at || undefined,
     clearedAt: row.cleared_at || undefined,
     bouncedAt: row.bounced_at || undefined,
@@ -802,5 +803,6 @@ export function mapInvoiceBalanceFromDb(row: any): InvoiceBalance {
     paymentState: row.payment_state || "Unpaid",
     isOverdue: Boolean(row.is_overdue),
     daysOverdue: Number(row.days_overdue) || 0,
+    billingSeries: row.billing_series === "oman_reg" ? "oman_reg" : "standard",
   };
 }
