@@ -245,6 +245,7 @@ export async function GET(
           outstandingAmount: inv.outstandingAmount ?? 0,
           status: inv.status,
           creditDays: inv.creditDays,
+          billingSeries: inv.billingSeries || "standard",
         };
       });
 
