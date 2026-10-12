@@ -194,17 +194,9 @@ export function NumberSeriesDialog({
                 return (
                   <div key={`${r.docType}:${r.billingSeries}`} className="rounded-xl border border-slate-200 p-4">
                     <div className="flex items-center justify-between gap-3 mb-3">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-flex text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                            r.billingSeries === "oman_reg"
-                              ? "text-amber-800 bg-amber-50 border-amber-200"
-                              : "text-slate-700 bg-slate-50 border-slate-200"
-                          }`}
-                        >
-                          {kind.title}
-                        </span>
-                        <span className="text-[11px] font-semibold text-slate-400">{kind.hint}</span>
+                      <div>
+                        <div className="text-sm font-bold text-slate-800 leading-tight">{kind.title}</div>
+                        <div className="text-[11px] font-medium text-slate-400">{kind.hint}</div>
                       </div>
                       {next ? (
                         <span className="text-xs font-semibold text-slate-500">
