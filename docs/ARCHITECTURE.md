@@ -55,3 +55,11 @@ Products are shared; prices are per country (AED columns for UAE, `*_omr` column
 - `invoice_balances` gives each invoice's paid amount, pending cheques, open amount, due date (issue date + credit days) and state: Paid, Cheque pending, Partly paid, Unpaid, plus overdue days.
 - Cheques: `cheque_status` Pending → Cleared or Bounced (`POST /api/receipts/:id/cheque`, admin or accountant). A cheque counts as paid only when Cleared. "Received" records that the office has the cheque from the salesperson; until then it shows in the salesperson's *Cheques in hand*, separate from cash in hand.
 - A bounce reopens the invoices automatically (the receipt stops counting) and sets `customers.cash_only`, which blocks credit invoices and cheque payments until an admin clears it (`POST /api/customers/:id/cash-only`).
+
+## Credit notes and returns
+
+- Built from an invoice's lines (`/credit-notes/new?invoiceId=`): quantity per line at the price actually paid (line total ÷ quantity), capped at what is not already on a Pending or Approved note (`GET /api/invoices/:id/returnable`).
+- Each line chooses *Back to stock* (a `SALE_RETURN` stock movement on approval) or written off (damaged / expired; no stock change).
+- A salesperson's note is Pending and changes nothing until an admin or accountant approves it (`POST /api/credit-notes/:id`). A note created by an admin or accountant is approved at once.
+- Approved notes lower the invoice's open amount in `invoice_balances` (`credited_amount`); any amount beyond what was open (`excess_credit`) stays with the customer as credit in `customer_balances`.
+- Numbering: `CN000001` via `generateNextDocumentNumber`.

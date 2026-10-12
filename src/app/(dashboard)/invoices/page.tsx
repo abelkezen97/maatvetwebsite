@@ -214,6 +214,12 @@ export default function InvoicesPage() {
           });
         }
 
+        // Goods coming back or a price correction: credit note built from this invoice's lines.
+        options.push({
+          label: "Credit note / return",
+          onClick: () => router.push(`/credit-notes/new?invoiceId=${encodeURIComponent(row.id)}`),
+        });
+
         if (canEdit) {
           options.push({
             label: t("edit") || "Edit Invoice",

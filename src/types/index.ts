@@ -419,3 +419,51 @@ export interface DocumentSettings {
   quoteFooter?: string;
   invoiceFooter?: string;
 }
+
+export type CreditNoteStatus = "Pending" | "Approved" | "Rejected";
+
+export const CREDIT_NOTE_REASONS = [
+  "Returned goods",
+  "Damaged",
+  "Expired",
+  "Wrong item supplied",
+  "Price correction",
+  "Other",
+] as const;
+
+export interface CreditNoteItem {
+  id?: string;
+  invoiceItemId: string;
+  productId: string;
+  productName?: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  /** true: goods go back to stock; false: written off (damaged / expired) */
+  restock: boolean;
+}
+
+export interface CreditNote {
+  id: string;
+  creditNoteNumber: string;
+  invoiceId: string;
+  invoiceNumber?: string;
+  customerId: string;
+  companyName?: string;
+  customerName?: string;
+  salesmanId?: string;
+  country: UserCountry;
+  creditDate: string;
+  reason: string;
+  notes?: string;
+  total: number;
+  status: CreditNoteStatus;
+  requestedBy?: string;
+  requestedByName?: string;
+  requestedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  items?: CreditNoteItem[];
+}
