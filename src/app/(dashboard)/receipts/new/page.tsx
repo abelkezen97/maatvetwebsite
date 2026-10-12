@@ -51,8 +51,8 @@ export default function NewReceiptPage() {
 
   // Allocation: which open invoices this payment settles (invoiceId -> amount typed)
   const [openInvoices, setOpenInvoices] = useState<InvoiceBalance[]>([]);
-  // UAE: a receipt is for UAE-registered or Oman-registered invoices, never both.
-  const [receiptSeries, setReceiptSeries] = useState<"standard" | "oman_reg">("standard");
+  // Typed amounts per invoice stop the automatic "UAE-registered first, oldest first" fill.
+  const [manualAlloc, setManualAlloc] = useState(false);
   const [openLoading, setOpenLoading] = useState(false);
   const [allocations, setAllocations] = useState<Record<string, string>>({});
   const [customerCashOnly, setCustomerCashOnly] = useState<{ cashOnly: boolean; reason?: string }>({ cashOnly: false });
@@ -155,6 +155,7 @@ export default function NewReceiptPage() {
   // Load the customer's open invoices whenever the customer changes.
   useEffect(() => {
     setAllocations({});
+    setManualAlloc(false);
     setOpenInvoices([]);
     setCustomerCashOnly({ cashOnly: false });
     setChequesPending(0);
@@ -172,8 +173,8 @@ export default function NewReceiptPage() {
         setChequesPending(Number(data.summary?.chequesPending) || 0);
         // Coming from an invoice's "Record payment": pre-fill that invoice.
         const pre = list.find((inv) => inv.invoiceId === selectedInvoiceId);
-        setReceiptSeries(pre ? pre.billingSeries : "standard");
         if (pre && pre.availableToAllocate > 0) {
+          setManualAlloc(true);
           setAllocations({ [pre.invoiceId]: String(pre.availableToAllocate) });
           setAmountPaid((prev) => prev || String(pre.availableToAllocate));
         }
@@ -196,16 +197,16 @@ export default function NewReceiptPage() {
   );
   const unallocated = Math.max(0, numericAmount - allocatedTotal);
   const overAllocated = allocatedTotal - numericAmount > 0.0005;
+  // UAE: one payment is applied to UAE-registered invoices first, then
+  // Oman-registered ones (oldest first within each), and saved as one receipt per kind.
   const hasOmanReg = openInvoices.some((inv) => inv.billingSeries === "oman_reg");
-  const seriesInvoices = openInvoices.filter((inv) => inv.billingSeries === receiptSeries);
-  const otherSeriesOpen = openInvoices
-    .filter((inv) => inv.billingSeries !== receiptSeries)
-    .reduce((sum, inv) => sum + inv.outstanding, 0);
-  const switchSeries = (series: "standard" | "oman_reg") => {
-    if (series === receiptSeries) return;
-    setReceiptSeries(series);
-    setAllocations({});
-  };
+  const seriesInvoices = useMemo(
+    () => [
+      ...openInvoices.filter((inv) => inv.billingSeries !== "oman_reg"),
+      ...openInvoices.filter((inv) => inv.billingSeries === "oman_reg"),
+    ],
+    [openInvoices]
+  );
   const allocationErrors = seriesInvoices.filter(
     (inv) => (parseFloat(allocations[inv.invoiceId] || "") || 0) - inv.availableToAllocate > 0.0005
   );
@@ -224,6 +225,27 @@ export default function NewReceiptPage() {
     }
     setAllocations(next);
   };
+
+  // Fill automatically as the amount is typed, until amounts are edited by hand.
+  useEffect(() => {
+    if (manualAlloc || openLoading) return;
+    autoAllocate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numericAmount, seriesInvoices, manualAlloc, openLoading]);
+
+  // The receipts this payment will create: UAE-registered first; the advance stays on it.
+  const receiptPreview = useMemo(() => {
+    const byInvoice = new Map(seriesInvoices.map((inv) => [inv.invoiceId, inv.billingSeries]));
+    let uae = 0;
+    let oman = 0;
+    (Object.entries(allocations) as Array<[string, string]>).forEach(([id, v]) => {
+      const amt = parseFloat(v) || 0;
+      if (byInvoice.get(id) === "oman_reg") oman += amt;
+      else uae += amt;
+    });
+    uae += Math.max(0, numericAmount - uae - oman);
+    return { uae, oman };
+  }, [allocations, seriesInvoices, numericAmount]);
 
   const selectedInvoice = useMemo(() => {
     return invoicesList.find((i) => i.id === selectedInvoiceId);
@@ -356,7 +378,6 @@ export default function NewReceiptPage() {
       paymentMethod: paymentMethod,
       referenceNo: referenceNo.trim() || undefined,
       notes: notes.trim() || undefined,
-      billingSeries: receiptSeries,
     };
 
     try {
@@ -371,8 +392,13 @@ export default function NewReceiptPage() {
         throw new Error(resData.error || "Failed to save receipt");
       }
 
-      // The server assigns the final number (salesman's series for this kind).
-      setSuccessMessage(`Receipt ${resData.receipt?.receiptNumber || receiptNumber} generated and billwise balance updated successfully!`);
+      // The server assigns the final numbers (one receipt per kind for a split payment).
+      const savedNumbers: string[] = Array.isArray(resData.receipts) && resData.receipts.length > 0
+        ? resData.receipts.map((rc: any) => rc.receiptNumber)
+        : [resData.receipt?.receiptNumber || receiptNumber];
+      setSuccessMessage(
+        `${savedNumbers.length > 1 ? "Receipts" : "Receipt"} ${savedNumbers.join(" and ")} generated and billwise balance updated successfully!`
+      );
       setTimeout(() => {
         router.push("/receipts");
       }, 1500);
@@ -700,41 +726,21 @@ export default function NewReceiptPage() {
                 </h3>
                 <button
                   type="button"
-                  onClick={autoAllocate}
+                  onClick={() => {
+                    setManualAlloc(false);
+                    autoAllocate();
+                  }}
                   disabled={!numericAmount || seriesInvoices.length === 0}
                   className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
                 >
-                  Apply oldest first
+                  {hasOmanReg ? "Apply UAE-registered first" : "Apply oldest first"}
                 </button>
               </div>
 
               {hasOmanReg && (
-                <div className="space-y-2">
-                  <div className="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-50">
-                    {([
-                      ["standard", "UAE-registered"],
-                      ["oman_reg", "Oman-registered"],
-                    ] as const).map(([key, label]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => switchSeries(key)}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                          receiptSeries === key ? "bg-[#1B2A4A] text-white shadow-sm" : "text-slate-600 hover:bg-white"
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs font-semibold text-slate-500">
-                    This customer has both kinds of invoice. Each receipt covers one kind
-                    {receiptSeries === "oman_reg" ? " (Oman-registered receipts print without the company header)" : ""}.
-                    {otherSeriesOpen > 0.0005
-                      ? ` ${receiptSeries === "standard" ? "Oman" : "UAE"}-registered invoices still have ${otherSeriesOpen.toFixed(dp)} open: record a separate receipt for them.`
-                      : ""}
-                  </p>
-                </div>
+                <p className="text-xs font-semibold text-slate-500">
+                  This customer has UAE- and Oman-registered invoices. The payment goes to UAE-registered invoices first, then Oman-registered, and is saved as one receipt for each kind (Oman-registered receipts print without the company header).
+                </p>
               )}
 
               {openLoading ? (
@@ -749,6 +755,7 @@ export default function NewReceiptPage() {
                     <thead>
                       <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
                         <th className="text-start py-2 pe-3">Invoice</th>
+                        {hasOmanReg && <th className="text-start py-2 pe-3">Kind</th>}
                         <th className="text-start py-2 pe-3">Due</th>
                         <th className="text-end py-2 pe-3">Total</th>
                         <th className="text-end py-2 pe-3">Open</th>
@@ -765,6 +772,15 @@ export default function NewReceiptPage() {
                               <div className="font-bold text-slate-800">{inv.invoiceNumber}</div>
                               <div className="text-[11px] text-slate-400 font-medium">{inv.invoiceDate}</div>
                             </td>
+                            {hasOmanReg && (
+                              <td className="py-2.5 pe-3">
+                                {inv.billingSeries === "oman_reg" ? (
+                                  <span className="inline-flex text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Oman-reg</span>
+                                ) : (
+                                  <span className="inline-flex text-[10px] font-bold text-slate-600 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded-full">UAE-reg</span>
+                                )}
+                              </td>
+                            )}
                             <td className="py-2.5 pe-3">
                               <span className={`text-xs font-bold ${inv.isOverdue ? "text-rose-600" : "text-slate-500"}`}>
                                 {inv.dueDate}{inv.isOverdue ? ` · ${inv.daysOverdue}d overdue` : ""}
@@ -785,7 +801,10 @@ export default function NewReceiptPage() {
                                 inputMode="decimal"
                                 value={typed}
                                 placeholder="0"
-                                onChange={(e) => setAllocations((prev) => ({ ...prev, [inv.invoiceId]: e.target.value }))}
+                                onChange={(e) => {
+                                  setManualAlloc(true);
+                                  setAllocations((prev) => ({ ...prev, [inv.invoiceId]: e.target.value }));
+                                }}
                                 className={`w-36 px-3 py-2 text-end bg-white border rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent/15 ${tooMuch ? "border-rose-400 text-rose-600" : "border-slate-200 text-slate-800"}`}
                               />
                             </td>
@@ -806,6 +825,18 @@ export default function NewReceiptPage() {
                   <span className="font-bold">{currencySymbol} {Math.abs(numericAmount - allocatedTotal).toFixed(dp)}</span>
                 </span>
               </div>
+              {hasOmanReg && numericAmount > 0 && !overAllocated && (
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm">
+                  <span className="text-slate-500 font-medium">Receipts to be created: </span>
+                  {receiptPreview.uae > 0.0005 && (
+                    <span className="font-bold text-slate-800">UAE-registered {currencySymbol} {receiptPreview.uae.toFixed(dp)}</span>
+                  )}
+                  {receiptPreview.uae > 0.0005 && receiptPreview.oman > 0.0005 && <span className="text-slate-400"> · </span>}
+                  {receiptPreview.oman > 0.0005 && (
+                    <span className="font-bold text-amber-800">Oman-registered {currencySymbol} {receiptPreview.oman.toFixed(dp)}</span>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
