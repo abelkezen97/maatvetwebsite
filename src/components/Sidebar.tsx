@@ -16,7 +16,8 @@ import {
   ChevronRight,
   X,
   Wallet,
-  CreditCard
+  CreditCard,
+  Percent
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/context/LanguageContext";
@@ -58,6 +59,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       items: [
         { name: t("collectionLedger"), href: "/collection-ledger", icon: Wallet, visible: permissions ? permissions.canViewCollectionLedger : true },
         { name: "Credit Notes", href: "/credit-notes", icon: CreditCard, visible: permissions ? permissions.canViewInvoices : true },
+        { name: "Commission", href: "/commission", icon: Percent, visible: profile?.country === "UAE" },
         { name: t("expenses"), href: "/expenses", icon: CreditCard, visible: permissions ? permissions.canViewExpenses : true },
       ]
     },
