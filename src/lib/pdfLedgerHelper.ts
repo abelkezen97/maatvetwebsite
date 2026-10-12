@@ -1,5 +1,5 @@
 import jsPDF from "jspdf";
-import { Customer, Invoice, Receipt } from "@/types";
+import { BillingSeries, Customer, Invoice, Receipt } from "@/types";
 import { currencyFor, decimalsFor } from "@/lib/currency";
 
 interface FinancialSummaryData {
@@ -8,6 +8,17 @@ interface FinancialSummaryData {
   totalPaid: number;
   creditInvoicesSum: number;
   outstandingInvoicesCount: number;
+}
+
+/**
+ * UAE customers with Oman-registered invoices get two statements:
+ *  - "standard": UAE-registered invoices and receipts, with the header band
+ *  - "oman_reg": Oman-registered invoices and receipts, printed plain (no header)
+ * Each lists only its own documents; the account balance shown is the
+ * customer's combined balance. Without `billingSeries` everything is listed.
+ */
+export interface StatementOptions {
+  billingSeries?: BillingSeries;
 }
 
 const formatDateStr = (dateStr?: string): string => {
@@ -30,7 +41,8 @@ export const buildCustomerLedgerPDF = (
   customer: Customer,
   allInvoices: Invoice[],
   allReceipts: Receipt[],
-  financialSummary: FinancialSummaryData
+  financialSummary: FinancialSummaryData,
+  options: StatementOptions = {}
 ): jsPDF => {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -59,9 +71,15 @@ export const buildCustomerLedgerPDF = (
   }
 
   const txs: Transaction[] = [];
+  const series = options.billingSeries;
+  const plain = series === "oman_reg";
+  const inSeries = (s?: BillingSeries) => !series || (s || "standard") === series;
+  let statementInvoiced = 0;
+  let statementPaid = 0;
 
   allInvoices.forEach((inv) => {
-    if (!inv.isDeleted) {
+    if (!inv.isDeleted && inSeries(inv.billingSeries)) {
+      statementInvoiced += inv.grandTotal;
       txs.push({
         date: inv.date,
         type: "Invoice",
@@ -73,7 +91,8 @@ export const buildCustomerLedgerPDF = (
   });
 
   allReceipts.forEach((rec) => {
-    if (!rec.isDeleted) {
+    if (!rec.isDeleted && inSeries(rec.billingSeries)) {
+      statementPaid += rec.amountPaid;
       txs.push({
         date: rec.paymentDate,
         type: "Receipt",
@@ -89,18 +108,28 @@ export const buildCustomerLedgerPDF = (
 
   // Page Header Generator
   const drawHeader = () => {
-    doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
-    doc.rect(0, 0, 210, 36, "F");
-
-    doc.setTextColor(255, 255, 255);
+    if (plain) {
+      // Oman-registered statement: no header band.
+      doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
+    } else {
+      doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+      doc.rect(0, 0, 210, 36, "F");
+      doc.setTextColor(255, 255, 255);
+    }
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
     doc.text("CUSTOMER STATEMENT / LEDGER", 14, 20);
 
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(220, 230, 242);
+    if (plain) doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
+    else doc.setTextColor(220, 230, 242);
     doc.text(`Generated: ${formatDateStr(new Date().toISOString())}`, 196, 27, { align: "right" });
+    if (plain) {
+      doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
+      doc.setLineWidth(0.3);
+      doc.line(14, 32, 196, 32);
+    }
   };
 
   drawHeader();
@@ -138,13 +167,15 @@ export const buildCustomerLedgerPDF = (
   doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
   doc.text("TOTAL INVOICED", 20, y + 6);
   doc.text("TOTAL PAID", 85, y + 6);
-  doc.text("NET OUTSTANDING BALANCE", 145, y + 6);
+  doc.text(series ? "TOTAL ACCOUNT BALANCE" : "NET OUTSTANDING BALANCE", 145, y + 6);
 
   doc.setFontSize(11);
   doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-  doc.text(`${currencySymbol} ${financialSummary.totalInvoiced.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 20, y + 13);
+  const shownInvoiced = series ? statementInvoiced : financialSummary.totalInvoiced;
+  const shownPaid = series ? statementPaid : financialSummary.totalPaid;
+  doc.text(`${currencySymbol} ${shownInvoiced.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 20, y + 13);
   doc.setTextColor(GREEN[0], GREEN[1], GREEN[2]);
-  doc.text(`${currencySymbol} ${financialSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 85, y + 13);
+  doc.text(`${currencySymbol} ${shownPaid.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 85, y + 13);
   doc.setTextColor(financialSummary.pendingBalance > 0 ? RED[0] : GREEN[0], financialSummary.pendingBalance > 0 ? RED[1] : GREEN[1], financialSummary.pendingBalance > 0 ? RED[2] : GREEN[2]);
   doc.text(`${currencySymbol} ${financialSummary.pendingBalance.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 145, y + 13);
 
@@ -234,7 +265,7 @@ export const buildCustomerLedgerPDF = (
     doc.setFont("helvetica", "normal");
     doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
     doc.text(`Page ${i} of ${totalPages}`, 105, 290, { align: "center" });
-    doc.text("Confidential — MAAT Sales Portal", 196, 290, { align: "right" });
+    if (!plain) doc.text("Confidential — MAAT Sales Portal", 196, 290, { align: "right" });
   }
 
   return doc;
@@ -249,6 +280,7 @@ export interface OutstandingInvoiceItem {
   outstandingAmount: number;
   status: string;
   creditDays?: number;
+  billingSeries?: BillingSeries;
 }
 
 /**
@@ -256,9 +288,15 @@ export interface OutstandingInvoiceItem {
  */
 export const buildPendingInvoicesPDF = (
   customer: Customer,
-  outstandingInvoices: OutstandingInvoiceItem[],
-  financialSummary: FinancialSummaryData
+  allOutstandingInvoices: OutstandingInvoiceItem[],
+  financialSummary: FinancialSummaryData,
+  options: StatementOptions = {}
 ): jsPDF => {
+  const series = options.billingSeries;
+  const plain = series === "oman_reg";
+  const outstandingInvoices = series
+    ? allOutstandingInvoices.filter((inv) => (inv.billingSeries || "standard") === series)
+    : allOutstandingInvoices;
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -278,18 +316,28 @@ export const buildPendingInvoicesPDF = (
 
   // Page Header Generator
   const drawHeader = () => {
-    doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
-    doc.rect(0, 0, 210, 36, "F");
-
-    doc.setTextColor(255, 255, 255);
+    if (plain) {
+      // Oman-registered statement: no header band.
+      doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
+    } else {
+      doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+      doc.rect(0, 0, 210, 36, "F");
+      doc.setTextColor(255, 255, 255);
+    }
     doc.setFont("helvetica", "bold");
     doc.setFontSize(20);
     doc.text("OUTSTANDING INVOICES STATEMENT", 14, 20);
 
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(220, 230, 242);
+    if (plain) doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
+    else doc.setTextColor(220, 230, 242);
     doc.text(`Generated: ${formatDateStr(new Date().toISOString())}`, 196, 27, { align: "right" });
+    if (plain) {
+      doc.setDrawColor(BORDER_COLOR[0], BORDER_COLOR[1], BORDER_COLOR[2]);
+      doc.setLineWidth(0.3);
+      doc.line(14, 32, 196, 32);
+    }
   };
 
   drawHeader();
@@ -327,13 +375,16 @@ export const buildPendingInvoicesPDF = (
   doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
   doc.text("OUTSTANDING INVOICES COUNT", 20, y + 6);
   doc.text("TOTAL CREDIT INVOICES SUM", 85, y + 6);
-  doc.text("NET PENDING AMOUNT DUE", 145, y + 6);
+  doc.text(series ? "TOTAL ACCOUNT BALANCE" : "NET PENDING AMOUNT DUE", 145, y + 6);
 
   doc.setFontSize(11);
   doc.setTextColor(RED[0], RED[1], RED[2]);
   doc.text(`${outstandingInvoices.length} Invoices`, 20, y + 13);
   doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-  doc.text(`${currencySymbol} ${financialSummary.creditInvoicesSum.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 85, y + 13);
+  const shownCreditSum = series
+    ? outstandingInvoices.reduce((sum, inv) => sum + inv.grandTotal, 0)
+    : financialSummary.creditInvoicesSum;
+  doc.text(`${currencySymbol} ${shownCreditSum.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 85, y + 13);
   doc.setTextColor(RED[0], RED[1], RED[2]);
   doc.text(`${currencySymbol} ${financialSummary.pendingBalance.toLocaleString(undefined, { minimumFractionDigits: dp })}`, 145, y + 13);
 
@@ -427,7 +478,7 @@ export const buildPendingInvoicesPDF = (
     doc.setFont("helvetica", "normal");
     doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
     doc.text(`Page ${i} of ${totalPages}`, 105, 290, { align: "center" });
-    doc.text("Confidential — MAAT Sales Portal", 196, 290, { align: "right" });
+    if (!plain) doc.text("Confidential — MAAT Sales Portal", 196, 290, { align: "right" });
   }
 
   return doc;

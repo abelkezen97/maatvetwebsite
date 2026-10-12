@@ -92,6 +92,7 @@ interface WorkspaceData {
     outstandingAmount: number;
     status: string;
     creditDays?: number;
+    billingSeries?: "standard" | "oman_reg";
   }>;
   topProducts: Array<{
     productId: string;
@@ -227,27 +228,38 @@ export default function CustomerDetailPage() {
     doc.save(`MAAT-INVOICE-${invoice.invoiceNumber}.pdf`);
   };
 
-  const handleDownloadLedgerPDF = () => {
+  // UAE customers with Oman-registered documents get two statements: UAE-registered
+  // (with the header) and Oman-registered (no header), each showing the combined balance.
+  const hasOmanRegDocs = Boolean(
+    workspace &&
+      workspace.customer.country === "UAE" &&
+      (workspace.allInvoices.some((inv) => inv.billingSeries === "oman_reg") ||
+        workspace.allReceipts.some((rec) => rec.billingSeries === "oman_reg"))
+  );
+
+  const handleDownloadLedgerPDF = (series?: "standard" | "oman_reg") => {
     if (!workspace) return;
     const doc = buildCustomerLedgerPDF(
       workspace.customer,
       workspace.allInvoices,
       workspace.allReceipts,
-      workspace.financialSummary
+      workspace.financialSummary,
+      { billingSeries: series }
     );
     const code = workspace.customer.customerCode || "CUSTOMER";
-    doc.save(`MAAT-LEDGER-${code}.pdf`);
+    doc.save(series === "oman_reg" ? `STATEMENT-${code}-2.pdf` : `MAAT-LEDGER-${code}.pdf`);
   };
 
-  const handleDownloadPendingInvoicesPDF = () => {
+  const handleDownloadPendingInvoicesPDF = (series?: "standard" | "oman_reg") => {
     if (!workspace) return;
     const doc = buildPendingInvoicesPDF(
       workspace.customer,
       workspace.outstandingInvoices,
-      workspace.financialSummary
+      workspace.financialSummary,
+      { billingSeries: series }
     );
     const code = workspace.customer.customerCode || "CUSTOMER";
-    doc.save(`MAAT-PENDING-INVOICES-${code}.pdf`);
+    doc.save(series === "oman_reg" ? `PENDING-${code}-2.pdf` : `MAAT-PENDING-INVOICES-${code}.pdf`);
   };
 
   if (loading) {
@@ -462,20 +474,55 @@ export default function CustomerDetailPage() {
             <span>Financial Position ({currencySymbol})</span>
           </h2>
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={handleDownloadLedgerPDF}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer shadow-2xs"
-            >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Download Ledger PDF</span>
-            </button>
-            <button
-              onClick={handleDownloadPendingInvoicesPDF}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer shadow-2xs"
-            >
-              <Download className="w-3.5 h-3.5 text-rose-500" />
-              <span>Pending Invoices PDF</span>
-            </button>
+            {hasOmanRegDocs ? (
+              <>
+                <button
+                  onClick={() => handleDownloadLedgerPDF("standard")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Ledger PDF (UAE-reg)</span>
+                </button>
+                <button
+                  onClick={() => handleDownloadLedgerPDF("oman_reg")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 text-amber-800 font-bold text-xs transition cursor-pointer shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Ledger PDF (Oman-reg)</span>
+                </button>
+                <button
+                  onClick={() => handleDownloadPendingInvoicesPDF("standard")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Pending PDF (UAE-reg)</span>
+                </button>
+                <button
+                  onClick={() => handleDownloadPendingInvoicesPDF("oman_reg")}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-amber-200 hover:bg-amber-50 text-amber-800 font-bold text-xs transition cursor-pointer shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Pending PDF (Oman-reg)</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => handleDownloadLedgerPDF()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Download Ledger PDF</span>
+                </button>
+                <button
+                  onClick={() => handleDownloadPendingInvoicesPDF()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer shadow-2xs"
+                >
+                  <Download className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Pending Invoices PDF</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -572,13 +619,15 @@ export default function CustomerDetailPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={handleDownloadPendingInvoicesPDF}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer shadow-2xs"
-            >
-              <Download className="w-3.5 h-3.5 text-rose-500" />
-              <span>Download Pending Invoices PDF</span>
-            </button>
+            {!hasOmanRegDocs && (
+              <button
+                onClick={() => handleDownloadPendingInvoicesPDF()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs transition cursor-pointer shadow-2xs"
+              >
+                <Download className="w-3.5 h-3.5 text-rose-500" />
+                <span>Download Pending Invoices PDF</span>
+              </button>
+            )}
             <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200">
               {outstandingInvoices.length} Outstanding
             </span>
@@ -624,6 +673,11 @@ export default function CustomerDetailPage() {
                         >
                           {inv.invoiceNumber}
                         </button>
+                        {inv.billingSeries === "oman_reg" && (
+                          <span className="ms-1.5 inline-flex text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                            Oman-reg
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-600 text-xs whitespace-nowrap">
                         {formatDisplayDate(inv.date)}
