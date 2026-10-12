@@ -40,7 +40,7 @@ export async function POST(
     const client = createAdminClient() || supabase;
     const { data: receipt } = await client
       .from("receipts")
-      .select("id, receipt_number, customer_id, country, payment_method, cheque_number, cheque_status, cheque_received_at, is_deleted")
+      .select("id, receipt_number, customer_id, country, payment_method, cheque_number, cheque_status, cheque_received_at, is_deleted, payment_group_id")
       .eq("id", id)
       .eq("country", profile.country)
       .maybeSingle();
@@ -86,17 +86,19 @@ export async function POST(
     Object.keys(update).forEach((k) => update[k] === undefined && delete update[k]);
 
     // Only move a cheque that is still Pending (guards against two people clicking at once).
-    const { data: updated, error } = await client
+    // One cheque split over a UAE- and an Oman-registered receipt moves both together.
+    const { data: updatedRows, error } = await client
       .from("receipts")
       .update(update)
-      .eq("id", id)
+      .eq(receipt.payment_group_id ? "payment_group_id" : "id", receipt.payment_group_id || id)
       .eq("cheque_status", "Pending")
-      .select("*, customers!left(company_name, doctor_name, pending_balance), receipt_allocations(invoice_id, amount, invoices(invoice_number))")
-      .maybeSingle();
+      .eq("is_deleted", false)
+      .select("*, customers!left(company_name, doctor_name, pending_balance), receipt_allocations(invoice_id, amount, invoices(invoice_number))");
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    const updated = (updatedRows || []).find((row: any) => row.id === id) || (updatedRows || [])[0];
     if (!updated) {
       return NextResponse.json({ error: "This cheque was just updated by someone else. Refresh and try again." }, { status: 409 });
     }
@@ -121,13 +123,22 @@ export async function POST(
       await supabase.from("admin_audit_logs").insert([{
         performed_by: profile.id,
         action: `CHEQUE_${action.toUpperCase()}`,
-        details: { receipt_id: id, receipt_number: receipt.receipt_number, cheque_number: receipt.cheque_number, reason: reason || undefined },
+        details: {
+          receipt_id: id,
+          receipt_numbers: (updatedRows || []).map((row: any) => row.receipt_number),
+          cheque_number: receipt.cheque_number,
+          reason: reason || undefined,
+        },
       }]);
     } catch {
       // audit logging must not block the action
     }
 
-    return NextResponse.json({ success: true, receipt: mapReceiptFromDb(updated) });
+    return NextResponse.json({
+      success: true,
+      receipt: mapReceiptFromDb(updated),
+      receipts: (updatedRows || []).map((row: any) => mapReceiptFromDb(row)),
+    });
   } catch (error: any) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

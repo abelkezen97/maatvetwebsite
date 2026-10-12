@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { BillingSeries, DocumentSeries, SeriesDocType, UserCountry } from "@/types";
+import { generateNextDocumentNumber } from "@/lib/db/sequence";
 
 /**
  * PER-SALESMAN NUMBER SERIES
@@ -110,4 +111,20 @@ export function mixedSeriesError(invoiceSeries: BillingSeries): string {
   return invoiceSeries === "oman_reg"
     ? "This is an Oman-registered invoice: it can only hold Oman-registered products. Put UAE-registered products on a separate invoice."
     : "This is a UAE-registered invoice: it can only hold UAE-registered products. Put Oman-registered products on a separate invoice.";
+}
+
+/**
+ * Next receipt number: the salesman's series for this kind when set up,
+ * otherwise the shared REC-YYYY- (UAE-registered) or RCM-YYYY- (Oman-registered).
+ */
+export async function nextReceiptNumber(
+  client: SupabaseClient,
+  salesmanId: string | null | undefined,
+  billingSeries: BillingSeries
+): Promise<string> {
+  if (salesmanId) {
+    const fromSeries = await nextSeriesNumber(client, salesmanId, "receipt", billingSeries);
+    if (fromSeries) return fromSeries;
+  }
+  return generateNextDocumentNumber(client, "receipts", "receipt_number", billingSeries === "oman_reg" ? "RCM" : "REC", 6);
 }

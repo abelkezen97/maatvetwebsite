@@ -182,11 +182,15 @@ export const printReceiptThermalBill = (receipt: Receipt) => {
         </style>
       </head>
       <body>
-        <div class="header">
+        ${
+          receipt.billingSeries === "oman_reg"
+            ? "" /* Oman-registered (UAE): printed without the header */
+            : `<div class="header">
           <p style="font-size: 14px; font-weight: bold; margin: 0; text-transform: uppercase;">RECEIPT VOUCHER</p>
         </div>
 
-        <div class="divider"></div>
+        <div class="divider"></div>`
+        }
 
         <div class="row"><span>Receipt No:</span><span class="bold">${receipt.receiptNumber}</span></div>
         <div class="row"><span>Date:</span><span>${formatDisplayDate(receipt.paymentDate)}</span></div>

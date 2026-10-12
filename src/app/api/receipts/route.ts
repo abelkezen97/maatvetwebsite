@@ -3,7 +3,8 @@ import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapReceiptFromDb, mapReceiptToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
-import { generateNextDocumentNumber } from "@/lib/db/sequence";
+import { nextReceiptNumber, nextSeriesNumber } from "@/lib/db/documentSeries";
+import { BillingSeries } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -117,9 +118,7 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!receiptNumber || isClientNumTaken) {
-      receiptNumber = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
-    }
+    const clientNumberUsable = Boolean(receiptNumber) && !isClientNumTaken;
 
     const customerId = payload.customerId || null;
     const invoiceId = payload.invoiceId || null;
@@ -189,6 +188,7 @@ export async function POST(request: Request) {
       }
     }
 
+    let assignedSalesmanId: string | null = null;
     if (customerId) {
       let { data: fetchedCust, error: custErr } = await supabase
         .from("customers")
@@ -210,6 +210,7 @@ export async function POST(request: Request) {
       }
 
       const custRow = fetchedCust;
+      assignedSalesmanId = custRow?.assigned_salesman_id || null;
 
       if (custErr || !custRow) {
         return NextResponse.json({ error: "Linked customer not found" }, { status: 400 });
@@ -242,12 +243,12 @@ export async function POST(request: Request) {
     }
 
     // Validate allocations against what is still open on each invoice.
-    const allocationRows: Array<{ invoice_id: string; amount: number }> = [];
+    const allocationRows: Array<{ invoice_id: string; amount: number; series: BillingSeries }> = [];
     if (requestedAllocations.length > 0) {
       const balClient = createAdminClient() || supabase;
       const { data: balRows, error: balErr } = await balClient
         .from("invoice_balances")
-        .select("invoice_id, invoice_number, customer_id, country, available_to_allocate")
+        .select("invoice_id, invoice_number, customer_id, country, available_to_allocate, billing_series")
         .in("invoice_id", requestedAllocations.map((a) => a.invoiceId));
 
       if (balErr) {
@@ -276,87 +277,151 @@ export async function POST(request: Request) {
         if (remaining < -0.0005) {
           return NextResponse.json({ error: "Allocated amounts are more than the payment amount." }, { status: 400 });
         }
-        allocationRows.push({ invoice_id: req.invoiceId, amount: Math.round(amount * 1000) / 1000 });
+        allocationRows.push({
+          invoice_id: req.invoiceId,
+          amount: Math.round(amount * 1000) / 1000,
+          series: bal.billing_series === "oman_reg" ? "oman_reg" : "standard",
+        });
       }
     }
 
-    const insertPayload = mapReceiptToDb({
-      receiptNumber,
-      customerId,
-      // Informational link to the first invoice; the allocations below are authoritative.
-      invoiceId: allocationRows[0]?.invoice_id || undefined,
-      amountPaid,
-      paymentDate,
-      paymentMethod,
-      referenceNo: referenceNo || (isCheque ? chequeNumber : ""),
-      notes,
-      chequeNumber: isCheque ? chequeNumber : undefined,
-      chequeDate: isCheque ? chequeDate : undefined,
-      bankName: isCheque ? bankName : undefined,
-      chequeStatus: isCheque ? "Pending" : undefined,
+    // ------------------------------------------------------------------
+    // Billing series (UAE): one payment becomes one receipt per kind,
+    // UAE-registered first, then Oman-registered. Anything not applied to
+    // an invoice stays as an advance on the UAE-registered receipt (or on the
+    // kind chosen on the form when nothing is applied).
+    // ------------------------------------------------------------------
+    const isUae = profile.country === "UAE";
+    const requestedSeries: BillingSeries | null =
+      payload.billingSeries === "oman_reg" ? "oman_reg" : payload.billingSeries === "standard" ? "standard" : null;
+
+    type ReceiptPart = { series: BillingSeries; allocations: Array<{ invoice_id: string; amount: number }>; amount: number };
+    const parts: ReceiptPart[] = [];
+    (["standard", "oman_reg"] as BillingSeries[]).forEach((series) => {
+      const allocs = allocationRows.filter((a) => a.series === series);
+      if (allocs.length === 0) return;
+      parts.push({
+        series,
+        allocations: allocs.map(({ invoice_id, amount }) => ({ invoice_id, amount })),
+        amount: allocs.reduce((s, a) => s + a.amount, 0),
+      });
     });
+    const allocatedTotal = parts.reduce((s, p) => s + p.amount, 0);
+    const advance = Math.round((amountPaid - allocatedTotal) * 1000) / 1000;
+    if (advance > 0.0005 || parts.length === 0) {
+      const advanceSeries: BillingSeries = !isUae
+        ? "standard"
+        : parts.length === 0
+          ? requestedSeries || "standard"
+          : "standard";
+      const target = parts.find((p) => p.series === advanceSeries);
+      if (target) {
+        target.amount += Math.max(0, advance);
+      } else {
+        parts.push({ series: advanceSeries, allocations: [], amount: Math.max(0, advance) });
+      }
+    }
+    // Keep UAE-registered first.
+    parts.sort((a, b) => (a.series === b.series ? 0 : a.series === "standard" ? -1 : 1));
+    parts.forEach((p) => (p.amount = Math.round(p.amount * 1000) / 1000));
 
-    // SERVER IS SOURCE OF TRUTH (Client payload ignored for country, created_by, updated_by)
-    insertPayload.country = profile.country;
-    insertPayload.created_by = profile.id;
-    insertPayload.updated_by = profile.id;
+    const numberSalesmanId = profile.role === "salesperson" ? profile.id : assignedSalesmanId;
+    const admin = createAdminClient() || supabase;
+    const paymentGroupId = parts.length > 1 ? crypto.randomUUID() : null;
+    let clientNumberLeft = clientNumberUsable;
 
-    let inserted: any = null;
-    let insertAttempts = 0;
-    const maxAttempts = 5;
+    const createdReceipts: any[] = [];
+    const rollbackReceipts = async () => {
+      for (const r of createdReceipts) {
+        await admin.from("receipt_allocations").delete().eq("receipt_id", r.id);
+        await admin.from("receipts").delete().eq("id", r.id);
+      }
+    };
 
-    while (!inserted && insertAttempts < maxAttempts) {
-      insertAttempts++;
-      if (insertAttempts > 1) {
-        insertPayload.receipt_number = await generateNextDocumentNumber(supabase, "receipts", "receipt_number", "REC", 6);
-        receiptNumber = insertPayload.receipt_number;
+    for (const part of parts) {
+      // Number: the salesman's receipt series for this kind when set up; otherwise
+      // the number typed on the form (UAE-registered, if free) or REC- / RCM-.
+      const fromSeries = numberSalesmanId
+        ? await nextSeriesNumber(admin, numberSalesmanId, "receipt", part.series)
+        : null;
+      let partNumber: string;
+      if (fromSeries) {
+        partNumber = fromSeries;
+      } else if (clientNumberLeft && part.series === "standard") {
+        partNumber = receiptNumber;
+        clientNumberLeft = false;
+      } else {
+        partNumber = await nextReceiptNumber(admin, null, part.series);
       }
 
-      let { data: createdData, error: insertErr } = await supabase
-        .from("receipts")
-        .insert([insertPayload])
-        .select("*, customers!left(company_name, doctor_name, pending_balance)")
-        .single();
+      const insertPayload = mapReceiptToDb({
+        receiptNumber: partNumber,
+        customerId,
+        // Informational link to the first invoice; the allocations below are authoritative.
+        invoiceId: part.allocations[0]?.invoice_id || undefined,
+        amountPaid: part.amount,
+        paymentDate,
+        paymentMethod,
+        referenceNo: referenceNo || (isCheque ? chequeNumber : ""),
+        notes,
+        chequeNumber: isCheque ? chequeNumber : undefined,
+        chequeDate: isCheque ? chequeDate : undefined,
+        bankName: isCheque ? bankName : undefined,
+        chequeStatus: isCheque ? "Pending" : undefined,
+      });
 
-      if (insertErr && (insertErr.message.includes("country") || insertErr.message.includes("updated_by"))) {
-        delete insertPayload.country;
-        delete insertPayload.updated_by;
+      // SERVER IS SOURCE OF TRUTH (Client payload ignored for country, created_by, updated_by)
+      insertPayload.country = profile.country;
+      insertPayload.created_by = profile.id;
+      insertPayload.updated_by = profile.id;
+      insertPayload.billing_series = part.series;
+      insertPayload.payment_group_id = paymentGroupId;
 
-        const retryRes = await supabase
+      let inserted: any = null;
+      let insertAttempts = 0;
+      const maxAttempts = 5;
+
+      while (!inserted && insertAttempts < maxAttempts) {
+        insertAttempts++;
+        if (insertAttempts > 1) {
+          insertPayload.receipt_number = await nextReceiptNumber(admin, numberSalesmanId, part.series);
+        }
+
+        const { data: createdData, error: insertErr } = await supabase
           .from("receipts")
           .insert([insertPayload])
           .select("*, customers!left(company_name, doctor_name, pending_balance)")
           .single();
-        createdData = retryRes.data;
-        insertErr = retryRes.error;
-      }
 
-      if (insertErr) {
-        if (insertErr.code === "23505" || insertErr.message.includes("unique constraint") || insertErr.message.includes("already exists")) {
-          console.warn(`Receipt number concurrency collision on ${insertPayload.receipt_number}, retrying...`);
-          continue;
+        if (insertErr) {
+          if (insertErr.code === "23505" || insertErr.message.includes("unique constraint") || insertErr.message.includes("already exists")) {
+            console.warn(`Receipt number concurrency collision on ${insertPayload.receipt_number}, retrying...`);
+            continue;
+          }
+          console.error("Supabase insert receipt error:", insertErr);
+          await rollbackReceipts();
+          return NextResponse.json({ error: `Receipt not saved: ${insertErr.message}` }, { status: 500 });
         }
-        console.error("Supabase insert receipt error:", insertErr);
-        throw insertErr;
+
+        inserted = createdData;
       }
 
-      inserted = createdData;
-    }
+      if (!inserted) {
+        await rollbackReceipts();
+        throw new Error("Failed to insert receipt after multiple concurrency retries.");
+      }
+      createdReceipts.push(inserted);
 
-    if (!inserted) {
-      throw new Error("Failed to insert receipt after multiple concurrency retries.");
-    }
-
-    // Save allocations. If that fails, remove the receipt so a half-saved payment
-    // never counts against the wrong invoice.
-    if (allocationRows.length > 0) {
-      const allocClient = createAdminClient() || supabase;
-      const { error: allocErr } = await allocClient.from("receipt_allocations").insert(
-        allocationRows.map((a) => ({ ...a, receipt_id: inserted.id, created_by: profile.id }))
-      );
-      if (allocErr) {
-        await allocClient.from("receipts").delete().eq("id", inserted.id);
-        return NextResponse.json({ error: `Receipt not saved: could not apply it to invoices (${allocErr.message}).` }, { status: 500 });
+      // Save allocations. If that fails, remove the receipts of this payment so a
+      // half-saved payment never counts against the wrong invoice.
+      if (part.allocations.length > 0) {
+        const { error: allocErr } = await admin.from("receipt_allocations").insert(
+          part.allocations.map((a) => ({ ...a, receipt_id: inserted.id, created_by: profile.id }))
+        );
+        if (allocErr) {
+          await rollbackReceipts();
+          return NextResponse.json({ error: `Receipt not saved: could not apply it to invoices (${allocErr.message}).` }, { status: 500 });
+        }
       }
     }
 
@@ -370,8 +435,8 @@ export async function POST(request: Request) {
       }
     }
 
-    const newReceipt = mapReceiptFromDb(inserted);
-    return NextResponse.json({ success: true, receipt: newReceipt });
+    const receipts = createdReceipts.map((row) => mapReceiptFromDb(row));
+    return NextResponse.json({ success: true, receipt: receipts[0], receipts });
   } catch (error: any) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
