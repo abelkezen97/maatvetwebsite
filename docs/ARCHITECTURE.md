@@ -63,3 +63,11 @@ Products are shared; prices are per country (AED columns for UAE, `*_omr` column
 - A salesperson's note is Pending and changes nothing until an admin or accountant approves it (`POST /api/credit-notes/:id`). A note created by an admin or accountant is approved at once.
 - Approved notes lower the invoice's open amount in `invoice_balances` (`credited_amount`); any amount beyond what was open (`excess_credit`) stays with the customer as credit in `customer_balances`.
 - Numbering: `CN000001` via `generateNextDocumentNumber`.
+
+## UAE billing series (UAE- vs Oman-registered products)
+
+- `products.registered_in` (UAE | Oman, one per product; set by the UAE admin).
+- In the UAE, Oman-registered products are billed separately: `billing_series` on invoices, receipts and credit notes is `standard` (UAE-registered, printed with the company header; every Oman document too) or `oman_reg` (Oman-registered, own numbers, no header). The customer keeps one combined balance.
+- `invoices.invoice_group_id` links the two invoices of one split sale.
+- Number series per salesman (`document_series`): prefix + next number per document type (invoice / receipt) and billing series, set in Settings → Users → Number series. `next_document_number()` hands numbers out atomically and skips numbers that already exist. Without a series, standard invoices fall back to the shared D-series.
+- The database enforces that a receipt only settles invoices of its own billing series; credit notes and single-invoice receipts take their invoice's series automatically.

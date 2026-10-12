@@ -72,6 +72,7 @@ export default function ProductsPage() {
   const [formPrice50, setFormPrice50] = useState("");
   const [formPrice100, setFormPrice100] = useState("");
   const [formIsActive, setFormIsActive] = useState(true);
+  const [formRegisteredIn, setFormRegisteredIn] = useState<"UAE" | "Oman">("UAE");
 
   // Accountant Price Edit Form state
   const [accSellingPrice, setAccSellingPrice] = useState("");
@@ -209,6 +210,7 @@ export default function ProductsPage() {
     setFormPrice50("");
     setFormPrice100("");
     setFormIsActive(true);
+    setFormRegisteredIn("UAE");
     setIsModalOpen(true);
   };
 
@@ -228,6 +230,7 @@ export default function ProductsPage() {
     setFormPrice50(product.price50 ? String(product.price50) : "");
     setFormPrice100(product.price100 ? String(product.price100) : "");
     setFormIsActive(product.isAvailable !== false);
+    setFormRegisteredIn(product.registeredIn === "Oman" ? "Oman" : "UAE");
     setIsModalOpen(true);
   };
 
@@ -252,6 +255,7 @@ export default function ProductsPage() {
         price50: formPrice50 ? Number(formPrice50) : undefined,
         price100: formPrice100 ? Number(formPrice100) : undefined,
         isAvailable: formIsActive,
+        ...(profile?.country === "UAE" ? { registeredIn: formRegisteredIn } : {}),
       };
 
       const url = editingProduct ? `/api/products/${editingProduct.id}` : "/api/products";
@@ -320,8 +324,15 @@ export default function ProductsPage() {
     {
       header: t("categories") || "Category",
       accessor: (row: Product) => (
-        <span className="inline-flex items-center text-xs font-semibold text-slate-700 bg-slate-100/90 border border-slate-200/80 px-2.5 py-1 rounded-lg whitespace-nowrap shadow-2xs">
-          {translateBusinessText(row.category)}
+        <span className="inline-flex items-center">
+          <span className="inline-flex items-center text-xs font-semibold text-slate-700 bg-slate-100/90 border border-slate-200/80 px-2.5 py-1 rounded-lg whitespace-nowrap shadow-2xs">
+            {translateBusinessText(row.category)}
+          </span>
+          {profile?.country === "UAE" && row.registeredIn === "Oman" && (
+            <span className="ms-1.5 inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+              Oman-reg
+            </span>
+          )}
         </span>
       ),
       className: "whitespace-nowrap min-w-[170px]",
@@ -557,6 +568,22 @@ export default function ProductsPage() {
                     <option value="Kg">Kg</option>
                   </select>
                 </div>
+
+                {profile?.country === "UAE" && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                      Registered in
+                    </label>
+                    <select
+                      value={formRegisteredIn}
+                      onChange={(e) => setFormRegisteredIn(e.target.value === "Oman" ? "Oman" : "UAE")}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#61989B]/20 transition"
+                    >
+                      <option value="UAE">UAE (invoice with company header)</option>
+                      <option value="Oman">Oman (separate invoice, no header)</option>
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">

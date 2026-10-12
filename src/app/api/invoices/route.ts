@@ -4,6 +4,7 @@ import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
+import { nextSeriesNumber, peekSeriesNumber } from "@/lib/db/documentSeries";
 import { QuoteItem, UserCountry } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { validateAndProcessInvoiceInventory, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
@@ -27,6 +28,10 @@ export async function GET(request: Request) {
     const queryClient = createAdminClient() || userClient;
 
     if (isNextNumberReq) {
+      // The salesman's own series when the admin has set one up.
+      const fromSeries = await peekSeriesNumber(queryClient, targetSalesmanId, "invoice", "standard");
+      if (fromSeries) return NextResponse.json({ nextInvoiceNumber: fromSeries });
+
       const KALEEM_PROFILE_ID = "59ce7b2c-156f-4b91-9ee9-a55c05aa160f";
       let isKaleem = targetSalesmanId === KALEEM_PROFILE_ID || profile.id === KALEEM_PROFILE_ID;
       if (!isKaleem && (profile.full_name?.toLowerCase().includes("kaleem") || profile.email?.toLowerCase().includes("kaleem"))) {
@@ -448,13 +453,16 @@ export async function POST(request: Request) {
       while (!inserted && insertAttempts < maxAttempts) {
         insertAttempts++;
 
-        const candidateNum = await generateNextDocumentNumber(
-          supabase,
-          "invoices",
-          "invoice_number",
-          invPrefix,
-          invPad
-        );
+        // The salesman's own series when set up; otherwise the shared D-series.
+        const candidateNum =
+          (await nextSeriesNumber(createAdminClient() || supabase, finalSalesmanId, "invoice", "standard")) ||
+          (await generateNextDocumentNumber(
+            supabase,
+            "invoices",
+            "invoice_number",
+            invPrefix,
+            invPad
+          ));
 
         const attemptPayload = {
           ...headerPayload,

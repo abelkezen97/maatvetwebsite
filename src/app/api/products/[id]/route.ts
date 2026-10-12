@@ -393,6 +393,7 @@ export async function PATCH(
       "is_active",
       "costPrice",
       "cost_price",
+      "registeredIn",
     ];
 
     if (profile.role === "accountant") {
@@ -423,7 +424,12 @@ export async function PATCH(
       updatePayload = mapProductToDb(priceOnly, profile.country);
     } else {
       // Admins edit the shared product details and their own country's prices.
-      updatePayload = mapProductToDb(body, profile.country);
+      // Registration decides UAE billing, so only the UAE admin changes it.
+      const { registeredIn, ...rest } = body || {};
+      updatePayload = mapProductToDb(
+        profile.country === "UAE" && (registeredIn === "UAE" || registeredIn === "Oman") ? { ...rest, registeredIn } : rest,
+        profile.country
+      );
     }
 
     updatePayload.updated_at = new Date().toISOString();
