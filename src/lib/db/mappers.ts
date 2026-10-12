@@ -386,6 +386,8 @@ export function mapInvoiceFromDb(row: any, salesmanMap?: Map<string, string>): I
     paymentMethod: row.payment_method || row.paymentMethod || undefined,
     creditDays: row.credit_days !== null && row.credit_days !== undefined ? Number(row.credit_days) : undefined,
     notes: row.notes || "",
+    billingSeries: row.billing_series === "oman_reg" ? "oman_reg" : "standard",
+    invoiceGroupId: row.invoice_group_id || undefined,
     isDeleted: Boolean(row.is_deleted),
     deletedAt: row.deleted_at || undefined,
     deletedBy: row.deleted_by || undefined,

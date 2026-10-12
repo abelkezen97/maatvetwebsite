@@ -299,7 +299,28 @@ export const buildInvoicePDF = (invoice: Invoice): jsPDF => {
   const TEAL_ACCENT  = [107, 154, 155];// #6B9A9B
   const WHITE        = [255, 255, 255];// #FFFFFF
 
+  // UAE: Oman-registered invoices print without the company header band.
+  const plainHeader = invoice.billingSeries === "oman_reg";
+
   const drawHeader = () => {
+    if (plainHeader) {
+      doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.text("INVOICE", 15, 25);
+
+      doc.setFontSize(8.5);
+      doc.setTextColor(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2]);
+      doc.text("Invoice No.", 130, 23);
+      doc.setTextColor(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
+      doc.text(invoice.invoiceNumber || "—", 195, 23, { align: "right" });
+
+      doc.setDrawColor(BORDER_LIGHT[0], BORDER_LIGHT[1], BORDER_LIGHT[2]);
+      doc.setLineWidth(0.3);
+      doc.line(15, 34, 195, 34);
+      return;
+    }
+
     // Full-width dark navy header block (Height: 40mm)
     doc.setFillColor(NAVY_PRIMARY[0], NAVY_PRIMARY[1], NAVY_PRIMARY[2]);
     doc.rect(0, 0, 210, 40, "F");
