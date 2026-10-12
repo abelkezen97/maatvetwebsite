@@ -167,6 +167,7 @@ export function mapProductFromDb(row: any, categoryMap?: Map<string, string>, co
     manufacturer: row.manufacturer || row.brand || "",
     description: row.description || "",
     isAvailable: row.is_active !== false,
+    registeredIn: row.registered_in === "Oman" ? "Oman" : "UAE",
     createdBy: row.created_by || undefined,
     updatedBy: row.updated_by || undefined,
     createdAt: row.created_at || "",
@@ -203,6 +204,7 @@ export function mapProductToDb(product: Partial<Product>, country?: string): Rec
   if (product.manufacturer !== undefined) payload.manufacturer = product.manufacturer;
   if (product.description !== undefined) payload.description = product.description;
   if (product.isAvailable !== undefined) payload.is_active = product.isAvailable;
+  if (product.registeredIn !== undefined) payload.registered_in = product.registeredIn === "Oman" ? "Oman" : "UAE";
   return payload;
 }
 

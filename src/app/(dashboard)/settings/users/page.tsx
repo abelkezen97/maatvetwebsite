@@ -15,11 +15,13 @@ import {
   ArrowLeft,
   Search,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Hash
 } from "lucide-react";
 import { Profile, UserRole, UserCountry } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { roleLabel } from "@/lib/auth/permissions";
+import { NumberSeriesDialog } from "@/components/NumberSeriesDialog";
 
 export default function UserManagementPage() {
   const { isSuperAdmin, profile, loading: authLoading } = useAuth();
@@ -43,6 +45,9 @@ export default function UserManagementPage() {
   const [resetBusy, setResetBusy] = useState(false);
   const [resetDone, setResetDone] = useState<{ password?: string } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Number series dialog (salespeople)
+  const [seriesTarget, setSeriesTarget] = useState<Profile | null>(null);
 
   // Form States
   const [formData, setFormData] = useState({
@@ -413,6 +418,16 @@ export default function UserManagementPage() {
                         <KeyRound className="w-3.5 h-3.5" />
                         Reset password
                       </button>
+                      {p.role === "salesperson" && (
+                        <button
+                          onClick={() => setSeriesTarget(p)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
+                          title={`Invoice and receipt numbers for ${p.full_name}`}
+                        >
+                          <Hash className="w-3.5 h-3.5" />
+                          Number series
+                        </button>
+                      )}
                       {p.is_active && (
                         <button
                           onClick={() => handleDeactivate(p)}
@@ -718,6 +733,13 @@ export default function UserManagementPage() {
             )}
           </div>
         </div>
+      )}
+      {seriesTarget && (
+        <NumberSeriesDialog
+          userId={seriesTarget.id}
+          userName={seriesTarget.full_name || ""}
+          onClose={() => setSeriesTarget(null)}
+        />
       )}
     </div>
   );

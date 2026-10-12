@@ -71,6 +71,7 @@ export async function POST(request: Request) {
     let price50Str: string | null = null;
     let price100Str: string | null = null;
     let isActive = true;
+    let registeredIn: "UAE" | "Oman" | undefined;
 
     const contentType = request.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
       if (json.price100 !== undefined && json.price100 !== null && json.price100 !== "") price100Str = String(json.price100);
       if (json.isAvailable !== undefined) isActive = Boolean(json.isAvailable);
       if (json.isActive !== undefined) isActive = Boolean(json.isActive);
+      if (json.registeredIn === "UAE" || json.registeredIn === "Oman") registeredIn = json.registeredIn;
     } else {
       const formData = await request.formData();
       name = (formData.get("name") as string) || "";
@@ -109,6 +111,8 @@ export async function POST(request: Request) {
       price100Str = formData.get("price100") as string | null;
       const isActiveRaw = formData.get("isActive") ?? formData.get("isAvailable");
       if (isActiveRaw !== null) isActive = isActiveRaw === "true" || isActiveRaw === "1";
+      const regRaw = formData.get("registeredIn");
+      if (regRaw === "UAE" || regRaw === "Oman") registeredIn = regRaw;
     }
 
     if (!name.trim()) {
@@ -152,6 +156,8 @@ export async function POST(request: Request) {
       manufacturer: manufacturer.trim(),
       description: description.trim(),
       isAvailable: isActive,
+      // Registration only matters for UAE billing, so only the UAE side sets it.
+      registeredIn: profile.country === "UAE" ? registeredIn : undefined,
     }, profile.country);
     const { data, error } = await supabase
       .from("products")

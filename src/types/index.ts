@@ -1,6 +1,23 @@
 export type UserRole = "super_admin" | "accountant" | "salesperson";
 export type UserCountry = "UAE" | "Oman";
 
+/**
+ * UAE billing series. Oman-registered products sold in the UAE are billed on
+ * their own invoices / receipts ("oman_reg": own numbers, no company header).
+ * Everything else, including all Oman documents, is "standard".
+ */
+export type BillingSeries = "standard" | "oman_reg";
+export type SeriesDocType = "invoice" | "receipt";
+
+export interface DocumentSeries {
+  docType: SeriesDocType;
+  billingSeries: BillingSeries;
+  prefix: string;
+  nextNumber: number;
+  padLength: number;
+  updatedAt?: string;
+}
+
 export interface Profile {
   id: string;
   full_name: string;
@@ -50,6 +67,8 @@ export interface Product {
   manufacturer?: string;
   description?: string;
   isAvailable?: boolean;
+  /** Country the product is registered in. Decides the UAE billing series. */
+  registeredIn?: UserCountry;
   createdBy?: string;
   updatedBy?: string;
   createdAt?: string;
