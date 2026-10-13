@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { User, Shield, Info, Users, Save, CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
 
 export default function SettingsPage() {
-  const { user, isSuperAdmin, isAccountant } = useAuth();
+  const { user, isSuperAdmin, isAccountant, isStaff } = useAuth();
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -118,7 +118,7 @@ export default function SettingsPage() {
           <p className="text-xs text-slate-500 font-medium">
             Manage field sales staff, accountant permissions, and administrator credentials.
           </p>
-          {isSuperAdmin ? (
+          {isStaff ? (
             <Link
               href="/users"
               className="inline-flex items-center justify-between w-full px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-[#1B2A4A] hover:text-white text-[#1B2A4A] font-bold text-xs transition cursor-pointer"

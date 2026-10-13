@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
+import { isCountryStaff } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -33,8 +34,8 @@ export async function POST(request: Request) {
   try {
     const { profile, supabase } = await requireAuth();
 
-    if (profile.role !== "super_admin") {
-      return NextResponse.json({ error: "Forbidden: Only super_admin can create product categories" }, { status: 403 });
+    if (!isCountryStaff(profile)) {
+      return NextResponse.json({ error: "Forbidden: Only an Admin or Accountant can create product categories" }, { status: 403 });
     }
 
     const json = await request.json();

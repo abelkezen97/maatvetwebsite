@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
+import { managesUser } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { generateTemporaryPassword, validatePassword } from "@/lib/auth/password";
 
@@ -38,12 +39,12 @@ export async function POST(
 
     const { data: target } = await supabase
       .from("profiles")
-      .select("id, full_name, email, is_active, country")
+      .select("id, full_name, email, is_active, country, countries")
       .eq("id", id)
       .maybeSingle();
 
-    // Admins reset passwords only for users of their own country.
-    if (!target || target.country !== adminProfile.country) {
+    // Admins reset passwords only for users who work in their country.
+    if (!target || !managesUser(adminProfile, target)) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 

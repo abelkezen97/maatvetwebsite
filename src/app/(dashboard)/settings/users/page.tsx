@@ -20,11 +20,13 @@ import {
 } from "lucide-react";
 import { Profile, UserRole, UserCountry } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
-import { roleLabel } from "@/lib/auth/permissions";
+import { roleLabel, workCountries, ALL_COUNTRIES } from "@/lib/auth/permissions";
 import { NumberSeriesDialog } from "@/components/NumberSeriesDialog";
 
 export default function UserManagementPage() {
-  const { isSuperAdmin, profile, loading: authLoading } = useAuth();
+  const { isSuperAdmin, isAccountant, profile, loading: authLoading } = useAuth();
+  // Only the admin manages logins; the accountant sees the list and sets number series.
+  const canManageUsers = isSuperAdmin;
   // Admins create and manage users of their own country only.
   const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -57,6 +59,8 @@ export default function UserManagementPage() {
     phone: "",
     role: "salesperson" as UserRole,
     country: "UAE" as UserCountry,
+    // Extra country an accountant covers (both ticked = works in UAE and Oman).
+    countries: [] as UserCountry[],
     is_active: true,
   });
 
@@ -79,10 +83,10 @@ export default function UserManagementPage() {
   };
 
   useEffect(() => {
-    if (isSuperAdmin) {
+    if (isSuperAdmin || isAccountant) {
       fetchUsers();
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, isAccountant]);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,6 +131,7 @@ export default function UserManagementPage() {
           phone: formData.phone,
           role: formData.role,
           country: formData.country,
+          countries: formData.countries,
           is_active: formData.is_active,
         }),
       });
@@ -234,6 +239,7 @@ export default function UserManagementPage() {
       phone: p.phone || "",
       role: p.role,
       country: p.country,
+      countries: workCountries(p),
       is_active: p.is_active,
     });
   };
@@ -246,6 +252,7 @@ export default function UserManagementPage() {
       phone: "",
       role: "salesperson",
       country: ownCountry,
+      countries: [],
       is_active: true,
     });
   };
@@ -279,10 +286,13 @@ export default function UserManagementPage() {
             User Management
           </h1>
           <p className="text-sm font-semibold text-slate-500 mt-1">
-            Provision ERP system accounts, assign roles, enforce country access, and reset credentials.
+            {canManageUsers
+              ? "Provision ERP system accounts, assign roles, enforce country access, and reset credentials."
+              : "Team members and their number series. Only an admin can add users or reset passwords."}
           </p>
         </div>
 
+        {canManageUsers && (
         <button
           onClick={() => {
             resetForm();
@@ -293,6 +303,7 @@ export default function UserManagementPage() {
           <UserPlus className="w-4 h-4" />
           Create New User
         </button>
+        )}
       </div>
 
       {/* Alert Messages */}
@@ -386,7 +397,7 @@ export default function UserManagementPage() {
                     <td className="py-4 px-6">
                       <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
                         <Globe className="w-3.5 h-3.5" />
-                        {p.country}
+                        {workCountries(p).join(" + ")}
                       </span>
                     </td>
                     <td className="py-4 px-6">
@@ -403,6 +414,8 @@ export default function UserManagementPage() {
                       )}
                     </td>
                     <td className="py-4 px-6 text-right space-x-2">
+                      {canManageUsers && (
+                      <>
                       <button
                         onClick={() => openEditModal(p)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 text-xs font-bold hover:bg-slate-50 transition cursor-pointer"
@@ -418,6 +431,8 @@ export default function UserManagementPage() {
                         <KeyRound className="w-3.5 h-3.5" />
                         Reset password
                       </button>
+                      </>
+                      )}
                       {p.role === "salesperson" && (
                         <button
                           onClick={() => setSeriesTarget(p)}
@@ -428,7 +443,7 @@ export default function UserManagementPage() {
                           Number series
                         </button>
                       )}
-                      {p.is_active && (
+                      {canManageUsers && p.is_active && (
                         <button
                           onClick={() => handleDeactivate(p)}
                           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-600 text-xs font-bold hover:bg-rose-100 transition cursor-pointer"
@@ -526,17 +541,40 @@ export default function UserManagementPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Country Governance *
-                  </label>
-                  <select
-                    value={ownCountry}
-                    disabled
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value as UserCountry })}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold focus:outline-none focus:border-[#1B2A4A]"
-                  >
-                    <option value={ownCountry}>{ownCountry}</option>
-                  </select>
+                  <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Works in *
+                  </span>
+                  {formData.role === "accountant" ? (
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Countries">
+                      {ALL_COUNTRIES.map((c) => {
+                        const checked = c === ownCountry || formData.countries.includes(c);
+                        return (
+                          <label
+                            key={c}
+                            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold ${
+                              checked ? "border-[#1B2A4A] bg-slate-50 text-slate-800" : "border-slate-200 text-slate-600"
+                            } ${c === ownCountry ? "cursor-not-allowed" : "cursor-pointer"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={c === ownCountry}
+                              onChange={(e) => {
+                                const others = formData.countries.filter((x) => x !== c && x !== ownCountry);
+                                const next = e.target.checked ? [ownCountry, ...others, c] : others.length ? [ownCountry, ...others] : [];
+                                setFormData({ ...formData, countries: next.length > 1 ? next : [] });
+                              }}
+                            />
+                            {c}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600">
+                      {ownCountry}
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -205,7 +205,7 @@ function NewInvoiceForm() {
     // Mode A: EDIT EXISTING INVOICE
     if (editInvoiceNumber) {
       if (profile && !Permissions.canEditInvoice(profile)) {
-        alert("Forbidden: Only an Admin can edit existing invoices.");
+        alert("Only an Admin or Accountant can edit existing invoices.");
         router.push("/invoices");
         return;
       }

@@ -4,7 +4,8 @@ import React, { useEffect, useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
 import { PageGuard } from "@/components/PageGuard";
 import { SidebarProvider } from "@/components/SidebarContext";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, COUNTRY_CHOSEN_KEY } from "@/hooks/useAuth";
+import { CountryPicker } from "@/components/CountryPicker";
 import { useLanguage } from "@/context/LanguageContext";
 
 export default function DashboardLayout({
@@ -12,7 +13,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, countries, switchCountry } = useAuth();
   const { t, setCurrencyCountry } = useLanguage();
 
   // Amounts across the app use the signed-in user's country currency (AED or OMR).
@@ -22,6 +23,16 @@ export default function DashboardLayout({
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  // Users covering several countries pick one after signing in (once per session).
+  const [countryChosen, setCountryChosen] = useState<boolean | null>(null);
+  useEffect(() => {
+    try {
+      setCountryChosen(!!sessionStorage.getItem(COUNTRY_CHOSEN_KEY));
+    } catch {
+      setCountryChosen(true); // no storage: don't block, the sidebar switcher still works
+    }
+  }, []);
+
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#0B1528]">
@@ -30,6 +41,17 @@ export default function DashboardLayout({
           <span className="text-sm font-semibold text-slate-300">{t("loadingSession")}</span>
         </div>
       </div>
+    );
+  }
+
+  if (profile && countries.length > 1 && countryChosen === false) {
+    return (
+      <CountryPicker
+        name={profile.full_name || "there"}
+        countries={countries}
+        current={profile.country}
+        onChoose={switchCountry}
+      />
     );
   }
 

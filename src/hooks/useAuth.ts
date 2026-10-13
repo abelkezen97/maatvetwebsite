@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 import { Profile, User, UserRole, UserCountry } from "@/types";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff, workCountries } from "@/lib/auth/permissions";
+
+/** sessionStorage key: set once a multi-country user has picked a country this session. */
+export const COUNTRY_CHOSEN_KEY = "maat.countryChosen";
 
 export function useAuth() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -130,6 +133,31 @@ export function useAuth() {
     setLoading(false);
   };
 
+  /**
+   * Switch the active country (for users covering several countries).
+   * Reloads the app so every page refetches its data for the new country.
+   */
+  const switchCountry = async (country: UserCountry): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await fetch("/api/profile/country", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { success: false, error: data.error || "Could not switch country" };
+      try {
+        sessionStorage.setItem(COUNTRY_CHOSEN_KEY, country);
+      } catch {
+        // storage unavailable: the picker may show again, which is harmless
+      }
+      if (typeof window !== "undefined") window.location.href = "/dashboard";
+      return { success: true };
+    } catch {
+      return { success: false, error: "Could not switch country" };
+    }
+  };
+
   const profileCtx = profile ? {
     id: profile.id,
     role: profile.role,
@@ -146,6 +174,11 @@ export function useAuth() {
     isAccountant: profile?.role === "accountant",
     isSalesperson: profile?.role === "salesperson",
     isSalesman: profile?.role === "salesperson",
+    /** Admin or accountant: full access to the active country's data. */
+    isStaff: profile ? isCountryStaff(profile) : false,
+    /** Countries this user can work in; more than one shows a country switcher. */
+    countries: workCountries(profile),
+    switchCountry,
     permissions: profileCtx ? {
       canViewDashboard: Permissions.canViewDashboard(profileCtx),
       canManageUsers: Permissions.canManageUsers(profileCtx),

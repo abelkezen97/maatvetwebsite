@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { isCountryAdmin } from "@/lib/auth/permissions";
+import { isCountryStaff } from "@/lib/auth/permissions";
 import { createAdminClient } from "@/utils/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/customers/:id/cash-only   { cashOnly: boolean, reason?: string }
  *
- * Admin of the customer's country only. A bounced cheque sets the flag
+ * Admin or accountant of the customer's country. A bounced cheque sets the flag
  * automatically; this is how an admin lifts it (or sets it by hand).
  */
 export async function POST(
@@ -17,8 +17,8 @@ export async function POST(
 ) {
   try {
     const { profile, supabase } = await requireAuth();
-    if (!isCountryAdmin(profile)) {
-      return NextResponse.json({ error: "Forbidden: Only an Admin can change a customer's cash-only status." }, { status: 403 });
+    if (!isCountryStaff(profile)) {
+      return NextResponse.json({ error: "Forbidden: Only an Admin or Accountant can change a customer's cash-only status." }, { status: 403 });
     }
 
     const { id } = await params;

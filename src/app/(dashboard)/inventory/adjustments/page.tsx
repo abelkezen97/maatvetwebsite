@@ -13,7 +13,7 @@ export default function StockAdjustmentPage() {
   // There is no global role: stock is managed per country, in the user's own country only.
   const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
 
-  const isSuperAdmin = profile?.role === "super_admin";
+  const isStaff = profile?.role === "super_admin" || profile?.role === "accountant"; // admin or accountant
 
   const [products, setProducts] = useState<ProductStockSummary[]>([]);
   const [loadingProducts, setLoadingProducts] = useState<boolean>(true);
@@ -119,7 +119,7 @@ export default function StockAdjustmentPage() {
     }
   };
 
-  if (!isSuperAdmin) {
+  if (!isStaff) {
     return (
       <div className="max-w-2xl mx-auto my-12 p-8 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">
         <div className="w-12 h-12 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -127,7 +127,7 @@ export default function StockAdjustmentPage() {
         </div>
         <h2 className="text-xl font-bold text-slate-900 mb-2">Access Restricted</h2>
         <p className="text-sm text-slate-500 mb-6">
-          Only an Admin can perform manual stock adjustments.
+          Only an Admin or Accountant can make manual stock adjustments.
         </p>
         <Link
           href="/inventory"

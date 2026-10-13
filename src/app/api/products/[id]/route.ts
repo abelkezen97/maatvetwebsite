@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
+import { isCountryStaff } from "@/lib/auth/permissions";
 import { Permissions } from "@/lib/auth/permissions";
 import { mapProductFromDb, mapProductToDb } from "@/lib/db/mappers";
 import { createAdminClient } from "@/utils/supabase/admin";
@@ -375,37 +376,6 @@ export async function PATCH(
 
     const body = await request.json();
 
-    const nonPriceFields = [
-      "name",
-      "productCode",
-      "product_code",
-      "sku",
-      "barcode",
-      "categoryId",
-      "category_id",
-      "category",
-      "unit",
-      "brand",
-      "manufacturer",
-      "description",
-      "isAvailable",
-      "isActive",
-      "is_active",
-      "costPrice",
-      "cost_price",
-      "registeredIn",
-    ];
-
-    if (profile.role === "accountant") {
-      const hasNonPriceEdits = nonPriceFields.some((field) => body[field] !== undefined);
-      if (hasNonPriceEdits) {
-        return NextResponse.json(
-          { error: "Forbidden: Accountant is allowed to edit product prices only" },
-          { status: 403 }
-        );
-      }
-    }
-
     if (profile.role !== "super_admin" && profile.role !== "accountant") {
       return NextResponse.json({ error: "Forbidden: Insufficient permissions" }, { status: 403 });
     }
@@ -464,8 +434,8 @@ export async function DELETE(
   try {
     const { profile, supabase } = await requireAuth();
 
-    if (profile.role !== "super_admin") {
-      return NextResponse.json({ error: "Forbidden: Only super_admin can deactivate products" }, { status: 403 });
+    if (!isCountryStaff(profile)) {
+      return NextResponse.json({ error: "Forbidden: Only an Admin or Accountant can deactivate products" }, { status: 403 });
     }
 
     const { id } = await params;

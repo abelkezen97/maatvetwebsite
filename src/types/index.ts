@@ -24,7 +24,10 @@ export interface Profile {
   email: string;
   phone?: string;
   role: UserRole;
+  /** The country the user is working in right now (all data is scoped to it). */
   country: UserCountry;
+  /** Countries the user may switch between (accountants can cover several). Empty = only `country`. */
+  countries?: UserCountry[];
   is_active: boolean;
   created_at?: string;
   updated_at?: string;

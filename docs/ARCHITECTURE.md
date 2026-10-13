@@ -47,6 +47,10 @@ PDFs (quotes, invoices, receipts, ledgers) are generated in the browser with jsP
 
 Profiles, customers, stock and documents carry a `country` (`UAE` or `Oman`). **Every** role, admins included, sees only its own country: the API filters by `profile.country` (helper `isCountryStaff()` in `src/lib/auth/permissions.ts`) and RLS does the same in the database (`is_country_staff()`, `is_country_admin()`, `is_own_country()`). The admin role is still stored as `super_admin`, but it is country-scoped and shown as "Admin (UAE)" / "Admin (Oman)".
 
+**Roles.** Office staff (admin and accountant) have full access to their country's data; only the admin manages users, logins and passwords (`Permissions.canManageUsers`). Salesmen see their own work.
+
+**One accountant, several countries.** `profiles.countries` lists the countries a user may switch between (accountants only; set by ticking both on Settings → Users). `profiles.country` remains the *active* country, so every rule above still applies unchanged. After signing in, a multi-country user picks a country (`CountryPicker`, once per browser session) and can switch from the sidebar; switching calls `POST /api/profile/country`, which checks the list and updates `country` with the service key. A database trigger (`protect_profile_fields`) stops users from changing their own role, country, countries, status or email — only an admin of a country the user works in (or the server) can. The accountant's dashboard (`AccountantDashboard`, data from `GET /api/accountant/overview`) has tabs for Overview, Receivables (ageing, overdue customers), Cash & Bank (cash in hand per person, cheques waiting) and Approvals.
+
 Products are shared; prices are per country (AED columns for UAE, `*_omr` columns for Oman). A trigger stops an admin or accountant from changing the other country's prices. Currency formatting lives in `src/lib/currency.ts` (AED 2 decimals, OMR 3).
 
 ## Payments and cheques

@@ -25,7 +25,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { profile, supabase } = await requireAuth(["super_admin"]);
+    const { profile, supabase } = await requireAuth(["super_admin", "accountant"]);
     const { id } = await params;
     const admin = createAdminClient() || supabase;
 
@@ -56,7 +56,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { profile, supabase } = await requireAuth(["super_admin"]);
+    const { profile, supabase } = await requireAuth(["super_admin", "accountant"]);
     const { id } = await params;
     const admin = createAdminClient();
     if (!admin) {

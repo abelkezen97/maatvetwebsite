@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { UserRole } from "@/types";
+import { managesUser, normalizeCountries } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,18 +18,19 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { full_name, phone, role, country, is_active, password } = body;
+    const { full_name, phone, role, country, countries, is_active, password } = body;
 
-    // Admins manage users of their own country only, and cannot move them to another country.
+    // Admins manage users who work in their country (a shared accountant counts
+    // for both), and cannot move anyone to another country.
     const { data: targetUser } = await supabase
       .from("profiles")
-      .select("id, country")
+      .select("id, country, countries, role")
       .eq("id", id)
       .maybeSingle();
-    if (!targetUser || targetUser.country !== adminProfile.country) {
+    if (!targetUser || !managesUser(adminProfile, targetUser)) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-    if (country !== undefined && country !== adminProfile.country) {
+    if (country !== undefined && country !== targetUser.country) {
       return NextResponse.json({ error: "Users cannot be moved to another country." }, { status: 400 });
     }
 
@@ -95,6 +97,19 @@ export async function PATCH(
       updatePayload.is_active = Boolean(is_active);
     }
 
+    // Countries an accountant covers (ticked on the Users page). Always keeps
+    // this admin's country; other roles work in one country only.
+    const finalRole = (updatePayload.role || targetUser.role) as string;
+    if (countries !== undefined || updatePayload.role !== undefined) {
+      const requested = countries !== undefined ? countries : targetUser.countries || [];
+      const list = normalizeCountries(finalRole, adminProfile.country, requested);
+      updatePayload.countries = list;
+      // Their open country must stay one they cover.
+      if (list.length === 0 && targetUser.country !== adminProfile.country) {
+        updatePayload.country = adminProfile.country;
+      }
+    }
+
     const { data: updatedProfile, error: profileError } = await supabase
       .from("profiles")
       .update(updatePayload)
@@ -153,11 +168,11 @@ export async function DELETE(
     // ACTIVE ADMIN GUARANTEE (per country)
     const { data: targetProfile } = await supabase
       .from("profiles")
-      .select("role, country")
+      .select("role, country, countries")
       .eq("id", id)
       .maybeSingle();
 
-    if (!targetProfile || targetProfile.country !== adminProfile.country) {
+    if (!targetProfile || !managesUser(adminProfile, targetProfile)) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
