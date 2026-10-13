@@ -1,10 +1,31 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, ArrowLeft, CheckCircle2, X, Plus, FileText, AlertTriangle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock,
+  CreditCard,
+  FileText,
+  Hash,
+  Info,
+  Landmark,
+  MapPin,
+  RefreshCw,
+  Search,
+  ShieldAlert,
+  User,
+  UserPlus,
+  Users,
+  Wallet,
+  X,
+} from "lucide-react";
+import { Avatar, ChoiceTile, ReviewSection, StepPanel, WizardBar, WizardStep, WizardStepper } from "@/components/wizard/WizardUI";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
+import { AccountSnapshot, SavedDocuments } from "@/components/CustomerAccountPanels";
 import { Customer, Receipt, Invoice, InvoiceBalance } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
@@ -22,7 +43,7 @@ export default function NewReceiptPage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState("");
   const [amountPaid, setAmountPaid] = useState<string>("");
-  const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [paymentDate, setPaymentDate] = useState<string>(() => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date()));
   const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Bank Transfer" | "Cheque" | "Other">("Cash");
   const [referenceNo, setReferenceNo] = useState("");
   const [notes, setNotes] = useState("");
@@ -60,8 +81,23 @@ export default function NewReceiptPage() {
 
   // Cheque details (payment method "Cheque")
   const [chequeNumber, setChequeNumber] = useState("");
-  const [chequeDate, setChequeDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [chequeDate, setChequeDate] = useState<string>(() => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date()));
   const [bankName, setBankName] = useState("");
+
+  // Wizard: 0 customer, 1 payment, 2 apply to invoices, 3 review.
+  const [step, setStep] = useState(preselectedCustomerId || preselectedInvoiceId ? 1 : 0);
+  const [activeCustomer, setActiveCustomer] = useState(0);
+  const [saved, setSaved] = useState<{ title: string; receiptNumbers: string[]; customerId: string } | null>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const goTo = (s: number) => {
+    setStep(s);
+    setTimeout(() => topRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }), 30);
+  };
+  const pickCustomer = (c: Customer) => {
+    setSelectedCustomerId(c.id);
+    setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
+    goTo(1);
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -345,6 +381,10 @@ export default function NewReceiptPage() {
       setErrorMessage(`Invoice ${allocationErrors[0].invoiceNumber} has less open than the amount applied.`);
       return;
     }
+    if (paymentMethod === "Bank Transfer" && !referenceNo.trim()) {
+      setErrorMessage("Enter the bank transfer reference.");
+      return;
+    }
     if (paymentMethod === "Cheque") {
       if (customerCashOnly.cashOnly) {
         setErrorMessage("This customer is cash only after a bounced cheque. Cheques can't be accepted.");
@@ -370,7 +410,7 @@ export default function NewReceiptPage() {
         .filter((a) => a.amount > 0),
       chequeNumber: paymentMethod === "Cheque" ? chequeNumber.trim() : undefined,
       chequeDate: paymentMethod === "Cheque" ? chequeDate : undefined,
-      bankName: paymentMethod === "Cheque" ? bankName.trim() || undefined : undefined,
+      bankName: paymentMethod === "Cheque" || paymentMethod === "Bank Transfer" ? bankName.trim() || undefined : undefined,
       customerName: selectedCustomer?.name || selectedInvoice?.customerName,
       companyName: selectedCustomer?.company || selectedInvoice?.companyName || customerSearchQuery.replace(/\s*\([^)]*\)/, "").trim(),
       amountPaid: numericAmount,
@@ -396,12 +436,12 @@ export default function NewReceiptPage() {
       const savedNumbers: string[] = Array.isArray(resData.receipts) && resData.receipts.length > 0
         ? resData.receipts.map((rc: any) => rc.receiptNumber)
         : [resData.receipt?.receiptNumber || receiptNumber];
-      setSuccessMessage(
-        `${savedNumbers.length > 1 ? "Receipts" : "Receipt"} ${savedNumbers.join(" and ")} generated and billwise balance updated successfully!`
-      );
-      setTimeout(() => {
-        router.push("/receipts");
-      }, 1500);
+      setSaved({
+        title: `${savedNumbers.length > 1 ? "Receipts" : "Receipt"} ${savedNumbers.join(" and ")} saved`,
+        receiptNumbers: savedNumbers,
+        customerId: targetCustId || selectedCustomerId,
+      });
+      setTimeout(() => topRef.current?.scrollIntoView({ block: "start" }), 30);
     } catch (err: any) {
       console.error("Failed to save receipt:", err);
       setErrorMessage(err.message || "Failed to process receipt. Please try again.");
@@ -435,6 +475,7 @@ export default function NewReceiptPage() {
         setSelectedCustomerId(added.id);
         setCustomerSearchQuery(`${added.company} ${added.name ? `(${added.name})` : ""}`);
         setIsCustModalOpen(false);
+        goTo(1);
         setFormCustCompany("");
         setFormCustName("");
         setFormCustLocation("");
@@ -456,344 +497,442 @@ export default function NewReceiptPage() {
     );
   }
 
+  const money = (n: number) =>
+    `${currencySymbol} ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+  const owed = Math.max(0, selectedCustomer?.pendingBillwiseAmount || 0);
+  const cashOnly = customerCashOnly.cashOnly;
+  const methodLabel = (m: string) => (m === "Bank Transfer" ? "Bank transfer" : m);
+  const fmtDate = (iso: string) =>
+    iso ? new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—";
+  const openTotal = seriesInvoices.reduce((s, inv) => s + inv.availableToAllocate, 0);
+  const preInvoice = seriesInvoices.find((inv) => inv.invoiceId === selectedInvoiceId);
+
+  const detailsBlocker = (() => {
+    if (!(numericAmount > 0)) return "Enter the amount received";
+    if (paymentMethod === "Cheque" && cashOnly) return "This customer is cash only. Cheques are not accepted.";
+    if (paymentMethod === "Cheque" && (!chequeNumber.trim() || !chequeDate)) return "Enter the cheque number and date";
+    if (paymentMethod === "Bank Transfer" && !referenceNo.trim()) return "Enter the transfer reference";
+    return null;
+  })();
+  const allocBlocker = overAllocated
+    ? "More is applied to invoices than was received"
+    : allocationErrors.length > 0
+      ? `Invoice ${allocationErrors[0].invoiceNumber} has less open than the amount applied`
+      : null;
+  const maxStep = !selectedCustomerId ? 0 : detailsBlocker ? 1 : allocBlocker ? 2 : 3;
+  const STEPS: WizardStep[] = [
+    { label: "Customer", icon: Users },
+    { label: "Payment", icon: Wallet },
+    { label: "Apply", icon: FileText },
+    { label: "Review", icon: ClipboardCheck },
+  ];
+  const stepHint = step === 0 ? "Choose a customer" : step === 1 ? detailsBlocker : step === 2 ? allocBlocker : null;
+  const appliedRows = seriesInvoices
+    .map((inv) => ({ inv, amt: parseFloat(allocations[inv.invoiceId] || "") || 0 }))
+    .filter((r) => r.amt > 0);
+  const METHODS = [
+    { key: "Cash", icon: Wallet, hint: "Adds to your cash in hand" },
+    { key: "Bank Transfer", icon: Landmark, hint: "Reference needed" },
+    { key: "Cheque", icon: FileText, hint: "Counts once it clears" },
+    { key: "Other", icon: CreditCard, hint: "Card or anything else" },
+  ] as const;
+  const appliedPct = numericAmount > 0 ? Math.min(100, (allocatedTotal / numericAmount) * 100) : 0;
+
+  const input =
+    "w-full px-3.5 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/10";
+  const label = "block text-sm font-medium text-slate-700 mb-1.5";
+
   return (
     <div className="w-full">
       <PageHeader
-        title="Issue Customer Receipt"
-        description="Record payback amount received from customer and deduct it directly from their pending billwise balance."
+        title="New receipt"
         breadcrumbs={[
           { label: "Receipts", href: "/receipts" },
-          { label: "New Receipt" }
+          { label: "New" },
         ]}
       />
 
-      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
-        {errorMessage && (
-          <div className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700">
-            <span className="font-semibold">{errorMessage}</span>
-            <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (step < 3) {
+            if (step < maxStep) goTo(step + 1);
+          } else {
+            handleSubmit(e);
+          }
+        }}
+        className="px-4 sm:px-6 lg:px-8 pt-6 md:pt-8 pb-4 max-w-5xl mx-auto text-start"
+      >
+        <div ref={topRef} className="scroll-mt-24" />
+
+        {saved && (
+          <SavedDocuments
+            title={saved.title}
+            customerId={saved.customerId}
+            receiptNumbers={saved.receiptNumbers}
+            newHref="/receipts/new"
+            newLabel="New receipt"
+            listHref="/receipts"
+            listLabel="Go to receipts"
+          />
         )}
 
-        {successMessage && (
-          <div className="flex items-center gap-3 rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-800 font-bold">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <span>{successMessage}</span>
-          </div>
-        )}
+        {!saved && (
+          <>
+            <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onGo={goTo} />
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Details (2/3) */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Metadata: Receipt Number & Date */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Receipt Number
-              </label>
-              <input
-                type="text"
-                required
-                value={receiptNumber}
-                onChange={(e) => setReceiptNumber(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Payment Date
-              </label>
-              <input
-                type="date"
-                required
-                value={paymentDate}
-                onChange={(e) => setPaymentDate(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
-              />
-            </div>
-          </div>
-
-          {/* Customer Selection */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                1. Select Customer
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsCustModalOpen(true)}
-                className="text-xs font-bold text-[#61989B] hover:text-[#4e7d80] transition flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add New Customer
-              </button>
-            </div>
-
-            <div className="relative">
-              <div className="relative flex items-center">
-                <Search className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search customer name, company, or clinic..."
-                  value={customerSearchQuery}
-                  onChange={(e) => {
-                    setCustomerSearchQuery(e.target.value);
-                    setShowCustomerDropdown(true);
-                  }}
-                  onFocus={() => setShowCustomerDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
-                />
-              </div>
-
-              {showCustomerDropdown && (
-                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-                  {filteredCustomers.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-slate-400 text-center font-medium">
-                      No customers found
-                    </div>
-                  ) : (
-                    filteredCustomers.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedCustomerId(c.id);
-                          setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
-                          setShowCustomerDropdown(false);
-                        }}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between"
-                      >
-                        <div>
-                          <div className="font-bold text-slate-800 text-sm">{c.company}</div>
-                          {c.name && <div className="text-xs text-slate-400 font-medium">Doctor: {c.name}</div>}
-                        </div>
-                        <div className="text-right">
-                          <span className={`text-xs font-extrabold ${(c.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                            Pending: {c.country === "Oman" ? "OMR" : "AED"} {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
-                          </span>
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Account Pending Balance Card */}
-            {selectedCustomer && (
-              <div className="mt-3 p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Selected Customer</span>
-                  <span className="font-extrabold text-slate-800 text-base">{selectedCustomer.company}</span>
-                  {selectedCustomer.name && <span className="text-xs font-semibold text-slate-500 ml-2">({selectedCustomer.name})</span>}
-                </div>
-                <div className={`sm:text-right px-4 py-2 rounded-xl border ${Math.max(0, selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "bg-rose-50 border-rose-100" : "bg-emerald-50 border-emerald-100"}`}>
-                  <span className={`block text-[11px] font-bold uppercase tracking-wide ${Math.max(0, selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-500" : "text-emerald-600"}`}>
-                    Current Pending Billwise
-                  </span>
-                  <span className={`text-base font-black ${Math.max(0, selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    {currencySymbol} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {selectedCustomer && customerCashOnly.cashOnly && (
-            <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
-              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold">Cash only.</span>{" "}
-                {customerCashOnly.reason || "A cheque from this customer bounced."} Cheque payments are not accepted until an admin removes the flag.
-              </div>
-            </div>
-          )}
-
-          {/* Payment Details Form */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-            <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-              2. Payment & Payback Details
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Amount Paid ({currencySymbol}) *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  inputMode="decimal"
-                  required
-                  placeholder="0.00"
-                  value={amountPaid}
-                  onChange={(e) => setAmountPaid(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-900 text-lg font-black focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all text-emerald-600"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Payment Method *
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full px-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-                >
-                  <option value="Cash">Cash</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-            </div>
-
-            {paymentMethod === "Cheque" ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cheque Number *</label>
-                  <input
-                    type="text"
-                    required
-                    value={chequeNumber}
-                    onChange={(e) => setChequeNumber(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent/15"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cheque Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={chequeDate}
-                    onChange={(e) => setChequeDate(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent/15"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Bank</label>
-                  <input
-                    type="text"
-                    value={bankName}
-                    onChange={(e) => setBankName(e.target.value)}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15"
-                  />
-                </div>
-                <p className="md:col-span-3 text-xs font-semibold text-slate-500">
-                  A cheque counts as paid only when the office marks it cleared. Until then its invoices show "Cheque pending".
-                </p>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Reference (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Transfer Ref TRX-928"
-                  value={referenceNo}
-                  onChange={(e) => setReferenceNo(e.target.value)}
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-                />
-              </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Notes / Remarks (Optional)
-              </label>
-              <textarea
-                rows={3}
-                placeholder="Additional notes for receipt record..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-              />
-            </div>
-          </div>
-          {/* Apply to invoices */}
-          {selectedCustomer && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                  3. Apply to Invoices
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManualAlloc(false);
-                    autoAllocate();
-                  }}
-                  disabled={!numericAmount || seriesInvoices.length === 0}
-                  className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
-                >
-                  {hasOmanReg ? "Apply UAE-registered first" : "Apply oldest first"}
+            {errorMessage && (
+              <div className="wiz-in flex items-start justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 mb-5 text-sm text-rose-800">
+                <span className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  {errorMessage}
+                </span>
+                <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800" aria-label="Dismiss">
+                  <X className="w-4 h-4" />
                 </button>
               </div>
+            )}
 
-              {hasOmanReg && (
-                <p className="text-xs font-semibold text-slate-500">
-                  This customer has UAE- and Oman-registered invoices. The payment goes to UAE-registered invoices first, then Oman-registered, and is saved as one receipt for each kind (Oman-registered receipts print without the company header).
-                </p>
-              )}
+            {/* STEP 1: CUSTOMER */}
+            {step === 0 && (
+              <StepPanel
+                stepKey="customer"
+                icon={Users}
+                title="Who paid?"
+                subtitle="Search and tap a customer to continue."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => setIsCustModalOpen(true)}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-accent bg-accent-light hover:bg-accent hover:text-white rounded-xl px-3.5 py-2.5 transition"
+                  >
+                    <UserPlus className="w-4 h-4" /> New customer
+                  </button>
+                }
+              >
+                <div className="relative mb-4">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Search clinic, farm or doctor"
+                    value={selectedCustomer && customerSearchQuery.startsWith(selectedCustomer.company) ? "" : customerSearchQuery}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      setActiveCustomer(0);
+                    }}
+                    onKeyDown={(e) => {
+                      const list = filteredCustomers.slice(0, 40);
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setActiveCustomer((i) => Math.min(i + 1, list.length - 1));
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setActiveCustomer((i) => Math.max(i - 1, 0));
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (list[activeCustomer]) pickCustomer(list[activeCustomer]);
+                      }
+                    }}
+                    className={`${input} pl-12 py-3.5 text-base`}
+                  />
+                </div>
+                {filteredCustomers.length === 0 ? (
+                  <div className="text-center py-10">
+                    <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">No customer matches.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto -mx-1 px-1 py-1">
+                    {filteredCustomers.slice(0, 40).map((c, i) => {
+                      const chosen = c.id === selectedCustomerId;
+                      const active = i === activeCustomer;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => pickCustomer(c)}
+                          onMouseEnter={() => setActiveCustomer(i)}
+                          className={`wiz-in flex items-center gap-3 text-left rounded-xl border p-3 transition-all duration-150 ${
+                            chosen
+                              ? "border-accent bg-accent-light/60 ring-2 ring-accent/20"
+                              : active
+                                ? "border-slate-300 bg-slate-50 shadow-sm"
+                                : "border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                          style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}
+                        >
+                          <Avatar name={c.company} />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-900 truncate">{c.company}</div>
+                            <div className="text-xs text-slate-500 truncate flex items-center gap-1">
+                              {c.address && <MapPin className="w-3 h-3 shrink-0" />}
+                              {[c.name, c.address].filter(Boolean).join(" · ") || "—"}
+                            </div>
+                          </div>
+                          {(c.pendingBillwiseAmount || 0) > 0 ? (
+                            <span className="shrink-0 text-xs font-medium text-rose-700 bg-rose-50 rounded-full px-2 py-0.5">{money(c.pendingBillwiseAmount || 0)}</span>
+                          ) : (
+                            <span className="shrink-0 text-xs text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">Clear</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </StepPanel>
+            )}
 
-              {openLoading ? (
-                <p className="text-sm text-slate-400 font-medium">Loading open invoices...</p>
-              ) : seriesInvoices.length === 0 ? (
-                <p className="text-sm text-slate-500 font-medium">
-                  No open invoices. The whole payment will be kept as an advance (or settle the opening balance).
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
-                        <th className="text-start py-2 pe-3">Invoice</th>
-                        {hasOmanReg && <th className="text-start py-2 pe-3">Kind</th>}
-                        <th className="text-start py-2 pe-3">Due</th>
-                        <th className="text-end py-2 pe-3">Total</th>
-                        <th className="text-end py-2 pe-3">Open</th>
-                        <th className="text-end py-2 w-40">Apply ({currencySymbol})</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {seriesInvoices.map((inv) => {
-                        const typed = allocations[inv.invoiceId] ?? "";
-                        const tooMuch = (parseFloat(typed) || 0) - inv.availableToAllocate > 0.0005;
-                        return (
-                          <tr key={inv.invoiceId}>
-                            <td className="py-2.5 pe-3">
-                              <div className="font-bold text-slate-800">{inv.invoiceNumber}</div>
-                              <div className="text-[11px] text-slate-400 font-medium">{inv.invoiceDate}</div>
-                            </td>
-                            {hasOmanReg && (
-                              <td className="py-2.5 pe-3">
-                                {inv.billingSeries === "oman_reg" ? (
-                                  <span className="inline-flex text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">Oman-reg</span>
-                                ) : (
-                                  <span className="inline-flex text-[10px] font-bold text-slate-600 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded-full">UAE-reg</span>
+            {/* STEP 2: PAYMENT */}
+            {step === 1 && (
+              <StepPanel
+                stepKey="payment"
+                icon={Wallet}
+                title="How much was received?"
+                subtitle={selectedCustomer ? <>from <span className="font-medium text-slate-700">{selectedCustomer.company}</span></> : undefined}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                  <div className="rounded-xl bg-rose-50/70 border border-rose-100 px-4 py-3">
+                    <div className="text-xs text-rose-700/80">Owes now</div>
+                    <div className="text-lg font-semibold text-rose-800">{money(owed)}</div>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
+                    <div className="text-xs text-slate-500">Open invoices</div>
+                    <div className="text-lg font-semibold text-slate-900">{openLoading ? "…" : seriesInvoices.length}</div>
+                  </div>
+                  <div className="rounded-xl bg-amber-50/70 border border-amber-100 px-4 py-3">
+                    <div className="text-xs text-amber-800/80">Cheques not cleared</div>
+                    <div className="text-lg font-semibold text-amber-900">{chequesPending > 0 ? money(chequesPending) : "None"}</div>
+                  </div>
+                </div>
+
+                {cashOnly && (
+                  <p className="mb-5 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+                    <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                    {customerCashOnly.reason || "A cheque from this customer bounced."} Cash only: cheques are not accepted.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-4">
+                  <label className="block">
+                    <span className={label}>Amount received</span>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">{currencySymbol}</span>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        inputMode="decimal"
+                        autoFocus
+                        placeholder="0.00"
+                        value={amountPaid}
+                        onChange={(e) => setAmountPaid(e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        className={`${input} pl-16 py-4 text-2xl font-semibold`}
+                      />
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className={label}>Date received</span>
+                    <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={`${input} py-4`} />
+                  </label>
+                </div>
+                {(preInvoice || openTotal > 0) && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {preInvoice && (
+                      <button type="button" onClick={() => setAmountPaid(String(preInvoice.availableToAllocate))} className="text-xs font-semibold text-accent bg-accent-light hover:bg-accent hover:text-white rounded-full px-3 py-1.5 transition">
+                        Invoice {preInvoice.invoiceNumber} · {money(preInvoice.availableToAllocate)}
+                      </button>
+                    )}
+                    {openTotal > 0 && (
+                      <button type="button" onClick={() => setAmountPaid(openTotal.toFixed(dp))} className="text-xs font-semibold text-accent bg-accent-light hover:bg-accent hover:text-white rounded-full px-3 py-1.5 transition">
+                        Everything open · {money(openTotal)}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-7">
+                  <span className={label}>Paid by</span>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {METHODS.map((m) => {
+                      const blocked = cashOnly && m.key === "Cheque";
+                      return (
+                        <ChoiceTile
+                          key={m.key}
+                          selected={paymentMethod === m.key}
+                          disabled={blocked}
+                          icon={m.icon}
+                          title={methodLabel(m.key)}
+                          hint={blocked ? "Not accepted" : m.hint}
+                          onClick={() => setPaymentMethod(m.key)}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {paymentMethod === "Cheque" && (
+                  <div key="cheque" className="wiz-in mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 md:p-5">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-4">
+                      <FileText className="w-4 h-4 text-accent" /> Cheque details
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <label className="block">
+                        <span className={label}>Cheque no.</span>
+                        <input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} className={input} inputMode="numeric" placeholder="e.g. 000123" />
+                      </label>
+                      <label className="block">
+                        <span className={label}>Cheque date</span>
+                        <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className={input} />
+                      </label>
+                      <label className="block">
+                        <span className={label}>
+                          Bank <span className="font-normal text-slate-400">(optional)</span>
+                        </span>
+                        <input value={bankName} onChange={(e) => setBankName(e.target.value)} className={input} placeholder="e.g. Emirates NBD" />
+                      </label>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3">The invoices count as paid once the office marks the cheque cleared.</p>
+                  </div>
+                )}
+
+                {paymentMethod === "Bank Transfer" && (
+                  <div key="transfer" className="wiz-in mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 md:p-5">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-4">
+                      <Landmark className="w-4 h-4 text-accent" /> Transfer details
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="block">
+                        <span className={label}>Transfer reference</span>
+                        <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} className={input} placeholder="Ref. no. on the transfer slip" />
+                      </label>
+                      <label className="block">
+                        <span className={label}>
+                          From bank <span className="font-normal text-slate-400">(optional)</span>
+                        </span>
+                        <input value={bankName} onChange={(e) => setBankName(e.target.value)} className={input} placeholder="e.g. ADCB" />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {paymentMethod === "Other" && (
+                  <label key="other" className="wiz-in block mt-5">
+                    <span className={label}>
+                      Reference <span className="font-normal text-slate-400">(optional)</span>
+                    </span>
+                    <input value={referenceNo} onChange={(e) => setReferenceNo(e.target.value)} className={input} />
+                  </label>
+                )}
+
+                <label className="block mt-6 pt-6 border-t border-slate-100">
+                  <span className={label}>
+                    Note <span className="font-normal text-slate-400">(optional)</span>
+                  </span>
+                  <input value={notes} onChange={(e) => setNotes(e.target.value)} className={input} />
+                </label>
+              </StepPanel>
+            )}
+
+            {/* STEP 3: APPLY */}
+            {step === 2 && (
+              <StepPanel
+                stepKey="apply"
+                icon={FileText}
+                title="Which invoices does it pay?"
+                subtitle="Filled oldest first. Change any amount if the customer said otherwise."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualAlloc(false);
+                      autoAllocate();
+                    }}
+                    disabled={!numericAmount || seriesInvoices.length === 0}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-accent bg-accent-light hover:bg-accent hover:text-white rounded-xl px-3.5 py-2.5 transition disabled:opacity-40"
+                  >
+                    <RefreshCw className="w-4 h-4" /> {hasOmanReg ? "Fill UAE-reg first" : "Fill oldest first"}
+                  </button>
+                }
+              >
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 mb-5">
+                  <div className="flex flex-wrap justify-between gap-2 text-sm mb-2">
+                    <span className="text-slate-600">
+                      Applied <span className="font-semibold text-slate-900">{money(allocatedTotal)}</span> of {money(numericAmount)}
+                    </span>
+                    <span className={overAllocated ? "text-rose-700 font-semibold" : "text-slate-600"}>
+                      {overAllocated ? "Over by " : "Advance "}
+                      <span className="font-semibold">{money(Math.abs(numericAmount - allocatedTotal))}</span>
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                    <div className={`h-full rounded-full transition-all duration-500 ${overAllocated ? "bg-rose-500" : "bg-accent"}`} style={{ width: `${overAllocated ? 100 : appliedPct}%` }} />
+                  </div>
+                </div>
+
+                {openLoading ? (
+                  <div className="space-y-2">
+                    {[0, 1, 2].map((k) => (
+                      <div key={k} className="h-16 rounded-xl bg-slate-100 animate-pulse" />
+                    ))}
+                  </div>
+                ) : seriesInvoices.length === 0 ? (
+                  <div className="text-center py-12 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-slate-600">No open invoices</p>
+                    <p className="text-xs text-slate-400 mt-1">The whole amount is kept as an advance.</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-2.5">
+                    {seriesInvoices.map((inv, i) => {
+                      const typed = allocations[inv.invoiceId] ?? "";
+                      const amt = parseFloat(typed) || 0;
+                      const tooMuch = amt - inv.availableToAllocate > 0.0005;
+                      const full = amt > 0 && !tooMuch && amt + 0.0005 >= inv.availableToAllocate;
+                      return (
+                        <li
+                          key={inv.invoiceId}
+                          className={`wiz-in rounded-xl border p-3.5 flex flex-col sm:flex-row sm:items-center gap-3 transition ${
+                            tooMuch ? "border-rose-300 bg-rose-50/50" : amt > 0 ? "border-accent/40 bg-accent-light/40" : "border-slate-200 bg-white"
+                          }`}
+                          style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <span className={`w-10 h-10 rounded-lg grid place-items-center shrink-0 ${full ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                              {full ? <CheckCircle2 className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-slate-900 flex flex-wrap items-center gap-2">
+                                {inv.invoiceNumber}
+                                {hasOmanReg && (
+                                  <span className={`text-[10px] font-medium rounded-full px-2 py-0.5 ${inv.billingSeries === "oman_reg" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
+                                    {inv.billingSeries === "oman_reg" ? "Oman-reg" : "UAE-reg"}
+                                  </span>
                                 )}
-                              </td>
+                                {inv.isOverdue && <span className="text-[10px] font-medium rounded-full px-2 py-0.5 bg-rose-100 text-rose-800">{inv.daysOverdue}d overdue</span>}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                {fmtDate(String(inv.invoiceDate).slice(0, 10))} · open {money(inv.availableToAllocate)}
+                                {inv.pendingCheques > 0 && <span className="text-amber-700"> · {money(inv.pendingCheques)} cheque pending</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 sm:justify-end">
+                            {!full && inv.availableToAllocate > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setManualAlloc(true);
+                                  setAllocations((prev) => ({ ...prev, [inv.invoiceId]: inv.availableToAllocate.toFixed(dp) }));
+                                }}
+                                className="text-xs font-semibold text-accent hover:underline whitespace-nowrap"
+                              >
+                                Pay in full
+                              </button>
                             )}
-                            <td className="py-2.5 pe-3">
-                              <span className={`text-xs font-bold ${inv.isOverdue ? "text-rose-600" : "text-slate-500"}`}>
-                                {inv.dueDate}{inv.isOverdue ? ` · ${inv.daysOverdue}d overdue` : ""}
-                              </span>
-                            </td>
-                            <td className="py-2.5 pe-3 text-end text-slate-500 font-medium">{inv.grandTotal.toFixed(dp)}</td>
-                            <td className="py-2.5 pe-3 text-end">
-                              <div className="font-bold text-slate-800">{inv.availableToAllocate.toFixed(dp)}</div>
-                              {inv.pendingCheques > 0 && (
-                                <div className="text-[11px] text-amber-600 font-semibold">{inv.pendingCheques.toFixed(dp)} in pending cheques</div>
-                              )}
-                            </td>
-                            <td className="py-2.5 text-end">
+                            <div className="relative w-full sm:w-36">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">{currencySymbol}</span>
                               <input
                                 type="number"
                                 min="0"
@@ -805,110 +944,128 @@ export default function NewReceiptPage() {
                                   setManualAlloc(true);
                                   setAllocations((prev) => ({ ...prev, [inv.invoiceId]: e.target.value }));
                                 }}
-                                className={`w-36 px-3 py-2 text-end bg-white border rounded-lg text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent/15 ${tooMuch ? "border-rose-400 text-rose-600" : "border-slate-200 text-slate-800"}`}
+                                onFocus={(e) => e.target.select()}
+                                className={`${input} pl-12 text-right font-semibold ${tooMuch ? "border-rose-400 text-rose-700" : ""}`}
+                                aria-label={`Amount for ${inv.invoiceNumber}`}
                               />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 text-sm pt-2 border-t border-slate-100">
-                <span className="text-slate-500 font-medium">
-                  Applied: <span className="font-bold text-slate-800">{currencySymbol} {allocatedTotal.toFixed(dp)}</span>
-                </span>
-                <span className={`font-medium ${overAllocated ? "text-rose-600" : "text-slate-500"}`}>
-                  {overAllocated ? "Over-applied by " : "Kept as advance: "}
-                  <span className="font-bold">{currencySymbol} {Math.abs(numericAmount - allocatedTotal).toFixed(dp)}</span>
-                </span>
-              </div>
-              {hasOmanReg && numericAmount > 0 && !overAllocated && (
-                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm">
-                  <span className="text-slate-500 font-medium">Receipts to be created: </span>
-                  {receiptPreview.uae > 0.0005 && (
-                    <span className="font-bold text-slate-800">UAE-registered {currencySymbol} {receiptPreview.uae.toFixed(dp)}</span>
-                  )}
-                  {receiptPreview.uae > 0.0005 && receiptPreview.oman > 0.0005 && <span className="text-slate-400"> · </span>}
-                  {receiptPreview.oman > 0.0005 && (
-                    <span className="font-bold text-amber-800">Oman-registered {currencySymbol} {receiptPreview.oman.toFixed(dp)}</span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Right Summary Sidebar (1/3) */}
-        <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 sticky top-6">
-            <h3 className="text-base font-extrabold text-[#1B2A4A] border-b border-slate-100 pb-4">
-              Receipt Summary
-            </h3>
-
-            {selectedCustomer ? (
-              <div className="space-y-4 text-sm">
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-slate-500 font-medium">Customer:</span>
-                  <span className="font-bold text-slate-800 text-right truncate max-w-[160px]">{selectedCustomer.company}</span>
-                </div>
-                
-                <div className="flex justify-between items-center py-1">
-                  <span className="text-slate-500 font-medium">Current Credit:</span>
-                  <span className="font-bold text-rose-600">
-                    {currencySymbol} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp })}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-t border-dashed border-slate-200 pt-3">
-                  <span className="text-slate-500 font-medium">Amount Received:</span>
-                  <span className="font-black text-emerald-600 text-base">
-                    - {currencySymbol} {(parseFloat(amountPaid) || 0).toLocaleString(undefined, { minimumFractionDigits: dp })}
-                  </span>
-                </div>
-
-                {chequesPending > 0 && (
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-slate-500 font-medium">Cheques pending:</span>
-                    <span className="font-bold text-amber-600">
-                      {currencySymbol} {chequesPending.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
-                    </span>
-                  </div>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
+              </StepPanel>
+            )}
 
-                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100 mt-4 space-y-1">
-                  <span className="block text-[11px] font-bold text-emerald-700 uppercase tracking-wider">
-                    {paymentMethod === "Cheque" ? "Balance once the cheque clears" : "New Outstanding Balance"}
-                  </span>
-                  <span className="text-lg font-black text-emerald-800">
-                    {currencySymbol} {Math.max(0, (selectedCustomer.pendingBillwiseAmount || 0) - (parseFloat(amountPaid) || 0)).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
-                  </span>
-                  {paymentMethod === "Cheque" && (
-                    <span className="block text-[11px] font-semibold text-emerald-700">
-                      Until then the balance stays at {currencySymbol} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}.
-                    </span>
+            {/* STEP 4: REVIEW */}
+            {step === 3 && (
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
+                <div className="space-y-5 min-w-0">
+                  <ReviewSection icon={User} title="Received from" onEdit={() => goTo(0)}>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={selectedCustomer?.company || customerSearchQuery} size="lg" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">{selectedCustomer?.company || customerSearchQuery}</div>
+                        {(selectedCustomer?.name || selectedCustomer?.address) && (
+                          <div className="text-sm text-slate-500 truncate">{[selectedCustomer?.name, selectedCustomer?.address].filter(Boolean).join(" · ")}</div>
+                        )}
+                      </div>
+                    </div>
+                  </ReviewSection>
+
+                  <ReviewSection icon={Wallet} title="Payment" onEdit={() => goTo(1)} delay={60}>
+                    <div className="flex items-center gap-3">
+                      <span className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 grid place-items-center">
+                        {paymentMethod === "Bank Transfer" ? <Landmark className="w-5 h-5" /> : paymentMethod === "Cheque" ? <FileText className="w-5 h-5" /> : paymentMethod === "Other" ? <CreditCard className="w-5 h-5" /> : <Wallet className="w-5 h-5" />}
+                      </span>
+                      <div>
+                        <div className="font-semibold text-slate-900">
+                          {methodLabel(paymentMethod)} · {fmtDate(paymentDate)}
+                        </div>
+                        {paymentMethod === "Cheque" && (
+                          <div className="text-sm text-slate-500">
+                            Cheque {chequeNumber} dated {fmtDate(chequeDate)}
+                            {bankName ? ` · ${bankName}` : ""}
+                          </div>
+                        )}
+                        {paymentMethod !== "Cheque" && referenceNo && (
+                          <div className="text-sm text-slate-500">
+                            Ref. {referenceNo}
+                            {paymentMethod === "Bank Transfer" && bankName ? ` · ${bankName}` : ""}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {notes && <p className="text-sm text-slate-600 mt-3 bg-slate-50 rounded-lg px-3 py-2">{notes}</p>}
+                  </ReviewSection>
+
+                  <ReviewSection icon={FileText} title="Pays" onEdit={() => goTo(2)} delay={120}>
+                    {appliedRows.length === 0 ? (
+                      <p className="text-sm text-slate-700">No invoices. Kept as an advance.</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {appliedRows.map(({ inv, amt }) => {
+                          const full = amt + 0.0005 >= inv.availableToAllocate;
+                          return (
+                            <li key={inv.invoiceId} className="py-2.5 flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {full ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <Clock className="w-4 h-4 text-amber-600 shrink-0" />}
+                                <span className="text-sm text-slate-900">{inv.invoiceNumber}</span>
+                                <span className="text-xs text-slate-500">{full ? "paid in full" : `${money(inv.availableToAllocate - amt)} left`}</span>
+                              </div>
+                              <span className="text-sm font-semibold text-slate-900">{money(amt)}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    {unallocated > 0.0005 && appliedRows.length > 0 && <p className="text-sm text-slate-500 mt-2">{money(unallocated)} kept as advance.</p>}
+                    {hasOmanReg && receiptPreview.uae > 0.0005 && receiptPreview.oman > 0.0005 && (
+                      <p className="mt-3 flex items-start gap-2 text-xs text-amber-900 bg-amber-50 rounded-lg px-3 py-2">
+                        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        Saves as two receipts: UAE-registered {money(receiptPreview.uae)} and Oman-registered {money(receiptPreview.oman)}.
+                      </p>
+                    )}
+                  </ReviewSection>
+                </div>
+
+                <div className="space-y-5 lg:sticky lg:top-6">
+                  <section className="wiz-in rounded-2xl overflow-hidden shadow-lg shadow-primary/10" style={{ animationDelay: "80ms" }}>
+                    <div className="bg-gradient-to-br from-primary to-accent text-white px-6 py-6">
+                      <div className="text-xs uppercase tracking-wide text-white/70">Amount received</div>
+                      <div className="text-3xl font-semibold mt-1">{money(numericAmount)}</div>
+                      <div className="text-sm text-white/80 mt-1">
+                        {methodLabel(paymentMethod)} · {appliedRows.length} {appliedRows.length === 1 ? "invoice" : "invoices"}
+                      </div>
+                    </div>
+                    <div className="bg-white border-x border-b border-slate-200 rounded-b-2xl px-6 py-3 text-xs text-slate-400 flex items-center gap-1.5">
+                      <Hash className="w-3.5 h-3.5" /> Receipt number is given on save
+                    </div>
+                  </section>
+
+                  {selectedCustomerId && (
+                    <AccountSnapshot customerId={selectedCustomerId} change={{ kind: "receipt", amount: numericAmount, cheque: paymentMethod === "Cheque" }} />
                   )}
                 </div>
-              </div>
-            ) : (
-              <div className="py-8 text-center text-slate-400 text-sm font-medium">
-                Select a customer to calculate new balance after payback.
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={isSaving || !selectedCustomerId || !amountPaid}
-              className="w-full py-4 bg-[#1B2A4A] hover:bg-[#15223c] text-white font-extrabold rounded-xl transition shadow-lg shadow-[#1B2A4A]/10 disabled:opacity-50 cursor-pointer text-sm"
-            >
-              {isSaving ? "Saving..." : paymentMethod === "Cheque" ? "Save Receipt (Cheque Pending)" : "Save Receipt & Deduct Credit"}
-            </button>
-          </div>
-        </div>
+            <WizardBar
+              step={step}
+              onBack={() => goTo(step - 1)}
+              cancelHref="/receipts"
+              summaryLabel={step >= 1 && numericAmount > 0 ? methodLabel(paymentMethod) : undefined}
+              summaryValue={step >= 1 && numericAmount > 0 ? money(numericAmount) : undefined}
+              next={
+                step < 3
+                  ? { label: step === 2 ? "Review" : "Next", disabled: step >= maxStep, onClick: () => goTo(step + 1), hint: stepHint }
+                  : { label: isSaving ? "Saving…" : "Save receipt", disabled: isSaving || maxStep < 3, submit: true, tone: "accent" }
+              }
+            />
+          </>
+        )}
       </form>
-      </div>
 
       {/* Add Customer Modal */}
       {isCustModalOpen && (
