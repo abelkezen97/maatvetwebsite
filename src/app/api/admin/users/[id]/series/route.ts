@@ -49,7 +49,8 @@ export async function GET(
 /**
  * PUT /api/admin/users/:id/series   (Admin of the user's country)
  * Body: { series: [{ docType, billingSeries, prefix, nextNumber, padLength }] }
- * A slot sent with an empty prefix is removed (no series set up).
+ * A slot sent with an empty prefix is removed (no series set up), unless it
+ * has numbersOnly: true, which is a series of plain numbers (e.g. 0237).
  */
 export async function PUT(
   request: Request,
@@ -76,12 +77,13 @@ export async function PUT(
     for (const slot of slots) {
       const row = incoming.find((s) => s?.docType === slot.docType && s?.billingSeries === slot.billingSeries);
       if (!row) continue;
-      const prefix = String(row.prefix || "").trim();
-      if (!prefix) {
+      const numbersOnly = row.numbersOnly === true;
+      const prefix = numbersOnly ? "" : String(row.prefix || "").trim();
+      if (!prefix && !numbersOnly) {
         removals.push(slot);
         continue;
       }
-      if (!PREFIX_RE.test(prefix)) {
+      if (prefix && !PREFIX_RE.test(prefix)) {
         return NextResponse.json(
           { error: `Prefix "${prefix}": use up to 12 letters, digits, "-" or "/", starting with a letter or digit.` },
           { status: 400 }
@@ -90,7 +92,7 @@ export async function PUT(
       const nextNumber = Math.floor(Number(row.nextNumber));
       const padLength = Math.floor(Number(row.padLength ?? 4));
       if (!Number.isFinite(nextNumber) || nextNumber < 1) {
-        return NextResponse.json({ error: `Next number for ${prefix} must be 1 or more.` }, { status: 400 });
+        return NextResponse.json({ error: `Next number for ${prefix || "the numbers-only series"} must be 1 or more.` }, { status: 400 });
       }
       if (!Number.isFinite(padLength) || padLength < 1 || padLength > 8) {
         return NextResponse.json({ error: "Digits must be between 1 and 8." }, { status: 400 });
@@ -113,7 +115,11 @@ export async function PUT(
       const key = `${u.doc_type}:${u.prefix.toUpperCase()}`;
       if (seen.has(key)) {
         return NextResponse.json(
-          { error: `Prefix "${u.prefix}" is used twice for ${u.doc_type}s. Each series needs its own prefix.` },
+          {
+            error: u.prefix
+              ? `Prefix "${u.prefix}" is used twice for ${u.doc_type}s. Each series needs its own prefix.`
+              : `Only one ${u.doc_type} series can be numbers-only; give the other one a prefix.`,
+          },
           { status: 400 }
         );
       }

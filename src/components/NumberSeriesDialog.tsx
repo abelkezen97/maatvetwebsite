@@ -11,6 +11,8 @@ interface Slot {
 
 interface Row extends Slot {
   prefix: string;
+  /** A series of plain numbers (e.g. 0237) with no prefix. */
+  numbersOnly: boolean;
   nextNumber: string;
   padLength: string;
 }
@@ -25,11 +27,14 @@ const TABS: Array<{ key: SeriesDocType; label: string; icon: React.ElementType }
   { key: "receipt", label: "Receipts", icon: ReceiptIcon },
 ];
 
-function preview(prefix: string, next: string, pad: string): string {
+function preview(prefix: string, next: string, pad: string, numbersOnly: boolean): string {
   const n = Math.max(0, Math.floor(Number(next) || 0));
   const p = Math.min(8, Math.max(1, Math.floor(Number(pad) || 4)));
+  if (numbersOnly) return String(n).padStart(p, "0");
   return prefix.trim() ? `${prefix.trim()}${String(n).padStart(p, "0")}` : "";
 }
+
+const isSet = (r: Row) => r.numbersOnly || !!r.prefix.trim();
 
 const inputClass =
   "w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-accent/15";
@@ -63,6 +68,7 @@ export function NumberSeriesDialog({
           return {
             ...s,
             prefix: found?.prefix || "",
+            numbersOnly: !!found && !String(found.prefix || "").trim(),
             nextNumber: found ? String(found.nextNumber) : "1",
             padLength: found ? String(found.padLength) : "4",
           };
@@ -78,7 +84,7 @@ export function NumberSeriesDialog({
   const tabDirty = (docType: SeriesDocType) =>
     rows.some((r, i) => r.docType === docType && JSON.stringify(r) !== JSON.stringify(saved[i]));
   const tabCount = (docType: SeriesDocType) =>
-    rows.filter((r) => r.docType === docType && r.prefix.trim()).length;
+    rows.filter((r) => r.docType === docType && isSet(r)).length;
 
   const update = (i: number, patch: Partial<Row>) => {
     setJustSaved(false);
@@ -97,7 +103,8 @@ export function NumberSeriesDialog({
           series: rows.map((r) => ({
             docType: r.docType,
             billingSeries: r.billingSeries,
-            prefix: r.prefix.trim(),
+            prefix: r.numbersOnly ? "" : r.prefix.trim(),
+            numbersOnly: r.numbersOnly,
             nextNumber: Number(r.nextNumber),
             padLength: Number(r.padLength),
           })),
@@ -190,7 +197,7 @@ export function NumberSeriesDialog({
               rows.map((r, i) => {
                 if (r.docType !== tab) return null;
                 const kind = KIND_LABEL[r.billingSeries as BillingSeries];
-                const next = preview(r.prefix, r.nextNumber, r.padLength);
+                const next = preview(r.prefix, r.nextNumber, r.padLength, r.numbersOnly);
                 return (
                   <div key={`${r.docType}:${r.billingSeries}`} className="rounded-xl border border-slate-200 p-4">
                     <div className="flex items-center justify-between gap-3 mb-3">
@@ -211,11 +218,12 @@ export function NumberSeriesDialog({
                         <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Prefix</span>
                         <input
                           type="text"
-                          value={r.prefix}
+                          value={r.numbersOnly ? "" : r.prefix}
                           maxLength={12}
-                          placeholder={r.billingSeries === "oman_reg" ? "e.g. AM-" : "e.g. A-"}
+                          disabled={r.numbersOnly}
+                          placeholder={r.numbersOnly ? "None" : r.billingSeries === "oman_reg" ? "e.g. AM-" : "e.g. A-"}
                           onChange={(e) => update(i, { prefix: e.target.value })}
-                          className={inputClass}
+                          className={`${inputClass} disabled:bg-slate-50 disabled:text-slate-400`}
                         />
                       </label>
                       <label className="block">
@@ -242,6 +250,14 @@ export function NumberSeriesDialog({
                         />
                       </label>
                     </div>
+                    <label className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={r.numbersOnly}
+                        onChange={(e) => update(i, { numbersOnly: e.target.checked, prefix: e.target.checked ? "" : r.prefix })}
+                      />
+                      Numbers only, no prefix (e.g. 0237)
+                    </label>
                   </div>
                 );
               })
@@ -249,7 +265,7 @@ export function NumberSeriesDialog({
 
             {!loading && (
               <p className="text-[11px] font-semibold text-slate-400 leading-relaxed">
-                Numbers count up by themselves and skip any that already exist. Leave a prefix empty if that series isn't used.
+                Numbers count up by themselves and skip any that already exist. Leave the prefix empty (and "Numbers only" unticked) if that series isn't used.
               </p>
             )}
           </div>
