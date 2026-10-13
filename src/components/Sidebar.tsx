@@ -18,7 +18,8 @@ import {
   Wallet,
   CreditCard,
   Percent,
-  Globe2
+  Globe2,
+  BarChart3
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/context/LanguageContext";
@@ -45,6 +46,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       title: t("navMain"),
       items: [
         { name: t("dashboard"), href: "/dashboard", icon: LayoutDashboard, visible: permissions ? permissions.canViewDashboard : true },
+        { name: "Reports", href: "/reports", icon: BarChart3, visible: !!profile },
       ]
     },
     {
