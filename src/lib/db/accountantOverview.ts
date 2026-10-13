@@ -72,11 +72,15 @@ export interface AccountantOverview {
   country: UserCountry;
   today: string;
   monthStart: string;
-  sales: { today: number; month: number; lastMonth: number; monthInvoices: number };
+  /** month = 1st of this month to today; samePeriodLastMonth = the same days of last month (fair comparison). */
+  sales: { today: number; month: number; lastMonth: number; samePeriodLastMonth: number; monthInvoices: number };
   collections: { today: number; month: number; byMethod: { method: string; amount: number; count: number }[] };
   receivables: {
     total: number;
     customersOwing: number;
+    /** Customers whose payments exceed their invoices (shown separately; `total` is the net balance). */
+    customersInCredit: number;
+    creditAmount: number;
     overdue: number;
     overdueCustomers: number;
     ageing: AgeingBucket[];
@@ -262,7 +266,16 @@ export async function buildAccountantOverview(
   }
 
   const custBalances = (custBalRes.data || []).map((c: any) => num(c.balance));
-  const receivablesTotal = custBalances.filter((b) => b > 0).reduce((s, b) => s + b, 0);
+  // Net, like the customer statements and the previous system: credits reduce the total.
+  const receivablesTotal = custBalances.reduce((s, b) => s + b, 0);
+  const credits = custBalances.filter((b) => b < 0);
+
+  // Same days of last month (1st to today's day, capped at last month's length).
+  const sameDayLastMonth = (() => {
+    const day = Number(today.slice(8, 10));
+    const lastDay = new Date(Date.UTC(Number(lastMonthStart.slice(0, 4)), Number(lastMonthStart.slice(5, 7)), 0)).getUTCDate();
+    return `${lastMonthStart.slice(0, 8)}${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+  })();
 
   // Cash in hand per person
   const summaries = await getMultiSalespersonLedgerSummaries(client, role, country);
@@ -324,6 +337,7 @@ export async function buildAccountantOverview(
       today: round(sumInv(today, addDays(today, 1))),
       month: round(sumInv(monthStart)),
       lastMonth: round(sumInv(lastMonthStart, monthStart)),
+      samePeriodLastMonth: round(sumInv(lastMonthStart, addDays(sameDayLastMonth, 1))),
       monthInvoices,
     },
     collections: {
@@ -336,6 +350,8 @@ export async function buildAccountantOverview(
     receivables: {
       total: round(receivablesTotal),
       customersOwing: custBalances.filter((b) => b > 0).length,
+      customersInCredit: credits.length,
+      creditAmount: round(-credits.reduce((s, b) => s + b, 0)),
       overdue: round(overdue),
       overdueCustomers: Array.from(byCustomer.values()).filter((c) => c.overdue > 0).length,
       ageing: ageing.map((a) => ({ ...a, amount: round(a.amount) })),
