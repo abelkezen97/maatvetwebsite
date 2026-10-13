@@ -355,7 +355,7 @@ export interface CollectionLedgerEntry {
   id: string;
   date: string;
   timestamp: string;
-  type: "OPENING_BALANCE" | "CASH_RECEIPT" | "CASH_EXPENSE" | "CASH_HANDOVER" | "CASH_CARRY_FORWARD";
+  type: "OPENING_BALANCE" | "CASH_RECEIPT" | "CASH_RECEIVED" | "CASH_EXPENSE" | "CASH_HANDOVER" | "CASH_CARRY_FORWARD";
   description: string;
   referenceNo: string;
   paymentMethod: string;
@@ -371,6 +371,8 @@ export interface CollectionLedgerSummary {
   country: UserCountry;
   openingCash: number;
   totalCashCollected: number;
+  /** Cash handed over to this person by someone else (e.g. a salesman's handover to the admin). */
+  totalCashReceived: number;
   totalCashExpenses: number;
   totalCashHandedOver: number;
   currentCashInHand: number;
