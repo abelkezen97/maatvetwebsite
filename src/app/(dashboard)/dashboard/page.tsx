@@ -456,10 +456,10 @@ export default function DashboardPage() {
     <div className="w-full">
       {/* Dashboard Full-Width Page Header */}
       <PageHeader 
-        title={t("dashboardTitle")} 
+        title={isAccountantView ? "Accounts Dashboard" : t("dashboardTitle")} 
         description={
-          isAdminOrAccountant
-            ? t("dashboardDesc")
+          isAccountantView
+            ? "Receivables, cash in hand and approvals at a glance."
             : t("dashboardDesc")
         }
         action={
@@ -482,7 +482,14 @@ export default function DashboardPage() {
 
       {/* Main Dashboard Content Area */}
       <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
-        {isAccountantView && profile ? (
+        {!profile ? (
+          // Until the profile is known, don't show the sales overview (it would flash for the accountant).
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+            ))}
+          </div>
+        ) : isAccountantView ? (
           <AccountantDashboard country={profile.country} name={profile.full_name || "Accountant"} />
         ) : (
         <>
