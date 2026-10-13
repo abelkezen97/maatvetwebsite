@@ -61,6 +61,13 @@ function NewInvoiceForm() {
   const [activeProduct, setActiveProduct] = useState(0);
   const [activeCustomer, setActiveCustomer] = useState(0);
   const [showNotes, setShowNotes] = useState(false);
+  // Wizard: 0 customer, 1 products, 2 payment, 3 review.
+  const [step, setStep] = useState(editInvoiceNumber ? 3 : fromQuoteNumber ? 1 : 0);
+  // Payment details (cheque / bank transfer paid at invoice time).
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [chequeDate, setChequeDate] = useState(() => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date()));
+  const [payBank, setPayBank] = useState("");
+  const [transferRef, setTransferRef] = useState("");
 
   // New Customer inline modal states
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
@@ -224,12 +231,14 @@ function NewInvoiceForm() {
       const existing = invoicesList.find((i) => i.invoiceNumber === editInvoiceNumber || i.id === editInvoiceNumber);
       if (existing && existing.items && existing.items.length > 0) {
         populateFormWithInvoice(existing);
+        setStep(3);
       } else {
         fetch(`/api/invoices/${encodeURIComponent(editInvoiceNumber)}`)
           .then((res) => res.json())
           .then((data) => {
             if (data && !data.error) {
               populateFormWithInvoice(data);
+              setStep(3);
             }
           })
           .catch((err) => console.error("Failed to fetch invoice for editing:", err));
@@ -256,6 +265,7 @@ function NewInvoiceForm() {
           setCustomerSearchQuery(quote.companyName);
         }
 
+        setStep(1);
         setInvoiceItems(quote.items.map(item => {
           const unitPrice = Number(item.price) || 0;
           const discPerUnit = Number(item.discount) || 0;
@@ -463,11 +473,20 @@ function NewInvoiceForm() {
     setInvoiceItems(updated);
   };
 
+  const topRef = useRef<HTMLDivElement>(null);
+  const goTo = (s: number) => {
+    setStep(s);
+    setTimeout(() => {
+      topRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      if (s === 1) productSearchRef.current?.focus({ preventScroll: true });
+    }, 30);
+  };
+
   const pickCustomer = (c: Customer) => {
     setSelectedCustomerId(c.id);
     setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
     setShowCustomerDropdown(false);
-    setTimeout(() => productSearchRef.current?.focus(), 30);
+    goTo(1);
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -580,6 +599,10 @@ function NewInvoiceForm() {
       creditDays: newInvoice.creditDays,
       notes: newInvoice.notes,
       items: invoiceItems,
+      chequeNumber: status === "Paid" && paymentMethod === "Cheque" ? chequeNumber.trim() : undefined,
+      chequeDate: status === "Paid" && paymentMethod === "Cheque" ? chequeDate : undefined,
+      bankName: status === "Paid" && (paymentMethod === "Cheque" || paymentMethod === "Bank Transfer") ? payBank.trim() || undefined : undefined,
+      referenceNo: status === "Paid" && paymentMethod === "Bank Transfer" ? transferRef.trim() : undefined,
     };
 
     try {
@@ -643,6 +666,7 @@ function NewInvoiceForm() {
         setSelectedCustomerId(added.id);
         setCustomerSearchQuery(`${added.company} ${added.name ? `(${added.name})` : ""}`);
         setFormCustSuccess(true);
+        goTo(1);
         setTimeout(() => {
           setIsCustModalOpen(false);
           setFormCustSuccess(false);
@@ -677,24 +701,48 @@ function NewInvoiceForm() {
   };
   const unitsTotal = invoiceItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
   const owed = Math.max(0, selectedCustomer?.pendingBillwiseAmount || 0);
+  const cashOnly = Boolean(selectedCustomer?.cashOnly);
   const creditDaysNum = typeof creditDays === "number" ? creditDays : parseInt(String(creditDays), 10) || 0;
+  const fmtDate = (iso: string) =>
+    iso ? new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—";
   const dueDateLabel = (() => {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
     const d = new Date(`${today}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + creditDaysNum);
-    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    return fmtDate(d.toISOString().slice(0, 10));
   })();
   const canEditNumber = profile?.role !== "salesperson" && !editInvoiceNumber;
-  const saveBlocker = !selectedCustomerId ? "Choose a customer" : invoiceItems.length === 0 ? "Add at least one product" : null;
+  const askDetails = !editInvoiceNumber && status === "Paid";
+  const methodLabel = (m: string) => (m === "Bank Transfer" ? "Bank transfer" : m);
 
-  const chip = (on: boolean) =>
-    `px-3.5 py-2 min-h-[40px] rounded-lg text-sm font-semibold border transition cursor-pointer ${
-      on ? "bg-primary text-white border-primary" : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+  const paymentBlocker = (() => {
+    if (cashOnly && status === "Credit") return "This customer is cash only. Choose Paid now.";
+    if (cashOnly && status === "Paid" && paymentMethod === "Cheque") return "This customer is cash only. Cheques are not accepted.";
+    if (askDetails && paymentMethod === "Cheque" && (!chequeNumber.trim() || !chequeDate)) return "Enter the cheque number and date";
+    if (askDetails && paymentMethod === "Bank Transfer" && !transferRef.trim()) return "Enter the transfer reference";
+    return null;
+  })();
+  const maxStep = !selectedCustomerId ? 0 : invoiceItems.length === 0 ? 1 : paymentBlocker ? 2 : 3;
+  const STEPS = ["Customer", "Products", "Payment", "Review"];
+
+  const chip = (on: boolean, disabled = false) =>
+    `px-4 py-2.5 min-h-[44px] rounded-lg text-sm font-semibold border transition ${
+      disabled
+        ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
+        : on
+          ? "bg-primary text-white border-primary cursor-pointer"
+          : "bg-white text-slate-700 border-slate-200 hover:border-slate-400 cursor-pointer"
     }`;
-  const card = "bg-white border border-slate-200 rounded-xl p-4 md:p-5";
-  const heading = "text-sm font-semibold text-slate-900";
+  const card = "bg-white border border-slate-200 rounded-xl p-4 md:p-6";
+  const title = "text-lg font-semibold text-slate-900";
+  const label = "block text-sm font-medium text-slate-700 mb-1.5";
   const input =
     "w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15";
+  const editLink = (s: number) => (
+    <button type="button" onClick={() => goTo(s)} className="text-sm font-semibold text-accent hover:underline">
+      Edit
+    </button>
+  );
 
   return (
     <div className="w-full">
@@ -706,9 +754,51 @@ function NewInvoiceForm() {
         ]}
       />
 
-      <form onSubmit={handleSubmit} className="px-4 md:px-6 pt-5 max-w-4xl mx-auto space-y-4 text-start">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (step < 3) {
+            if (step < maxStep) goTo(step + 1);
+          } else {
+            handleSubmit();
+          }
+        }}
+        className="px-4 md:px-6 pt-5 max-w-3xl mx-auto text-start"
+      >
+        <div ref={topRef} className="scroll-mt-24" />
+
+        {/* Steps */}
+        <ol className="flex items-center gap-1 sm:gap-2 mb-5" aria-label="Steps">
+          {STEPS.map((s, i) => {
+            const done = i < step;
+            const current = i === step;
+            const reachable = i <= maxStep;
+            return (
+              <li key={s} className="flex items-center gap-1 sm:gap-2 flex-1 last:flex-none">
+                <button
+                  type="button"
+                  disabled={!reachable}
+                  onClick={() => reachable && goTo(i)}
+                  aria-current={current ? "step" : undefined}
+                  className={`flex items-center gap-2 text-sm whitespace-nowrap ${reachable ? "cursor-pointer" : "cursor-default"}`}
+                >
+                  <span
+                    className={`w-7 h-7 rounded-full grid place-items-center text-xs font-semibold border ${
+                      current ? "bg-primary text-white border-primary" : done ? "bg-accent text-white border-accent" : "bg-white text-slate-400 border-slate-200"
+                    }`}
+                  >
+                    {done ? <CheckCircle className="w-4 h-4" /> : i + 1}
+                  </span>
+                  <span className={`hidden sm:inline ${current ? "font-semibold text-slate-900" : done ? "text-slate-700" : "text-slate-400"}`}>{s}</span>
+                </button>
+                {i < STEPS.length - 1 && <span className={`h-px flex-1 ${i < step ? "bg-accent" : "bg-slate-200"}`} />}
+              </li>
+            );
+          })}
+        </ol>
+
         {errorMessage && (
-          <div className="flex items-start justify-between gap-3 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-800">
+          <div className="flex items-start justify-between gap-3 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 mb-4 text-sm text-rose-800">
             <span>{errorMessage}</span>
             <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800" aria-label="Dismiss">
               <X className="w-4 h-4" />
@@ -716,97 +806,28 @@ function NewInvoiceForm() {
           </div>
         )}
 
-        {/* Invoice number */}
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <span>Invoice no.</span>
-          {canEditNumber ? (
-            <input
-              value={invoiceNumber}
-              onChange={(e) => {
-                setInvoiceNumber(e.target.value);
-                setIsCustomInvoiceNumber(true);
-              }}
-              className="w-32 px-2 py-1 border border-transparent hover:border-slate-200 focus:border-accent rounded-md font-semibold text-slate-900 bg-transparent focus:bg-white focus:outline-none"
-              title="Click to change the number"
-            />
-          ) : (
-            <span className="font-semibold text-slate-900">{invoiceNumber || "—"}</span>
-          )}
-          {isCustomInvoiceNumber && canEditNumber && (
-            <button
-              type="button"
-              onClick={() => {
-                setIsCustomInvoiceNumber(false);
-                setInvoiceNumber(computeNextInvoiceNumber(invoicesList));
-              }}
-              className="text-xs font-semibold text-accent hover:underline"
-            >
-              Use next number
-            </button>
-          )}
-          {!editInvoiceNumber && <span className="text-xs text-slate-400">· final number is given on save</span>}
-        </div>
-
-        {/* Customer */}
-        <section className={card}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className={heading}>Customer</h2>
-            {!selectedCustomer && (
-              <button
-                type="button"
-                onClick={() => setIsCustModalOpen(true)}
-                className="text-sm font-semibold text-accent hover:underline flex items-center gap-1"
-              >
+        {/* STEP 1: CUSTOMER */}
+        {step === 0 && (
+          <section className={card}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={title}>Who is this invoice for?</h2>
+              <button type="button" onClick={() => setIsCustModalOpen(true)} className="text-sm font-semibold text-accent hover:underline flex items-center gap-1">
                 <Plus className="w-4 h-4" /> New customer
               </button>
-            )}
-          </div>
-
-          {selectedCustomer ? (
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-semibold text-slate-900 truncate">{selectedCustomer.company}</div>
-                <div className="text-sm text-slate-500 truncate">
-                  {[selectedCustomer.name, selectedCustomer.address].filter(Boolean).join(" · ") || "—"}
-                </div>
-              </div>
-              <div className="flex items-center gap-4 shrink-0">
-                <div className="text-right">
-                  <div className="text-xs text-slate-500">Owes</div>
-                  <div className={`text-sm font-semibold ${owed > 0 ? "text-rose-700" : "text-slate-700"}`}>{money(owed)}</div>
-                </div>
-                {!editInvoiceNumber && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCustomerId("");
-                      setCustomerSearchQuery("");
-                      setShowCustomerDropdown(true);
-                    }}
-                    className="text-sm font-semibold text-accent hover:underline"
-                  >
-                    Change
-                  </button>
-                )}
-              </div>
             </div>
-          ) : (
-            <div className="relative">
+            <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
               <input
                 type="text"
-                autoFocus={!editInvoiceNumber && !fromQuoteNumber}
+                autoFocus
                 placeholder="Search clinic, farm or doctor"
-                value={customerSearchQuery}
+                value={selectedCustomer && customerSearchQuery.startsWith(selectedCustomer.company) ? "" : customerSearchQuery}
                 onChange={(e) => {
                   setCustomerSearchQuery(e.target.value);
-                  setShowCustomerDropdown(true);
                   setActiveCustomer(0);
                 }}
-                onFocus={() => setShowCustomerDropdown(true)}
-                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 150)}
                 onKeyDown={(e) => {
-                  const list = filteredCustomers.slice(0, 50);
+                  const list = filteredCustomers.slice(0, 40);
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
                     setActiveCustomer((i) => Math.min(i + 1, list.length - 1));
@@ -820,138 +841,130 @@ function NewInvoiceForm() {
                 }}
                 className={`${input} pl-9`}
               />
-              {showCustomerDropdown && (
+            </div>
+            <div className="border border-slate-100 rounded-lg divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
+              {filteredCustomers.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-slate-500">
+                  No match.{" "}
+                  <button type="button" onClick={() => setIsCustModalOpen(true)} className="font-semibold text-accent hover:underline">
+                    Add a new customer
+                  </button>
+                </div>
+              ) : (
+                filteredCustomers.slice(0, 40).map((c, i) => {
+                  const chosen = c.id === selectedCustomerId;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => pickCustomer(c)}
+                      onMouseEnter={() => setActiveCustomer(i)}
+                      className={`w-full text-left px-3 py-3 flex items-center justify-between gap-3 ${
+                        chosen ? "bg-accent-light" : i === activeCustomer ? "bg-slate-50" : ""
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-slate-900 truncate">{c.company}</div>
+                        {(c.name || c.address) && <div className="text-xs text-slate-500 truncate">{[c.name, c.address].filter(Boolean).join(" · ")}</div>}
+                      </div>
+                      <div className="text-right shrink-0">
+                        {(c.pendingBillwiseAmount || 0) > 0 && <div className="text-xs text-rose-700">owes {money(c.pendingBillwiseAmount || 0)}</div>}
+                        {c.cashOnly && <div className="text-xs text-amber-700">cash only</div>}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* STEP 2: PRODUCTS */}
+        {step === 1 && (
+          <section className={card}>
+            <div className="flex items-baseline justify-between gap-3 mb-1">
+              <h2 className={title}>What are they buying?</h2>
+              {selectedCustomer && <span className="text-sm text-slate-500 truncate">for {selectedCustomer.company}</span>}
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Search a product and press Enter. Leave Rate empty for the list price.</p>
+
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+              <input
+                ref={productSearchRef}
+                type="text"
+                placeholder="Search product name or code"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowProductDropdown(true);
+                  setActiveProduct(0);
+                }}
+                onFocus={() => setShowProductDropdown(true)}
+                onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
+                onKeyDown={(e) => {
+                  const list = filteredProducts.slice(0, 30);
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setActiveProduct((i) => Math.min(i + 1, list.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setActiveProduct((i) => Math.max(i - 1, 0));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    const p = list[activeProduct];
+                    if (p && p.isAvailable !== false) handleAddProduct(p);
+                  } else if (e.key === "Escape") {
+                    setShowProductDropdown(false);
+                  }
+                }}
+                className={`${input} pl-9`}
+              />
+              {showProductDropdown && searchQuery && (
                 <div className="absolute left-0 right-0 z-30 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
-                  {filteredCustomers.length === 0 ? (
-                    <div className="px-3 py-3 text-sm text-slate-500">
-                      No match.{" "}
-                      <button type="button" onMouseDown={() => setIsCustModalOpen(true)} className="font-semibold text-accent hover:underline">
-                        Add a new customer
-                      </button>
-                    </div>
+                  {filteredProducts.length === 0 ? (
+                    <div className="px-3 py-3 text-sm text-slate-500">No product matches “{searchQuery}”.</div>
                   ) : (
-                    filteredCustomers.slice(0, 50).map((c, i) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => pickCustomer(c)}
-                        onMouseEnter={() => setActiveCustomer(i)}
-                        className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 ${i === activeCustomer ? "bg-slate-50" : ""}`}
-                      >
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-slate-900 truncate">{c.company}</div>
-                          <div className="text-xs text-slate-500 truncate">{[c.name, c.address].filter(Boolean).join(" · ")}</div>
-                        </div>
-                        {(c.pendingBillwiseAmount || 0) > 0 && (
-                          <span className="text-xs text-rose-700 shrink-0">owes {money(c.pendingBillwiseAmount || 0)}</span>
-                        )}
-                      </button>
-                    ))
+                    filteredProducts.slice(0, 30).map((p, i) => {
+                      const off = p.isAvailable === false;
+                      const inList = invoiceItems.find((it) => it.productId === p.id);
+                      const stock = stockFor(p.id);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          disabled={off}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => !off && handleAddProduct(p)}
+                          onMouseEnter={() => setActiveProduct(i)}
+                          className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 ${
+                            off ? "opacity-50 cursor-not-allowed" : i === activeProduct ? "bg-slate-50" : ""
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
+                            <div className={`text-xs ${stock <= 0 ? "text-rose-700" : "text-slate-500"}`}>
+                              {off ? "Not available" : `${stock} in stock`}
+                              {inList ? ` · on this invoice (${inList.quantity})` : ""}
+                            </div>
+                          </div>
+                          <span className="text-sm text-slate-700 shrink-0">{money(p.price)}</span>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               )}
             </div>
-          )}
-        </section>
 
-        {/* Products */}
-        <section className={card}>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className={heading}>Products</h2>
-            {invoiceItems.length > 0 && (
-              <span className="text-xs text-slate-500">
-                {invoiceItems.length} {invoiceItems.length === 1 ? "line" : "lines"} · {unitsTotal} units
-              </span>
-            )}
-          </div>
-
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
-            <input
-              ref={productSearchRef}
-              type="text"
-              placeholder="Search product name or code, then press Enter"
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setShowProductDropdown(true);
-                setActiveProduct(0);
-              }}
-              onFocus={() => setShowProductDropdown(true)}
-              onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
-              onKeyDown={(e) => {
-                const list = filteredProducts.slice(0, 30);
-                if (e.key === "ArrowDown") {
-                  e.preventDefault();
-                  setActiveProduct((i) => Math.min(i + 1, list.length - 1));
-                } else if (e.key === "ArrowUp") {
-                  e.preventDefault();
-                  setActiveProduct((i) => Math.max(i - 1, 0));
-                } else if (e.key === "Enter") {
-                  e.preventDefault();
-                  const p = list[activeProduct];
-                  if (p && p.isAvailable !== false) handleAddProduct(p);
-                } else if (e.key === "Escape") {
-                  setShowProductDropdown(false);
-                }
-              }}
-              className={`${input} pl-9`}
-            />
-            {showProductDropdown && searchQuery && (
-              <div className="absolute left-0 right-0 z-30 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
-                {filteredProducts.length === 0 ? (
-                  <div className="px-3 py-3 text-sm text-slate-500">No product matches “{searchQuery}”.</div>
-                ) : (
-                  filteredProducts.slice(0, 30).map((p, i) => {
-                    const off = p.isAvailable === false;
-                    const inList = invoiceItems.find((it) => it.productId === p.id);
-                    const stock = stockFor(p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        disabled={off}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => !off && handleAddProduct(p)}
-                        onMouseEnter={() => setActiveProduct(i)}
-                        className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 ${
-                          off ? "opacity-50 cursor-not-allowed" : i === activeProduct ? "bg-slate-50" : ""
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
-                          <div className={`text-xs ${stock <= 0 ? "text-rose-700" : "text-slate-500"}`}>
-                            {off ? "Not available" : `${stock} in stock`}
-                            {inList ? ` · already added (${inList.quantity})` : ""}
-                          </div>
-                        </div>
-                        <span className="text-sm text-slate-700 shrink-0">{money(p.price)}</span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-
-          {invoiceItems.length === 0 ? (
-            <p className="text-sm text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-lg">
-              No products yet. Search above to add one.
-            </p>
-          ) : (
-            <div>
-              <div className="hidden md:grid grid-cols-[1fr_84px_120px_110px_32px] gap-3 px-1 pb-2 text-xs text-slate-500 border-b border-slate-100">
-                <span>Product</span>
-                <span className="text-center">Qty</span>
-                <span className="text-right">Rate</span>
-                <span className="text-right">Amount</span>
-                <span />
-              </div>
-              <ul className="divide-y divide-slate-100">
+            {invoiceItems.length === 0 ? (
+              <p className="text-sm text-slate-500 py-8 text-center border border-dashed border-slate-200 rounded-lg">No products added yet.</p>
+            ) : (
+              <ul className="divide-y divide-slate-100 border-t border-slate-100">
                 {invoiceItems.map((item, idx) => {
                   const stock = stockFor(String(item.productId));
-                  const short = (Number(item.quantity) || 0) > stock;
+                  const qty = Number(item.quantity) || 0;
+                  const short = qty > stock;
                   const list = item.listPrice ?? item.price;
                   const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
                   const off = Math.max(0, list - rateNum);
@@ -962,48 +975,56 @@ function NewInvoiceForm() {
                     }
                   };
                   return (
-                    <li key={item.productId} className="py-3 md:grid md:grid-cols-[1fr_84px_120px_110px_32px] md:gap-3 md:items-center">
-                      <div className="flex items-start justify-between gap-2 md:block min-w-0">
+                    <li key={item.productId} className="py-4">
+                      <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-medium text-slate-900">{item.productName}</div>
                           <div className="text-xs text-slate-500">
                             List {money(list)}
                             {off > 0 && rateNum > 0 && <span className="text-emerald-700"> · {money(off)} off each</span>}
                             {rateNum === 0 && <span className="text-emerald-700"> · free</span>}
-                          </div>
-                          <div className={`text-xs ${short ? "text-rose-700 font-medium" : "text-slate-400"}`}>
-                            {short ? `Only ${stock} in stock` : `${stock} in stock`}
+                            {" · "}
+                            <span className={short ? "text-rose-700 font-medium" : ""}>{short ? `only ${stock} in stock` : `${stock} in stock`}</span>
                           </div>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(idx)}
-                          className="md:hidden p-1.5 text-slate-400 hover:text-rose-600"
+                          className="p-1 text-slate-400 hover:text-rose-600"
                           aria-label={`Remove ${item.productName}`}
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 mt-2 md:contents">
+                      <div className="mt-2 flex flex-wrap items-end gap-3">
+                        <div>
+                          <span className="block text-xs text-slate-500 mb-1">Qty</span>
+                          <div className={`flex items-center border rounded-lg ${short ? "border-rose-300" : "border-slate-200"}`}>
+                            <button type="button" onClick={() => handleUpdateQuantity(idx, String(Math.max(0, qty - 1)))} className="w-9 h-10 grid place-items-center text-slate-600 hover:bg-slate-50 rounded-l-lg" aria-label="One less">
+                              −
+                            </button>
+                            <input
+                              ref={(el) => {
+                                if (el) qtyRefs.current.set(String(item.productId), el);
+                                else qtyRefs.current.delete(String(item.productId));
+                              }}
+                              type="number"
+                              min="0"
+                              inputMode="numeric"
+                              value={item.quantity ?? ""}
+                              onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onKeyDown={backToSearch}
+                              className="w-14 h-10 text-center text-sm text-slate-900 border-x border-slate-200 focus:outline-none"
+                              aria-label={`Quantity of ${item.productName}`}
+                            />
+                            <button type="button" onClick={() => handleUpdateQuantity(idx, String(qty + 1))} className="w-9 h-10 grid place-items-center text-slate-600 hover:bg-slate-50 rounded-r-lg" aria-label="One more">
+                              +
+                            </button>
+                          </div>
+                        </div>
                         <label className="block">
-                          <span className="md:hidden text-xs text-slate-500">Qty</span>
-                          <input
-                            ref={(el) => {
-                              if (el) qtyRefs.current.set(String(item.productId), el);
-                              else qtyRefs.current.delete(String(item.productId));
-                            }}
-                            type="number"
-                            min="0"
-                            inputMode="numeric"
-                            value={item.quantity ?? ""}
-                            onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={backToSearch}
-                            className={`${input} text-center px-2 ${short ? "border-rose-300" : ""}`}
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="md:hidden text-xs text-slate-500">Rate</span>
+                          <span className="block text-xs text-slate-500 mb-1">Rate ({currencyCode})</span>
                           <input
                             type="number"
                             min="0"
@@ -1014,134 +1035,302 @@ function NewInvoiceForm() {
                             onChange={(e) => handleUpdateRate(idx, e.target.value)}
                             onFocus={(e) => e.target.select()}
                             onKeyDown={backToSearch}
-                            className={`${input} text-right px-2`}
+                            className={`${input} w-28 h-10 text-right`}
                           />
                         </label>
-                        <div className="text-right">
-                          <span className="md:hidden text-xs text-slate-500 block">Amount</span>
-                          <span className="text-sm font-semibold text-slate-900 leading-[42px] md:leading-normal">{money(item.total)}</span>
+                        <div className="ml-auto text-right">
+                          <span className="block text-xs text-slate-500 mb-1">Amount</span>
+                          <span className="text-base font-semibold text-slate-900 leading-10">{money(item.total)}</span>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(idx)}
-                        className="hidden md:flex p-1.5 text-slate-400 hover:text-rose-600 justify-center"
-                        aria-label={`Remove ${item.productName}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
                     </li>
                   );
                 })}
               </ul>
-              <p className="text-xs text-slate-400 pt-2">Leave Rate empty to charge the list price. Enter 0 for a free unit.</p>
-            </div>
-          )}
+            )}
 
-          {seriesSplit && seriesSplit.omanCount > 0 && (
-            <p className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-900">
-              {seriesSplit.uaeCount > 0
-                ? editInvoiceNumber
-                  ? "UAE- and Oman-registered products can't share one invoice. Move one kind to a separate invoice."
-                  : `This will save as two invoices: UAE-registered ${money(seriesSplit.uaeTotal)} and Oman-registered ${money(seriesSplit.omanTotal)} (printed without the company header).`
-                : "Oman-registered products only: saved with its own number and printed without the company header."}
-            </p>
-          )}
-        </section>
-
-        {/* Payment */}
-        <section className={card}>
-          <h2 className={`${heading} mb-3`}>Payment</h2>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className={chip(status === "Paid")} onClick={() => setStatus("Paid")}>
-              Paid now
-            </button>
-            <button type="button" className={chip(status === "Credit")} onClick={() => setStatus("Credit")}>
-              On credit
-            </button>
-          </div>
-
-          {status === "Paid" ? (
-            <div className="mt-4">
-              <div className="text-xs text-slate-500 mb-2">Paid by</div>
-              <div className="flex flex-wrap gap-2">
-                {(["Cash", "Bank Transfer", "Cheque", "Other"] as const).map((m) => (
-                  <button key={m} type="button" className={chip(paymentMethod === m)} onClick={() => setPaymentMethod(m)}>
-                    {m === "Bank Transfer" ? "Bank transfer" : m}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-slate-400 mt-2">
-                {paymentMethod === "Cash" ? "A receipt is made and the cash is added to your cash in hand." : "A receipt is made. Cash in hand is not changed."}
+            {seriesSplit && seriesSplit.omanCount > 0 && (
+              <p className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-900">
+                {seriesSplit.uaeCount > 0
+                  ? editInvoiceNumber
+                    ? "UAE- and Oman-registered products can't share one invoice. Move one kind to a separate invoice."
+                    : `This will save as two invoices: UAE-registered ${money(seriesSplit.uaeTotal)} and Oman-registered ${money(seriesSplit.omanTotal)}.`
+                  : "Oman-registered products only: saved with its own number and printed without the company header."}
               </p>
-            </div>
-          ) : (
-            <div className="mt-4">
-              <div className="text-xs text-slate-500 mb-2">Due in</div>
-              <div className="flex flex-wrap items-center gap-2">
-                {[30, 60, 90].map((d) => (
-                  <button key={d} type="button" className={chip(creditDaysNum === d)} onClick={() => setCreditDays(d)}>
-                    {d} days
-                  </button>
-                ))}
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={creditDays}
-                    onChange={(e) => setCreditDays(e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    onBlur={() => {
-                      if (creditDays === "") setCreditDays(30);
-                    }}
-                    className={`${input} w-20 text-center`}
-                    aria-label="Credit days"
-                  />
-                  <span className="text-sm text-slate-500">days</span>
-                </div>
-              </div>
-              <p className="text-xs text-slate-400 mt-2">Due on {dueDateLabel}.</p>
-            </div>
-          )}
+            )}
+          </section>
+        )}
 
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            {showNotes ? (
-              <>
-                <label htmlFor="inv-notes" className="text-xs text-slate-500 block mb-1.5">
-                  Note on the invoice
-                </label>
-                <textarea id="inv-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={input} />
-              </>
+        {/* STEP 3: PAYMENT */}
+        {step === 2 && (
+          <section className={card}>
+            <h2 className={`${title} mb-1`}>How are they paying?</h2>
+            <p className="text-sm text-slate-500 mb-4">Total {money(grandTotal)}</p>
+
+            {cashOnly && (
+              <p className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-900">
+                {selectedCustomer?.cashOnlyReason || "A cheque from this customer bounced."} Cash only: no credit and no cheques.
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 max-w-sm">
+              <button type="button" className={chip(status === "Paid")} onClick={() => setStatus("Paid")}>
+                Paid now
+              </button>
+              <button type="button" disabled={cashOnly} className={chip(status === "Credit", cashOnly)} onClick={() => setStatus("Credit")}>
+                On credit
+              </button>
+            </div>
+
+            {status === "Paid" ? (
+              <div className="mt-5">
+                <span className={label}>Paid by</span>
+                <div className="flex flex-wrap gap-2">
+                  {(["Cash", "Bank Transfer", "Cheque", "Other"] as const).map((m) => {
+                    const blocked = cashOnly && m === "Cheque";
+                    return (
+                      <button key={m} type="button" disabled={blocked} className={chip(paymentMethod === m, blocked)} onClick={() => setPaymentMethod(m)}>
+                        {methodLabel(m)}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {askDetails && paymentMethod === "Cheque" && (
+                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg bg-slate-50 border border-slate-200 p-4">
+                    <label className="block">
+                      <span className={label}>Cheque no.</span>
+                      <input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} className={input} inputMode="numeric" required />
+                    </label>
+                    <label className="block">
+                      <span className={label}>Cheque date</span>
+                      <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className={input} required />
+                    </label>
+                    <label className="block">
+                      <span className={label}>Bank <span className="font-normal text-slate-400">(optional)</span></span>
+                      <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={input} placeholder="e.g. Emirates NBD" />
+                    </label>
+                    <p className="sm:col-span-3 text-xs text-slate-500">The invoice counts as paid once the office marks the cheque cleared.</p>
+                  </div>
+                )}
+
+                {askDetails && paymentMethod === "Bank Transfer" && (
+                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-slate-50 border border-slate-200 p-4">
+                    <label className="block">
+                      <span className={label}>Transfer reference</span>
+                      <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} className={input} placeholder="Ref. no. on the transfer slip" required />
+                    </label>
+                    <label className="block">
+                      <span className={label}>From bank <span className="font-normal text-slate-400">(optional)</span></span>
+                      <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={input} placeholder="e.g. ADCB" />
+                    </label>
+                  </div>
+                )}
+
+                {paymentMethod === "Cash" && <p className="text-xs text-slate-500 mt-3">The cash is added to your cash in hand.</p>}
+              </div>
             ) : (
-              <button type="button" onClick={() => setShowNotes(true)} className="text-sm font-semibold text-accent hover:underline">
-                + Add a note
+              <div className="mt-5">
+                <span className={label}>Due in</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[30, 60, 90].map((d) => (
+                    <button key={d} type="button" className={chip(creditDaysNum === d)} onClick={() => setCreditDays(d)}>
+                      {d} days
+                    </button>
+                  ))}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={creditDays}
+                      onChange={(e) => setCreditDays(e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                      onBlur={() => {
+                        if (creditDays === "") setCreditDays(30);
+                      }}
+                      className={`${input} w-20 h-11 text-center`}
+                      aria-label="Credit days"
+                    />
+                    <span className="text-sm text-slate-500">days</span>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 mt-2">Payment due on {dueDateLabel}.</p>
+              </div>
+            )}
+
+            <div className="mt-6 pt-5 border-t border-slate-100">
+              {showNotes ? (
+                <label className="block">
+                  <span className={label}>Note on the invoice</span>
+                  <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={input} />
+                </label>
+              ) : (
+                <button type="button" onClick={() => setShowNotes(true)} className="text-sm font-semibold text-accent hover:underline">
+                  + Add a note
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* STEP 4: REVIEW */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <section className={card}>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-medium text-slate-500">Customer</h2>
+                {!editInvoiceNumber && editLink(0)}
+              </div>
+              <div className="font-semibold text-slate-900">{selectedCustomer?.company || customerSearchQuery}</div>
+              {(selectedCustomer?.name || selectedCustomer?.address) && (
+                <div className="text-sm text-slate-500">{[selectedCustomer?.name, selectedCustomer?.address].filter(Boolean).join(" · ")}</div>
+              )}
+              {owed > 0 && <div className="text-sm text-rose-700 mt-1">Already owes {money(owed)}</div>}
+            </section>
+
+            <section className={card}>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-medium text-slate-500">
+                  Products · {invoiceItems.length} {invoiceItems.length === 1 ? "line" : "lines"}, {unitsTotal} units
+                </h2>
+                {editLink(1)}
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-slate-500 border-b border-slate-100">
+                    <th className="text-left font-normal pb-2">Product</th>
+                    <th className="text-right font-normal pb-2 w-14">Qty</th>
+                    <th className="text-right font-normal pb-2 w-24">Rate</th>
+                    <th className="text-right font-normal pb-2 w-28">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {invoiceItems.map((item) => {
+                    const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
+                    return (
+                      <tr key={item.productId}>
+                        <td className="py-2 pr-2 text-slate-900">{item.productName}</td>
+                        <td className="py-2 text-right text-slate-700">{item.quantity}</td>
+                        <td className="py-2 text-right text-slate-700">{rateNum.toFixed(dp)}</td>
+                        <td className="py-2 text-right text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <dl className="mt-3 pt-3 border-t border-slate-100 space-y-1 text-sm">
+                {discountTotal > 0 && (
+                  <>
+                    <div className="flex justify-between text-slate-500">
+                      <dt>At list price</dt>
+                      <dd>{money(subtotal)}</dd>
+                    </div>
+                    <div className="flex justify-between text-emerald-700">
+                      <dt>Discount</dt>
+                      <dd>−{money(discountTotal)}</dd>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between text-base font-semibold text-slate-900 pt-1">
+                  <dt>Total</dt>
+                  <dd>{money(grandTotal)}</dd>
+                </div>
+              </dl>
+              {seriesSplit && seriesSplit.omanCount > 0 && seriesSplit.uaeCount > 0 && !editInvoiceNumber && (
+                <p className="mt-3 text-xs text-amber-800">Saves as two invoices: UAE-registered {money(seriesSplit.uaeTotal)} and Oman-registered {money(seriesSplit.omanTotal)}.</p>
+              )}
+            </section>
+
+            <section className={card}>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-medium text-slate-500">Payment</h2>
+                {editLink(2)}
+              </div>
+              {status === "Paid" ? (
+                <div className="text-slate-900">
+                  Paid now by {methodLabel(paymentMethod).toLowerCase()}
+                  {askDetails && paymentMethod === "Cheque" && (
+                    <div className="text-sm text-slate-500">
+                      Cheque {chequeNumber} dated {fmtDate(chequeDate)}
+                      {payBank ? ` · ${payBank}` : ""}
+                    </div>
+                  )}
+                  {askDetails && paymentMethod === "Bank Transfer" && (
+                    <div className="text-sm text-slate-500">
+                      Ref. {transferRef}
+                      {payBank ? ` · ${payBank}` : ""}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-slate-900">
+                  On credit, {creditDaysNum} days <span className="text-sm text-slate-500">· due {dueDateLabel}</span>
+                </div>
+              )}
+              {notes && <p className="text-sm text-slate-500 mt-2">Note: {notes}</p>}
+            </section>
+
+            <div className="flex items-center gap-2 text-sm text-slate-500 px-1">
+              <span>Invoice no.</span>
+              {canEditNumber ? (
+                <input
+                  value={invoiceNumber}
+                  onChange={(e) => {
+                    setInvoiceNumber(e.target.value);
+                    setIsCustomInvoiceNumber(true);
+                  }}
+                  className="w-28 px-2 py-1 border border-slate-200 focus:border-accent rounded-md font-semibold text-slate-900 bg-white focus:outline-none"
+                />
+              ) : (
+                <span className="font-semibold text-slate-900">{editInvoiceNumber || invoiceNumber || "—"}</span>
+              )}
+              {!editInvoiceNumber && <span className="text-xs text-slate-400">the final number is given on save</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Bottom bar */}
+        <div className="sticky bottom-0 z-20 mt-5 -mx-4 md:mx-0 px-4 md:px-5 py-3 bg-white/95 backdrop-blur border-t md:border border-slate-200 md:rounded-t-xl flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            {step === 0 ? (
+              <Link href="/invoices" className="text-sm font-semibold text-slate-600 hover:text-slate-900">
+                Cancel
+              </Link>
+            ) : (
+              <button type="button" onClick={() => goTo(step - 1)} className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-1 py-2">
+                ← Back
               </button>
             )}
           </div>
-        </section>
-
-        {/* Total and save */}
-        <div className="sticky bottom-0 z-20 -mx-4 md:mx-0 px-4 md:px-5 py-3 bg-white/95 backdrop-blur border-t md:border border-slate-200 md:rounded-t-xl flex items-center justify-between gap-4">
-          <div>
-            <div className="text-xs text-slate-500">
-              Total{discountTotal > 0 ? ` · ${money(discountTotal)} discount` : ""}
-            </div>
-            <div className="text-xl font-semibold text-slate-900">{money(grandTotal)}</div>
-          </div>
-          <div className="flex items-center gap-3">
-            {saveBlocker && <span className="hidden sm:inline text-xs text-slate-500">{saveBlocker}</span>}
-            <Link href="/invoices" className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-2 py-2">
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              disabled={isSaving || !!saveBlocker}
-              className="px-5 py-2.5 min-h-[44px] text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {isSaving ? "Saving…" : editInvoiceNumber ? "Save changes" : status === "Paid" ? "Save invoice & receipt" : "Save invoice"}
-            </button>
+          <div className="flex items-center gap-4">
+            {step >= 1 && (
+              <div className="text-right">
+                <div className="text-xs text-slate-500">{unitsTotal} units</div>
+                <div className="text-base font-semibold text-slate-900">{money(grandTotal)}</div>
+              </div>
+            )}
+            {step < 3 ? (
+              <button
+                type="button"
+                disabled={step >= maxStep}
+                onClick={() => goTo(step + 1)}
+                title={step === 0 ? "Choose a customer" : step === 1 ? (invoiceItems.length === 0 ? "Add a product" : undefined) : paymentBlocker || undefined}
+                className="px-5 py-2.5 min-h-[44px] text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {step === 2 ? "Review" : "Next"} →
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isSaving || maxStep < 3}
+                className="px-5 py-2.5 min-h-[44px] text-sm font-semibold text-white bg-accent rounded-lg hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isSaving ? "Saving…" : editInvoiceNumber ? "Save changes" : "Save invoice"}
+              </button>
+            )}
           </div>
         </div>
+        {step === 2 && paymentBlocker && <p className="text-xs text-rose-700 text-right mt-1 mb-3">{paymentBlocker}</p>}
       </form>
 
       {/* Success Modal */}

@@ -343,6 +343,27 @@ export async function POST(request: Request) {
     const notes = invoiceData.notes || payload.notes || "";
     const paymentMethod = invoiceData.paymentMethod || payload.paymentMethod || "Cash";
 
+    // Payment details taken at invoice time (cheque or bank transfer).
+    const isChequePay = status === "Paid" && paymentMethod === "Cheque";
+    const isTransferPay = status === "Paid" && paymentMethod === "Bank Transfer";
+    const chequeNumber = String(payload.chequeNumber ?? invoiceData.chequeNumber ?? "").trim();
+    const chequeDate = String(payload.chequeDate ?? invoiceData.chequeDate ?? "").trim();
+    const payBankName = String(payload.bankName ?? invoiceData.bankName ?? "").trim();
+    const transferRef = String(payload.referenceNo ?? invoiceData.referenceNo ?? "").trim();
+    if (isChequePay && (!chequeNumber || !/^\d{4}-\d{2}-\d{2}$/.test(chequeDate))) {
+      return NextResponse.json({ error: "Enter the cheque number and cheque date." }, { status: 400 });
+    }
+    if (isTransferPay && !transferRef) {
+      return NextResponse.json({ error: "Enter the bank transfer reference." }, { status: 400 });
+    }
+    // One cheque or transfer can pay two invoices (UAE/Oman split): group their receipts.
+    const receiptGroupId = isChequePay || isTransferPay ? crypto.randomUUID() : null;
+    const paymentDetails = isChequePay
+      ? { cheque_number: chequeNumber, cheque_date: chequeDate, bank_name: payBankName || null }
+      : isTransferPay
+        ? { bank_name: payBankName || null }
+        : {};
+
     // ------------------------------------------------------------------
     // Billing series: in the UAE, Oman-registered products are billed on
     // their own invoice (own number series, printed without the header).
@@ -669,6 +690,8 @@ export async function POST(request: Request) {
               amount_paid: partPayment,
               payment_date: issueDate,
               payment_method: paymentMethod,
+              ...paymentDetails,
+              ...(isChequePay || isTransferPay ? { reference_number: isChequePay ? chequeNumber : transferRef } : {}),
               country: profile.country,
               updated_by: profile.id,
               updated_at: new Date().toISOString(),
@@ -685,7 +708,9 @@ export async function POST(request: Request) {
             payment_method: paymentMethod,
             // A cheque taken at invoice time counts as paid only once it clears.
             cheque_status: paymentMethod === "Cheque" ? "Pending" : null,
-            reference_number: `Auto-generated for Invoice ${inv.invoiceNumber}`,
+            reference_number: isChequePay ? chequeNumber : isTransferPay ? transferRef : `Auto-generated for Invoice ${inv.invoiceNumber}`,
+            ...paymentDetails,
+            payment_group_id: receiptGroupId,
             notes: notes || `Automatic payment receipt for Invoice ${inv.invoiceNumber}`,
             country: profile.country,
             created_by: profile.id,
