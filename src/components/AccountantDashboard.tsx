@@ -265,7 +265,12 @@ function OverviewTab({
   money: (n: number) => string;
   goTo: (t: TabKey) => void;
 }) {
-  const change = data.sales.lastMonth > 0 ? ((data.sales.month - data.sales.lastMonth) / data.sales.lastMonth) * 100 : null;
+  // Compare with the same days of last month, not the whole month.
+  const prev = data.sales.samePeriodLastMonth;
+  const change = prev > 0 ? ((data.sales.month - prev) / prev) * 100 : null;
+  const creditNote = data.receivables.customersInCredit > 0
+    ? ` · ${data.receivables.customersInCredit} in credit (${money(data.receivables.creditAmount)})`
+    : "";
   const approvals = data.approvals.expenses.length + data.approvals.handovers.length + data.approvals.creditNotes;
   const maxMethod = Math.max(1, ...data.collections.byMethod.map((m) => m.amount));
 
@@ -275,7 +280,7 @@ function OverviewTab({
         <Stat
           label="Sales this month"
           value={money(data.sales.month)}
-          sub={`${data.sales.monthInvoices} invoices${change !== null ? ` · ${change >= 0 ? "+" : ""}${change.toFixed(0)}% vs last month` : ""}`}
+          sub={`${data.sales.monthInvoices} invoices${change !== null ? ` · ${change >= 0 ? "+" : ""}${change.toFixed(0)}% vs same days last month` : ""}`}
           icon={TrendingUp}
           tone="teal"
         />
@@ -289,7 +294,7 @@ function OverviewTab({
         <Stat
           label="Customers owe"
           value={money(data.receivables.total)}
-          sub={`${money(data.receivables.overdue)} overdue · ${data.receivables.customersOwing} customers`}
+          sub={`${money(data.receivables.overdue)} overdue · ${data.receivables.customersOwing} customers${creditNote}`}
           icon={CreditCard}
           tone="rose"
           onClick={() => goTo("receivables")}
@@ -380,7 +385,13 @@ function ReceivablesTab({ data, money }: { data: AccountantOverview; money: (n: 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Customers owe" value={money(r.total)} sub={`${r.customersOwing} customers`} icon={CreditCard} tone="rose" />
+        <Stat
+          label="Customers owe"
+          value={money(r.total)}
+          sub={`${r.customersOwing} customers${r.customersInCredit > 0 ? `, less ${money(r.creditAmount)} credit (${r.customersInCredit})` : ""}`}
+          icon={CreditCard}
+          tone="rose"
+        />
         <Stat label="Overdue" value={money(r.overdue)} sub="Past the credit period" icon={AlertTriangle} tone="rose" />
         {r.bySeries ? (
           <Stat
