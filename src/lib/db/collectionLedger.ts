@@ -15,7 +15,12 @@ export interface LedgerQueryOptions {
  * Single source of truth for calculating current physical cash in hand.
  *
  * Formula:
- * Physical Cash in Hand = Opening Cash + Cash Collections - Approved Cash Expenses - Approved Cash Handovers
+ * Physical Cash in Hand = Opening Cash + Cash Collections + Cash Received (handovers to this person)
+ *                         - Approved Cash Expenses - Approved Cash Handovers (by this person)
+ *
+ * A handover moves cash from one person (salesperson_id) to another (received_by): it leaves the
+ * giver's cash in hand and arrives in the receiver's. A handover with no receiver (e.g. a bank
+ * deposit) only leaves the giver's.
  */
 export async function getCurrentCashInHand(
   supabase: SupabaseClient,
@@ -80,16 +85,26 @@ export async function calculateSalespersonCollectionLedger(
       .or(`salesperson_id.eq.${salespersonId},employee_id.eq.${salespersonId},created_by.eq.${salespersonId}`)
       .lt("expense_date", options.startDate);
 
+    // Only handovers this person GAVE leave their cash (an admin recording a handover
+    // for a salesman is the creator, not the giver).
     const priorHoQuery = supabase
       .from("cash_handovers")
       .select("amount, status, reference_number, handover_number, is_deleted")
-      .or(`salesperson_id.eq.${salespersonId},created_by.eq.${salespersonId}`)
+      .eq("salesperson_id", salespersonId)
       .lt("handover_date", options.startDate);
 
-    const [pRecRes, pExpRes, pHoRes] = await Promise.all([
+    const priorRecvQuery = supabase
+      .from("cash_handovers")
+      .select("amount, status, reference_number, handover_number, is_deleted, salesperson_id")
+      .eq("received_by", salespersonId)
+      .neq("salesperson_id", salespersonId)
+      .lt("handover_date", options.startDate);
+
+    const [pRecRes, pExpRes, pHoRes, pRecvRes] = await Promise.all([
       priorRecQuery,
       priorExpQuery,
       priorHoQuery,
+      priorRecvQuery,
     ]);
 
     let pRecData = pRecRes.data;
@@ -127,26 +142,18 @@ export async function calculateSalespersonCollectionLedger(
       (h.handover_number && String(h.handover_number).startsWith("CF")) ||
       (h.reference_number && String(h.reference_number).startsWith("CF:"));
 
-    let pHoData = pHoRes.data;
-    if (pHoRes.error) {
-      const fallback = await supabase
-        .from("cash_handovers")
-        .select("amount, status, reference_number, handover_number, is_deleted")
-        .or(`salesperson_id.eq.${salespersonId},created_by.eq.${salespersonId}`)
-        .lt("handover_date", options.startDate);
-      if (fallback.data) pHoData = fallback.data;
-    }
+    const sumApprovedHandovers = (rows: any[] | null) =>
+      (rows || []).reduce((sum: number, h: any) => {
+        if (h.is_deleted === true) return sum;
+        if (isCarryForward(h)) return sum;
+        const isApproved = (h.status || "Pending") === "Approved";
+        return isApproved ? sum + (Number(h.amount) || 0) : sum;
+      }, 0);
 
-    const priorHandovers = (pHoData || []).reduce((sum: number, h: any) => {
-      if (h.is_deleted === true) return sum;
-      if (isCarryForward(h)) return sum;
-      const isApproved = (h.status || "Pending") === "Approved";
-      return isApproved ? sum + (Number(h.amount) || 0) : sum;
-    }, 0);
+    const priorHandovers = sumApprovedHandovers(pHoRes.data);
+    const priorReceived = sumApprovedHandovers(pRecvRes.data);
 
-    console.log(`[DEBUG CALCULATE PRIOR] startDate=${options.startDate} | priorCollections=${priorCollections} | priorExpenses=${priorExpenses} | priorHandovers=${priorHandovers} | pHoDataCount=${(pHoData||[]).length}`);
-
-    priorNetBalance = priorCollections - priorExpenses - priorHandovers;
+    priorNetBalance = priorCollections + priorReceived - priorExpenses - priorHandovers;
   }
 
   const openingCash = Math.max(0, initialOB + priorNetBalance);
@@ -183,24 +190,34 @@ export async function calculateSalespersonCollectionLedger(
     expBuilder = expBuilder.lte("expense_date", options.endDate);
   }
 
-  let hoBuilder = supabase
+  const hoColumns =
+    "id, handover_number, handover_date, created_at, amount, reference_number, notes, status, is_deleted, salesperson_id, received_by, created_by";
+
+  // Handovers this person gave (cash out)...
+  let hoBuilder = supabase.from("cash_handovers").select(hoColumns).eq("salesperson_id", salespersonId);
+  // ...and handovers this person received from someone else (cash in).
+  let recvBuilder = supabase
     .from("cash_handovers")
-    .select("id, handover_number, handover_date, created_at, amount, reference_number, notes, status, is_deleted, salesperson_id, created_by")
-    .or(`salesperson_id.eq.${salespersonId},created_by.eq.${salespersonId}`);
+    .select(hoColumns)
+    .eq("received_by", salespersonId)
+    .neq("salesperson_id", salespersonId);
 
   if (options?.startDate) {
     hoBuilder = hoBuilder.gte("handover_date", options.startDate);
+    recvBuilder = recvBuilder.gte("handover_date", options.startDate);
   }
   if (options?.endDate) {
     hoBuilder = hoBuilder.lte("handover_date", options.endDate);
+    recvBuilder = recvBuilder.lte("handover_date", options.endDate);
   }
 
   // 3. Execute Period Queries Concurrently
-  const [profileRes, recRes, expRes, hoRes] = await Promise.all([
+  const [profileRes, recRes, expRes, hoRes, recvRes] = await Promise.all([
     profileQuery,
     recBuilder,
     expBuilder,
     hoBuilder,
+    recvBuilder,
   ]);
 
   const profileRow = profileRes.data;
@@ -242,13 +259,21 @@ export async function calculateSalespersonCollectionLedger(
   });
 
   // Handovers
-  let handoverRows: any[] = hoRes.data || [];
-  if (hoRes.error) {
-    const fallback = await supabase
-      .from("cash_handovers")
-      .select("id, handover_number, handover_date, created_at, amount, reference_number, notes, status, is_deleted, salesperson_id, created_by")
-      .eq("salesperson_id", salespersonId);
-    if (fallback.data) handoverRows = fallback.data;
+  const handoverRows: any[] = hoRes.data || [];
+  const receivedRows: any[] = recvRes.data || [];
+
+  // Names of the other side of each handover, for the ledger descriptions.
+  const counterpartIds = Array.from(
+    new Set(
+      [...handoverRows.map((h: any) => h.received_by), ...receivedRows.map((h: any) => h.salesperson_id)].filter(
+        (id: any) => id && id !== salespersonId
+      )
+    )
+  );
+  const counterpartNames = new Map<string, string>();
+  if (counterpartIds.length > 0) {
+    const { data: people } = await supabase.from("profiles").select("id, full_name").in("id", counterpartIds);
+    (people || []).forEach((p: any) => counterpartNames.set(p.id, p.full_name || "Staff"));
   }
 
   const isCarryForwardRow = (h: any) =>
@@ -263,6 +288,10 @@ export async function calculateSalespersonCollectionLedger(
     if (isCarryForwardRow(h)) return false;
     return (h.status || "Pending") === "Approved";
   });
+
+  const approvedCashReceived = receivedRows.filter(
+    (h: any) => h.is_deleted !== true && !isCarryForwardRow(h) && (h.status || "Pending") === "Approved"
+  );
 
   // 4. Aggregate Totals
   const totalCashCollected = activeCashReceipts.reduce(
@@ -280,9 +309,14 @@ export async function calculateSalespersonCollectionLedger(
     0
   );
 
+  const totalCashReceived = approvedCashReceived.reduce(
+    (sum: number, h: any) => sum + (Number(h.amount) || 0),
+    0
+  );
+
   const currentCashInHand = Math.max(
     0,
-    openingCash + totalCashCollected - totalCashExpenses - totalCashHandedOver
+    openingCash + totalCashCollected + totalCashReceived - totalCashExpenses - totalCashHandedOver
   );
 
   const summary: CollectionLedgerSummary = {
@@ -291,6 +325,7 @@ export async function calculateSalespersonCollectionLedger(
     country,
     openingCash,
     totalCashCollected,
+    totalCashReceived,
     totalCashExpenses,
     totalCashHandedOver,
     currentCashInHand,
@@ -302,7 +337,7 @@ export async function calculateSalespersonCollectionLedger(
   interface RawStreamItem {
     date: string;
     timestamp: string;
-    type: "OPENING_BALANCE" | "CASH_RECEIPT" | "CASH_EXPENSE" | "CASH_HANDOVER" | "CASH_CARRY_FORWARD";
+    type: CollectionLedgerEntry["type"];
     description: string;
     referenceNo: string;
     paymentMethod: string;
@@ -361,17 +396,35 @@ export async function calculateSalespersonCollectionLedger(
     });
   });
 
-  // Approved Cash Handovers to Admin (OUT)
+  // Approved Cash Handovers given (OUT)
   approvedCashHandovers.forEach((h: any) => {
+    const to = h.received_by && h.received_by !== salespersonId ? counterpartNames.get(h.received_by) : undefined;
     rawStream.push({
       date: h.handover_date || (h.created_at ? h.created_at.split("T")[0] : ""),
       timestamp: h.created_at || `${h.handover_date || new Date().toISOString().split("T")[0]}T00:00:00.000Z`,
       type: "CASH_HANDOVER",
-      description: `Cash Handover to Admin${h.notes ? ` (${h.notes})` : ""}`,
+      description: to
+        ? `Cash handed to ${to}${h.notes ? ` (${h.notes})` : ""}`
+        : h.notes || "Cash paid out",
       referenceNo: h.handover_number || h.reference_number || "CH",
       paymentMethod: "Cash",
       inAmount: 0,
       outAmount: Number(h.amount) || 0,
+    });
+  });
+
+  // Approved Cash Handovers received from someone else (IN)
+  approvedCashReceived.forEach((h: any) => {
+    const from = counterpartNames.get(h.salesperson_id) || "Salesperson";
+    rawStream.push({
+      date: h.handover_date || (h.created_at ? h.created_at.split("T")[0] : ""),
+      timestamp: h.created_at || `${h.handover_date || new Date().toISOString().split("T")[0]}T00:00:00.000Z`,
+      type: "CASH_RECEIVED",
+      description: `Cash received from ${from}${h.notes ? ` (${h.notes})` : ""}`,
+      referenceNo: h.handover_number || h.reference_number || "CH",
+      paymentMethod: "Cash",
+      inAmount: Number(h.amount) || 0,
+      outAmount: 0,
     });
   });
 
@@ -441,6 +494,7 @@ async function calculateConsolidatedCollectionLedger(
         country: "UAE",
         openingCash: 0,
         totalCashCollected: 0,
+        totalCashReceived: 0,
         totalCashExpenses: 0,
         totalCashHandedOver: 0,
         currentCashInHand: 0,
@@ -463,6 +517,7 @@ async function calculateConsolidatedCollectionLedger(
 
   let openingCash = 0;
   let totalCashCollected = 0;
+  let totalCashReceived = 0;
   let totalCashExpenses = 0;
   let totalCashHandedOver = 0;
   let currentCashInHand = 0;
@@ -473,6 +528,7 @@ async function calculateConsolidatedCollectionLedger(
   validResults.forEach(({ summary, entries }) => {
     openingCash += summary.openingCash;
     totalCashCollected += summary.totalCashCollected;
+    totalCashReceived += summary.totalCashReceived;
     totalCashExpenses += summary.totalCashExpenses;
     totalCashHandedOver += summary.totalCashHandedOver;
     currentCashInHand += summary.currentCashInHand;
@@ -508,6 +564,7 @@ async function calculateConsolidatedCollectionLedger(
     country: validResults[0]?.summary.country || "UAE",
     openingCash,
     totalCashCollected,
+    totalCashReceived,
     totalCashExpenses,
     totalCashHandedOver,
     currentCashInHand,

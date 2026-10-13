@@ -36,7 +36,7 @@ graph LR
 - **`sequence.ts`** — next document number per table. Invoices use the `D` series (D0353, D0354…); other documents use `PREFIX-YEAR-000001`. Runs with the admin client so numbers are unique across all users, and callers retry on unique-violation (23505).
 - **`inventory.ts`** — stock is the sum of `inventory_transactions` per product and country. Invoices deduct stock on create, reconcile the difference on edit, and reverse on cancel.
 - **`balances.ts`** — reads the `customer_balances` view: opening balance + open invoice amounts − payments not applied to an invoice. The stored `customers.pending_balance` is a copy for list screens.
-- **`collectionLedger.ts`** — per-salesperson cash ledger: collections, expenses, handovers to admin and day-to-day carry-forward; `getCurrentCashInHand()` is the single source of truth for the handover limit.
+- **`collectionLedger.ts`** — per-person cash ledger (salesmen and admin): cash collections + cash received in handovers − approved cash expenses − handovers given, with day-to-day carry-forward; `getCurrentCashInHand()` is the single source of truth for the handover limit. A handover moves cash from `salesperson_id` to `received_by` (a salesman's own handover goes to his country's admin; a handover with no receiver, e.g. a bank deposit, just leaves the giver's cash).
 - **`mappers.ts`** — converts between snake_case DB rows and the camelCase types in `src/types`.
 
 ## Documents and i18n

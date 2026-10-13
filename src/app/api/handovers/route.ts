@@ -126,6 +126,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(mapHandoverFromDb(existingDuplicates[0]), { status: 200 });
     }
 
+    // Who receives the cash (it is added to their cash in hand):
+    // - staff recording a salesman's handover -> that staff member;
+    // - a salesman handing over his own cash -> his country's admin;
+    // - an admin's own handover (e.g. a bank deposit) -> nobody.
+    let receiverId: string | undefined = receivedBy || undefined;
+    if (!receiverId) {
+      if (salespersonId !== profile.id) {
+        receiverId = profile.id;
+      } else if (profile.role === "salesperson") {
+        const { data: admins } = await adminClient
+          .from("profiles")
+          .select("id")
+          .eq("role", "super_admin")
+          .eq("country", profile.country)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1);
+        receiverId = admins?.[0]?.id || undefined;
+      }
+    }
+
     let handoverNumber = "";
     const prefix: "CH" | "CF" = typeVal === "carry_forward" ? "CF" : "CH";
     try {
@@ -138,7 +159,7 @@ export async function POST(req: NextRequest) {
       handoverNumber,
       handoverDate: dateVal,
       salespersonId,
-      receivedBy: receivedBy || profile.id,
+      receivedBy: receiverId,
       amount: Number(amount),
       handoverType: typeVal,
       referenceNumber: referenceNumber || "",

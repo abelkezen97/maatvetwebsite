@@ -719,7 +719,17 @@ export default function CollectionLedgerPage() {
           <div className="text-xl font-bold text-emerald-600 mt-2">
             +{currencySymbol} {(summary?.totalCashCollected || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </div>
-          <span className="text-[10px] text-slate-500 mt-1">From active cash receipts</span>
+          {(summary?.totalCashReceived || 0) > 0 ? (
+            <span className="text-[10px] text-slate-500 mt-1">
+              Cash receipts, plus{" "}
+              <span className="font-bold text-emerald-700">
+                +{currencySymbol} {(summary?.totalCashReceived || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              </span>{" "}
+              received in handovers
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-500 mt-1">From active cash receipts</span>
+          )}
         </div>
 
         {/* Approved Cash Expenses */}
