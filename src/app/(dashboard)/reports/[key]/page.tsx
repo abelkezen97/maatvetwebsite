@@ -61,6 +61,8 @@ export default function ReportViewPage() {
   const [method, setMethod] = useState("");
   const [chequeStatus, setChequeStatus] = useState("");
   const [expenseStatus, setExpenseStatus] = useState("");
+  const [within, setWithin] = useState("30");
+  const [overdueBy, setOverdueBy] = useState("1");
 
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,6 +93,8 @@ export default function ReportViewPage() {
     if (method) qs.set("method", method);
     if (chequeStatus) qs.set("chequeStatus", chequeStatus);
     if (expenseStatus) qs.set("expenseStatus", expenseStatus);
+    if (has("within")) qs.set("within", within);
+    if (has("overdueBy")) qs.set("overdueBy", overdueBy);
     try {
       const res = await fetch(`/api/reports/${def.key}?${qs.toString()}`, { cache: "no-store" });
       const json = await res.json();
@@ -102,7 +106,7 @@ export default function ReportViewPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [def?.key, from, to, salesman, series, method, chequeStatus, expenseStatus]);
+  }, [def?.key, from, to, salesman, series, method, chequeStatus, expenseStatus, within, overdueBy]);
 
   useEffect(() => {
     if (profile && def) load();
@@ -253,6 +257,31 @@ export default function ReportViewPage() {
                 <option value="Approved">Approved</option>
                 <option value="Pending">Pending</option>
                 <option value="Rejected">Rejected</option>
+              </select>
+            </label>
+          )}
+
+          {has("within") && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Days left</span>
+              <select className={selectClass} value={within} onChange={(e) => setWithin(e.target.value)}>
+                <option value="7">7 days or less</option>
+                <option value="15">15 days or less</option>
+                <option value="30">30 days or less</option>
+                <option value="45">45 days or less</option>
+                <option value="100">All open invoices under 100 days</option>
+              </select>
+            </label>
+          )}
+
+          {has("overdueBy") && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Overdue by</span>
+              <select className={selectClass} value={overdueBy} onChange={(e) => setOverdueBy(e.target.value)}>
+                <option value="1">Any</option>
+                <option value="31">More than 30 days</option>
+                <option value="61">More than 60 days</option>
+                <option value="91">More than 90 days</option>
               </select>
             </label>
           )}

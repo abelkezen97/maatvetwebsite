@@ -1,7 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { Profile } from "@/types";
 import { isCountryStaff } from "@/lib/auth/permissions";
-import { todayInDubai } from "@/lib/db/commission";
+import { todayInDubai, COMMISSION_WINDOW_DAYS, daysBetween } from "@/lib/db/commission";
 import { ReportColumn, ReportDef, ReportResult } from "./catalog";
 
 /**
@@ -18,6 +18,10 @@ export interface ReportParams {
   method?: string;
   chequeStatus?: string;
   expenseStatus?: string;
+  /** Approaching 100 days: days left at most (default 30). */
+  within?: number;
+  /** Overdue: overdue by at least this many days (default 1). */
+  overdueBy?: number;
 }
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -320,6 +324,129 @@ export async function buildReport(
         ],
         rows,
         totals,
+      });
+    }
+
+    case "approaching-100":
+    case "overdue": {
+      const approaching = def.key === "approaching-100";
+      const balances = await fetchAll(() => {
+        let q = client
+          .from("invoice_balances")
+          .select("invoice_id, invoice_number, customer_id, salesman_id, invoice_date, due_date, credit_days, grand_total, outstanding, days_overdue, billing_series")
+          .eq("country", country)
+          .gt("outstanding", 0);
+        if (salesmanId) q = q.eq("salesman_id", salesmanId);
+        if (series) q = q.eq("billing_series", series);
+        return q;
+      });
+
+      const within = Math.max(1, Math.min(100, Math.floor(params.within || 30)));
+      const overdueBy = Math.max(1, Math.floor(params.overdueBy || 1));
+      const addDays = (day: string, n: number) => {
+        const d = new Date(`${day}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + n);
+        return d.toISOString().slice(0, 10);
+      };
+
+      const picked = balances
+        .map((b: any) => {
+          const invoiceDate = String(b.invoice_date || "").slice(0, 10);
+          const age = invoiceDate ? daysBetween(invoiceDate, today) : 0;
+          return { ...b, invoiceDate, age, daysLeft: COMMISSION_WINDOW_DAYS - age };
+        })
+        .filter((b: any) =>
+          approaching
+            ? b.invoiceDate && b.daysLeft >= 0 && b.daysLeft <= within
+            : num(b.days_overdue) >= overdueBy
+        );
+
+      const customerIds = Array.from(new Set(picked.map((b: any) => b.customer_id)));
+      const customers = new Map<string, any>();
+      for (let i = 0; i < customerIds.length; i += 200) {
+        const { data } = await client
+          .from("customers")
+          .select("id, company_name, phone")
+          .in("id", customerIds.slice(i, i + 200));
+        (data || []).forEach((c: any) => customers.set(c.id, c));
+      }
+
+      if (approaching) {
+        filters.push(`${within} days or less left of ${COMMISSION_WINDOW_DAYS}`);
+        const rows = picked
+          .sort((a: any, b: any) => a.daysLeft - b.daysLeft || num(b.outstanding) - num(a.outstanding))
+          .map((b: any) => ({
+            deadline: addDays(b.invoiceDate, COMMISSION_WINDOW_DAYS),
+            daysLeft: b.daysLeft,
+            number: b.invoice_number,
+            date: b.invoiceDate,
+            customer: customers.get(b.customer_id)?.company_name || "Customer",
+            phone: customers.get(b.customer_id)?.phone || "—",
+            salesman: nameOf(b.salesman_id),
+            outstanding: round(num(b.outstanding)),
+          }));
+        const total = round(rows.reduce((s, r) => s + num(r.outstanding), 0));
+        const sumUpTo = (d: number) =>
+          round(rows.filter((r) => num(r.daysLeft) <= d).reduce((s, r) => s + num(r.outstanding), 0));
+        return base({
+          summary: [
+            { label: "Invoices", value: rows.length, type: "number" },
+            { label: "To collect", value: total, type: "money" },
+            { label: "Within 7 days", value: sumUpTo(7), type: "money" },
+            { label: "Within 15 days", value: sumUpTo(15), type: "money" },
+          ],
+          columns: [
+            { key: "deadline", label: "100 days on", type: "date" },
+            { key: "daysLeft", label: "Days left", type: "number" },
+            { key: "number", label: "Invoice", type: "text" },
+            { key: "date", label: "Invoice date", type: "date" },
+            { key: "customer", label: "Customer", type: "text" },
+            { key: "phone", label: "Phone", type: "text" },
+            { key: "salesman", label: "Salesman", type: "text" },
+            { key: "outstanding", label: "Unpaid", type: "money" },
+          ],
+          rows,
+          totals: { outstanding: total },
+        });
+      }
+
+      if (overdueBy > 1) filters.push(`Overdue by ${overdueBy}+ days`);
+      const rows = picked
+        .sort((a: any, b: any) => num(b.days_overdue) - num(a.days_overdue) || num(b.outstanding) - num(a.outstanding))
+        .map((b: any) => ({
+          number: b.invoice_number,
+          date: b.invoiceDate,
+          due: String(b.due_date || "").slice(0, 10) || null,
+          daysOverdue: num(b.days_overdue),
+          customer: customers.get(b.customer_id)?.company_name || "Customer",
+          phone: customers.get(b.customer_id)?.phone || "—",
+          salesman: nameOf(b.salesman_id),
+          invoiceTotal: round(num(b.grand_total)),
+          outstanding: round(num(b.outstanding)),
+        }));
+      const total = round(rows.reduce((s, r) => s + num(r.outstanding), 0));
+      const sumOver = (d: number) =>
+        round(rows.filter((r) => num(r.daysOverdue) > d).reduce((s, r) => s + num(r.outstanding), 0));
+      return base({
+        summary: [
+          { label: "Overdue invoices", value: rows.length, type: "number" },
+          { label: "Customers", value: new Set(picked.map((b: any) => b.customer_id)).size, type: "number" },
+          { label: "Overdue amount", value: total, type: "money" },
+          { label: "Over 90 days", value: sumOver(90), type: "money" },
+        ],
+        columns: [
+          { key: "number", label: "Invoice", type: "text" },
+          { key: "date", label: "Invoice date", type: "date" },
+          { key: "due", label: "Due", type: "date" },
+          { key: "daysOverdue", label: "Days overdue", type: "number" },
+          { key: "customer", label: "Customer", type: "text" },
+          { key: "phone", label: "Phone", type: "text" },
+          { key: "salesman", label: "Salesman", type: "text" },
+          { key: "invoiceTotal", label: "Invoice total", type: "money" },
+          { key: "outstanding", label: "Unpaid", type: "money" },
+        ],
+        rows,
+        totals: { outstanding: total },
       });
     }
 

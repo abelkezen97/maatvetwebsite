@@ -6,7 +6,7 @@ import { buildReport, ReportParams } from "@/lib/reports/build";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/reports/:key?from=YYYY-MM-DD&to=YYYY-MM-DD&salesman=&series=&method=&chequeStatus=&expenseStatus=
+ * GET /api/reports/:key?from=YYYY-MM-DD&to=YYYY-MM-DD&salesman=&series=&method=&chequeStatus=&expenseStatus=&within=&overdueBy=
  * The report for the signed-in user's active country. Salesmen get only
  * their own figures; office-only reports are refused for them.
  */
@@ -30,6 +30,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
       method: sp.get("method") || undefined,
       chequeStatus: sp.get("chequeStatus") || undefined,
       expenseStatus: sp.get("expenseStatus") || undefined,
+      within: sp.get("within") ? Number(sp.get("within")) : undefined,
+      overdueBy: sp.get("overdueBy") ? Number(sp.get("overdueBy")) : undefined,
     };
 
     const report = await buildReport(supabase, profile, def, query);

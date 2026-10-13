@@ -9,12 +9,24 @@ export type ReportKey =
   | "sales-register"
   | "sales-by-product"
   | "outstanding"
+  | "approaching-100"
+  | "overdue"
   | "collections"
   | "cheques"
   | "expenses"
   | "stock-summary";
 
-export type ReportFilter = "period" | "salesman" | "series" | "method" | "chequeStatus" | "expenseStatus";
+export type ReportFilter =
+  | "period"
+  | "salesman"
+  | "series"
+  | "method"
+  | "chequeStatus"
+  | "expenseStatus"
+  /** Approaching 100 days: show invoices with at most this many days left. */
+  | "within"
+  /** Overdue: only invoices overdue by at least this many days. */
+  | "overdueBy";
 
 export interface ReportDef {
   key: ReportKey;
@@ -51,6 +63,24 @@ export const REPORTS: ReportDef[] = [
     group: "Receivables",
     audience: "all",
     filters: ["salesman", "series"],
+    landscape: true,
+  },
+  {
+    key: "approaching-100",
+    title: "Approaching 100 days",
+    description: "Unpaid invoices about to pass 100 days. Collect before the deadline to keep commission.",
+    group: "Receivables",
+    audience: "all",
+    filters: ["salesman", "series", "within"],
+    landscape: true,
+  },
+  {
+    key: "overdue",
+    title: "Overdue invoices",
+    description: "Every invoice past its credit period, most overdue first.",
+    group: "Receivables",
+    audience: "all",
+    filters: ["salesman", "series", "overdueBy"],
     landscape: true,
   },
   {
