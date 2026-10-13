@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, Suspense } from "react";
+import React, { useState, useMemo, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Trash2, Search, ArrowLeft, CheckCircle, X } from "lucide-react";
+import { Plus, Search, CheckCircle, X } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { Product, Customer, QuoteItem, Quote, Invoice, Receipt } from "@/types";
@@ -16,6 +16,12 @@ import { currencyFor, decimalsFor } from "@/lib/currency";
 interface InvoiceItemWithManual extends QuoteItem {
   manualDiscount?: number | string;
   discountPrice?: number | string;
+  /** List (or quantity-tier) price before any discount. */
+  listPrice?: number;
+  /** What the salesman typed in the Rate box ("" = list price). */
+  rate?: number | string;
+  /** Added in this session from the product list, so quantity tiers apply. */
+  tiered?: boolean;
 }
 
 function NewInvoiceForm() {
@@ -52,6 +58,9 @@ function NewInvoiceForm() {
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [activeProduct, setActiveProduct] = useState(0);
+  const [activeCustomer, setActiveCustomer] = useState(0);
+  const [showNotes, setShowNotes] = useState(false);
 
   // New Customer inline modal states
   const [isCustModalOpen, setIsCustModalOpen] = useState(false);
@@ -194,7 +203,10 @@ function NewInvoiceForm() {
         total: item.total,
         manualDiscount: item.discountPrice ?? (item.discount > 0 ? (item.price - item.discount) : undefined),
         discountPrice: item.discountPrice,
+        listPrice: item.price,
+        rate: item.discount > 0 ? Math.max(0, item.price - item.discount) : "",
       })));
+      if (existing.notes) setShowNotes(true);
     }
   };
 
@@ -235,6 +247,7 @@ function NewInvoiceForm() {
         setStatus("Paid");
         setCreditDays(30);
         setNotes(quote.notes || "");
+        if (quote.notes) setShowNotes(true);
 
         const cust = customers.find((c) => c.id === quote.customerId);
         if (cust) {
@@ -261,6 +274,8 @@ function NewInvoiceForm() {
             discount: Math.max(0, unitPrice - effectivePrice),
             discountPrice: discPriceVal,
             manualDiscount: discPriceVal,
+            listPrice: unitPrice,
+            rate: effectivePrice < unitPrice ? effectivePrice : "",
             total: (Number(item.quantity) || 0) * effectivePrice,
           };
         }));
@@ -361,134 +376,84 @@ function NewInvoiceForm() {
   }, [invoiceItems, products, selectedCustomer, user]);
 
   // Handlers
+  // Each line keeps the list price (price) and, when the salesman charges
+  // less, the rate charged (discountPrice). The screen shows one "Rate" box.
+  const tierPriceFor = (product: Product | undefined, qty: number, fallback: number) => {
+    if (!product) return fallback;
+    if (qty >= 100 && product.price100) return product.price100;
+    if (qty >= 50 && product.price50) return product.price50;
+    if (qty >= 10 && product.price10) return product.price10;
+    return product.price;
+  };
+
+  const lineWith = (item: InvoiceItemWithManual, listPrice: number, rateRaw: string | number | undefined, qty: number | string) => {
+    const q = Number(qty) || 0;
+    const rateStr = rateRaw === undefined || rateRaw === null ? "" : String(rateRaw).trim();
+    const rate = rateStr === "" ? listPrice : Math.max(0, Number(rateStr) || 0);
+    // Charging more than the list price raises the price itself; less is a discount.
+    const price = rate > listPrice ? rate : listPrice;
+    const discountPrice = rateStr === "" || rate >= price ? "" : rate;
+    return {
+      ...item,
+      quantity: qty as any,
+      price,
+      listPrice,
+      rate: rateStr === "" ? "" : rateRaw,
+      discountPrice,
+      manualDiscount: discountPrice,
+      discount: Math.max(0, price - rate),
+      total: Math.max(0, q * rate),
+    } as InvoiceItemWithManual;
+  };
+
+  const qtyRefs = useRef<Map<string, HTMLInputElement>>(new Map());
+  const productSearchRef = useRef<HTMLInputElement>(null);
+
   const handleAddProduct = (product: Product) => {
     const existingIndex = invoiceItems.findIndex((item) => item.productId === product.id);
-
     if (existingIndex > -1) {
+      const item = invoiceItems[existingIndex];
+      const newQty = (Number(item.quantity) || 0) + 1;
+      const list = item.tiered ? tierPriceFor(product, newQty, item.listPrice ?? item.price) : (item.listPrice ?? item.price);
       const updated = [...invoiceItems];
-      const newQty = (Number(updated[existingIndex].quantity) || 0) + 1;
-      
-      let tierPrice = product.price;
-      if (newQty >= 100) {
-        tierPrice = product.price100 ?? tierPrice;
-      } else if (newQty >= 50) {
-        tierPrice = product.price50 ?? tierPrice;
-      } else if (newQty >= 10) {
-        tierPrice = product.price10 ?? tierPrice;
-      }
-
-      updated[existingIndex].quantity = newQty;
-      updated[existingIndex].price = tierPrice;
-
-      const rawDiscPrice = updated[existingIndex].discountPrice ?? updated[existingIndex].manualDiscount;
-      const effective = (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "")
-        ? Math.min(tierPrice, Math.max(0, Number(rawDiscPrice)))
-        : tierPrice;
-
-      updated[existingIndex].discount = Math.max(0, tierPrice - effective);
-      updated[existingIndex].total = newQty * effective;
+      updated[existingIndex] = lineWith(item, list, item.rate, newQty);
       setInvoiceItems(updated);
     } else {
       setInvoiceItems([
         ...invoiceItems,
-        {
-          productId: product.id,
-          productName: product.name,
-          quantity: 1,
-          price: product.price,
-          discount: 0,
-          discountPrice: "",
-          manualDiscount: "",
-          total: product.price,
-        },
+        lineWith(
+          { productId: product.id, productName: product.name, quantity: 1, price: product.price, discount: 0, total: product.price, tiered: true },
+          product.price,
+          "",
+          1
+        ),
       ]);
     }
     setSearchQuery("");
     setShowProductDropdown(false);
+    setActiveProduct(0);
+    // Jump straight to the quantity of the line just added.
+    setTimeout(() => {
+      const el = qtyRefs.current.get(String(product.id));
+      el?.focus();
+      el?.select();
+    }, 30);
   };
 
-  const handleUpdateUnitPrice = (index: number, val: number | string) => {
+  const handleUpdateQuantity = (index: number, val: string) => {
+    const item = invoiceItems[index];
+    const qty = val === "" ? "" : Math.max(0, parseInt(val, 10) || 0);
+    const product = products.find((p) => p.id === item.productId);
+    const list = item.tiered ? tierPriceFor(product, Number(qty) || 0, item.listPrice ?? item.price) : (item.listPrice ?? item.price);
     const updated = [...invoiceItems];
-    const item = updated[index];
-    const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
-
-    const newUnitPrice = typeof val === "number" ? val : (val === "" ? 0 : parseFloat(val) || 0);
-    updated[index].price = val as any;
-
-    const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
-    let discountVal = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
-
-    if (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "") {
-      const discPriceNum = parseFloat(String(rawDiscPrice));
-      if (!isNaN(discPriceNum)) {
-        const effective = Math.min(newUnitPrice, Math.max(0, discPriceNum));
-        discountVal = Math.max(0, newUnitPrice - effective);
-      }
-    } else {
-      discountVal = Math.min(newUnitPrice, Math.max(0, discountVal));
-    }
-
-    updated[index].discount = discountVal;
-    const effectiveUnitPrice = Math.max(0, newUnitPrice - discountVal);
-    updated[index].total = Math.max(0, numQty * effectiveUnitPrice);
+    updated[index] = lineWith(item, list, item.rate, qty);
     setInvoiceItems(updated);
   };
 
-  const handleUpdateQuantity = (index: number, val: number | string) => {
+  const handleUpdateRate = (index: number, val: string) => {
+    const item = invoiceItems[index];
     const updated = [...invoiceItems];
-    const item = updated[index];
-    const numQty = typeof val === "number" ? val : (parseInt(val as any, 10) || 0);
-    const unitPrice = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
-
-    updated[index].quantity = val as any;
-
-    const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
-    let discountVal = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
-
-    if (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "") {
-      const discPriceNum = parseFloat(String(rawDiscPrice));
-      if (!isNaN(discPriceNum)) {
-        const effective = Math.min(unitPrice, Math.max(0, discPriceNum));
-        discountVal = Math.max(0, unitPrice - effective);
-      }
-    } else {
-      discountVal = Math.min(unitPrice, Math.max(0, discountVal));
-    }
-
-    updated[index].discount = discountVal;
-    const effective = Math.max(0, unitPrice - discountVal);
-    updated[index].total = Math.max(0, numQty * effective);
-    setInvoiceItems(updated);
-  };
-
-  const handleUpdateDiscount = (index: number, val: number | string | undefined) => {
-    const updated = [...invoiceItems];
-    const item = updated[index];
-    const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
-    const unitPrice = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
-
-    const valStr = val !== undefined && val !== null ? String(val).trim() : "";
-    if (valStr === "") {
-      updated[index].discountPrice = "";
-      updated[index].manualDiscount = "";
-      updated[index].discount = 0;
-      updated[index].total = Math.max(0, numQty * unitPrice);
-    } else {
-      const discPriceNum = parseFloat(valStr);
-      if (!isNaN(discPriceNum)) {
-        if (discPriceNum > unitPrice) {
-          setErrorMessage(`Discount Price (${currencyCode} ${discPriceNum.toFixed(dp)}) cannot be greater than Unit Price (${currencyCode} ${unitPrice.toFixed(dp)})`);
-        } else {
-          setErrorMessage(null);
-        }
-        const validPrice = Math.max(0, discPriceNum);
-        const effective = Math.min(unitPrice, validPrice);
-        updated[index].discountPrice = val as any;
-        updated[index].manualDiscount = val as any;
-        updated[index].discount = Math.max(0, unitPrice - effective);
-        updated[index].total = Math.max(0, numQty * effective);
-      }
-    }
+    updated[index] = lineWith(item, item.listPrice ?? item.price, val, item.quantity);
     setInvoiceItems(updated);
   };
 
@@ -496,6 +461,13 @@ function NewInvoiceForm() {
     const updated = [...invoiceItems];
     updated.splice(index, 1);
     setInvoiceItems(updated);
+  };
+
+  const pickCustomer = (c: Customer) => {
+    setSelectedCustomerId(c.id);
+    setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
+    setShowCustomerDropdown(false);
+    setTimeout(() => productSearchRef.current?.focus(), 30);
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -563,7 +535,8 @@ function NewInvoiceForm() {
     setIsSaving(true);
     setErrorMessage(null);
 
-    const dateStr = new Date().toISOString().split("T")[0];
+    // Business day in the Gulf (UTC+4), not UTC.
+    const dateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
 
     const newInvoice: Invoice = {
       id: editInvoiceNumber
@@ -690,524 +663,492 @@ function NewInvoiceForm() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3 text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#61989B] mb-2" />
-        <p className="text-sm font-semibold text-slate-500 animate-pulse">Loading setup...</p>
+        <p className="text-sm font-semibold text-slate-500 animate-pulse">Loading…</p>
       </div>
     );
   }
 
+  const money = (n: number) =>
+    `${currencyCode} ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+  const stockCountry = selectedCustomer?.country || profile?.country || user?.country || "UAE";
+  const stockFor = (productId: string) => {
+    const s = stockMap.get(String(productId));
+    return stockCountry === "Oman" ? (s?.oman ?? 0) : (s?.uae ?? 0);
+  };
+  const unitsTotal = invoiceItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+  const owed = Math.max(0, selectedCustomer?.pendingBillwiseAmount || 0);
+  const creditDaysNum = typeof creditDays === "number" ? creditDays : parseInt(String(creditDays), 10) || 0;
+  const dueDateLabel = (() => {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + creditDaysNum);
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  })();
+  const canEditNumber = profile?.role !== "salesperson" && !editInvoiceNumber;
+  const saveBlocker = !selectedCustomerId ? "Choose a customer" : invoiceItems.length === 0 ? "Add at least one product" : null;
+
+  const chip = (on: boolean) =>
+    `px-3.5 py-2 min-h-[40px] rounded-lg text-sm font-semibold border transition cursor-pointer ${
+      on ? "bg-primary text-white border-primary" : "bg-white text-slate-700 border-slate-200 hover:border-slate-300"
+    }`;
+  const card = "bg-white border border-slate-200 rounded-xl p-4 md:p-5";
+  const heading = "text-sm font-semibold text-slate-900";
+  const input =
+    "w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15";
+
   return (
     <div className="w-full">
       <PageHeader
-        title={editInvoiceNumber ? `Edit Invoice` : `New Invoice`}
-        description={
-          editInvoiceNumber
-            ? `Modify billing items, payment status, or adjust notes for Ref: ${editInvoiceNumber}.`
-            : `Draft a new invoice, set custom billing rates, or compile from an existing quotation.`
-        }
+        title={editInvoiceNumber ? `Edit invoice ${editInvoiceNumber}` : "New invoice"}
         breadcrumbs={[
           { label: "Invoices", href: "/invoices" },
-          { label: editInvoiceNumber ? "Edit Invoice" : "New Invoice" }
+          { label: editInvoiceNumber ? "Edit" : "New" },
         ]}
       />
 
-      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
+      <form onSubmit={handleSubmit} className="px-4 md:px-6 pt-5 max-w-4xl mx-auto space-y-4 text-start">
         {errorMessage && (
-          <div className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700">
-            <span className="font-semibold">{errorMessage}</span>
-            <button onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800">
+          <div className="flex items-start justify-between gap-3 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-800">
+            <span>{errorMessage}</span>
+            <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800" aria-label="Dismiss">
               <X className="w-4 h-4" />
             </button>
           </div>
         )}
 
-        {seriesSplit && seriesSplit.omanCount > 0 && (
-          <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
-            {seriesSplit.uaeCount > 0 ? (
-              <span className="font-semibold">
-                {editInvoiceNumber
-                  ? "This invoice can't mix UAE- and Oman-registered products. Remove one kind and put it on a separate invoice."
-                  : `This sale will be saved as two invoices: UAE-registered (${seriesSplit.uaeCount} item${seriesSplit.uaeCount === 1 ? "" : "s"}, AED ${seriesSplit.uaeTotal.toFixed(2)}) and Oman-registered (${seriesSplit.omanCount} item${seriesSplit.omanCount === 1 ? "" : "s"}, AED ${seriesSplit.omanTotal.toFixed(2)}, printed without the company header).`}
-              </span>
-            ) : (
-              <span className="font-semibold">
-                Oman-registered products only: this will be an Oman-registered invoice with its own number, printed without the company header.
-              </span>
-            )}
-          </div>
-        )}
+        {/* Invoice number */}
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <span>Invoice no.</span>
+          {canEditNumber ? (
+            <input
+              value={invoiceNumber}
+              onChange={(e) => {
+                setInvoiceNumber(e.target.value);
+                setIsCustomInvoiceNumber(true);
+              }}
+              className="w-32 px-2 py-1 border border-transparent hover:border-slate-200 focus:border-accent rounded-md font-semibold text-slate-900 bg-transparent focus:bg-white focus:outline-none"
+              title="Click to change the number"
+            />
+          ) : (
+            <span className="font-semibold text-slate-900">{invoiceNumber || "—"}</span>
+          )}
+          {isCustomInvoiceNumber && canEditNumber && (
+            <button
+              type="button"
+              onClick={() => {
+                setIsCustomInvoiceNumber(false);
+                setInvoiceNumber(computeNextInvoiceNumber(invoicesList));
+              }}
+              className="text-xs font-semibold text-accent hover:underline"
+            >
+              Use next number
+            </button>
+          )}
+          {!editInvoiceNumber && <span className="text-xs text-slate-400">· final number is given on save</span>}
+        </div>
 
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Builder Details (2/3 width) */}
-        <div className="lg:col-span-2 space-y-6">
-          
-          {/* Metadata: Invoice Number & Status */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  {profile?.role === "salesperson" ? "Invoice Number (Auto-Generated)" : "Invoice Number (Editable)"}
-                </label>
-                {isCustomInvoiceNumber && !editInvoiceNumber && profile?.role !== "salesperson" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsCustomInvoiceNumber(false);
-                      setInvoiceNumber(computeNextInvoiceNumber(invoicesList));
-                    }}
-                    className="text-[11px] font-bold text-[#61989B] hover:underline cursor-pointer"
-                  >
-                    Reset to Auto-Sequence
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                required
-                readOnly={profile?.role === "salesperson"}
-                value={invoiceNumber}
-                onChange={(e) => {
-                  if (profile?.role !== "salesperson") {
-                    setInvoiceNumber(e.target.value);
-                    setIsCustomInvoiceNumber(true);
-                  }
-                }}
-                className={`w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none transition-all font-bold ${
-                  profile?.role === "salesperson" ? "bg-slate-50 cursor-not-allowed opacity-80" : "focus:ring-2 focus:ring-accent/15"
-                }`}
-              />
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Payment Status
-                </label>
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as any)}
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-850 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
-                >
-                  <option value="Paid">Paid</option>
-                  <option value="Credit">Credit</option>
-                </select>
-              </div>
-
-              {status === "Paid" && (
-                <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Payment Method
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as any)}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-850 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
-                  >
-                    <option value="Cash">Cash (Contributes to Cash in Hand)</option>
-                    <option value="Bank Transfer">Bank Transfer (Receipt only - No Cash in Hand)</option>
-                    <option value="Cheque">Cheque (Receipt only - No Cash in Hand)</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-              )}
-
-              {status === "Credit" && (
-                <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Credit Days
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    required
-                    value={creditDays}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setCreditDays(v === "" ? "" : Math.max(0, parseInt(v, 10) || 0));
-                    }}
-                    onFocus={(e) => e.target.select()}
-                    onBlur={() => {
-                      if (creditDays === "" || creditDays === undefined || creditDays === null) setCreditDays(30);
-                    }}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-bold"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Customer Selection */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                1. Select Customer
-              </h3>
+        {/* Customer */}
+        <section className={card}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={heading}>Customer</h2>
+            {!selectedCustomer && (
               <button
                 type="button"
                 onClick={() => setIsCustModalOpen(true)}
-                className="text-xs font-bold text-[#61989B] hover:text-[#4e7d80] transition flex items-center gap-1 cursor-pointer"
+                className="text-sm font-semibold text-accent hover:underline flex items-center gap-1"
               >
-                <Plus className="w-3.5 h-3.5" /> Add New Customer
+                <Plus className="w-4 h-4" /> New customer
               </button>
-            </div>
+            )}
+          </div>
 
-            <div className="relative">
-              <div className="relative flex items-center">
-                <Search className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search customer name, company, or clinic..."
-                  value={customerSearchQuery}
-                  onChange={(e) => {
-                    setCustomerSearchQuery(e.target.value);
-                    setShowCustomerDropdown(true);
-                  }}
-                  onFocus={() => setShowCustomerDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
-                />
+          {selectedCustomer ? (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-semibold text-slate-900 truncate">{selectedCustomer.company}</div>
+                <div className="text-sm text-slate-500 truncate">
+                  {[selectedCustomer.name, selectedCustomer.address].filter(Boolean).join(" · ") || "—"}
+                </div>
               </div>
-
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="text-right">
+                  <div className="text-xs text-slate-500">Owes</div>
+                  <div className={`text-sm font-semibold ${owed > 0 ? "text-rose-700" : "text-slate-700"}`}>{money(owed)}</div>
+                </div>
+                {!editInvoiceNumber && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCustomerId("");
+                      setCustomerSearchQuery("");
+                      setShowCustomerDropdown(true);
+                    }}
+                    className="text-sm font-semibold text-accent hover:underline"
+                  >
+                    Change
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+              <input
+                type="text"
+                autoFocus={!editInvoiceNumber && !fromQuoteNumber}
+                placeholder="Search clinic, farm or doctor"
+                value={customerSearchQuery}
+                onChange={(e) => {
+                  setCustomerSearchQuery(e.target.value);
+                  setShowCustomerDropdown(true);
+                  setActiveCustomer(0);
+                }}
+                onFocus={() => setShowCustomerDropdown(true)}
+                onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 150)}
+                onKeyDown={(e) => {
+                  const list = filteredCustomers.slice(0, 50);
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setActiveCustomer((i) => Math.min(i + 1, list.length - 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setActiveCustomer((i) => Math.max(i - 1, 0));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (list[activeCustomer]) pickCustomer(list[activeCustomer]);
+                  }
+                }}
+                className={`${input} pl-9`}
+              />
               {showCustomerDropdown && (
-                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
+                <div className="absolute left-0 right-0 z-30 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
                   {filteredCustomers.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-slate-400 text-center font-medium">
-                      No customers found
+                    <div className="px-3 py-3 text-sm text-slate-500">
+                      No match.{" "}
+                      <button type="button" onMouseDown={() => setIsCustModalOpen(true)} className="font-semibold text-accent hover:underline">
+                        Add a new customer
+                      </button>
                     </div>
                   ) : (
-                    filteredCustomers.map((c) => (
+                    filteredCustomers.slice(0, 50).map((c, i) => (
                       <button
                         key={c.id}
                         type="button"
-                        onClick={() => {
-                          setSelectedCustomerId(c.id);
-                          setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
-                          setShowCustomerDropdown(false);
-                        }}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pickCustomer(c)}
+                        onMouseEnter={() => setActiveCustomer(i)}
+                        className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 ${i === activeCustomer ? "bg-slate-50" : ""}`}
                       >
-                        <div>
-                          <div className="font-bold text-slate-800 text-sm">{c.company}</div>
-                          {c.name && <div className="text-xs text-slate-400 font-medium">Doctor: {c.name}</div>}
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-slate-900 truncate">{c.company}</div>
+                          <div className="text-xs text-slate-500 truncate">{[c.name, c.address].filter(Boolean).join(" · ")}</div>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {c.address && (
-                            <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                              {c.address}
-                            </span>
-                          )}
-                          {(c.pendingBillwiseAmount || 0) > 0 && (
-                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                              Pending: {currencyCode} {Math.max(0, c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp })}
-                            </span>
-                          )}
-                        </div>
+                        {(c.pendingBillwiseAmount || 0) > 0 && (
+                          <span className="text-xs text-rose-700 shrink-0">owes {money(c.pendingBillwiseAmount || 0)}</span>
+                        )}
                       </button>
                     ))
                   )}
                 </div>
               )}
             </div>
+          )}
+        </section>
 
-            {/* Selected Customer Pending Billwise Details Box */}
-            {selectedCustomer && (
-              <div className="mt-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Selected Account</span>
-                  <span className="font-extrabold text-slate-800 text-sm">{selectedCustomer.company}</span>
-                  {selectedCustomer.name && <span className="text-xs font-semibold text-slate-500 ml-2">({selectedCustomer.name})</span>}
-                </div>
-                <div className="text-right">
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Pending Billwise Amount</span>
-                  <span className={`text-sm font-extrabold ${Math.max(0, selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    {currencyCode} {Math.max(0, selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
-                  </span>
-                </div>
-              </div>
+        {/* Products */}
+        <section className={card}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className={heading}>Products</h2>
+            {invoiceItems.length > 0 && (
+              <span className="text-xs text-slate-500">
+                {invoiceItems.length} {invoiceItems.length === 1 ? "line" : "lines"} · {unitsTotal} units
+              </span>
             )}
           </div>
 
-
-          {/* Product Items Selector */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <h3 className="text-base font-bold text-slate-800">2. Items Configuration</h3>
-            
-            <div className="relative">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Search Products to Add
-              </label>
-              <div className="relative flex items-center">
-                <Search className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Type product name, SKU, or active ingredients..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setShowProductDropdown(true);
-                  }}
-                  onFocus={() => setShowProductDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-                />
-              </div>
-
-              {showProductDropdown && filteredProducts.length > 0 && (
-                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-                  {filteredProducts.map((p) => {
-                    const isOutOfStock = p.isAvailable === false;
-                    const isAlreadyAdded = invoiceItems.some((item) => item.productId === p.id);
-                    const isDisabled = isOutOfStock || isAlreadyAdded;
-                    const stockInfo = stockMap.get(p.id);
-                    const userCountry = profile?.country || "UAE";
-                    const isSalesperson = profile?.role === "salesperson";
-                    const stockVal = isSalesperson
-                      ? (userCountry === "Oman" ? (stockInfo?.oman ?? 0) : (stockInfo?.uae ?? 0))
-                      : (stockInfo?.total ?? 0);
-
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
+            <input
+              ref={productSearchRef}
+              type="text"
+              placeholder="Search product name or code, then press Enter"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowProductDropdown(true);
+                setActiveProduct(0);
+              }}
+              onFocus={() => setShowProductDropdown(true)}
+              onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
+              onKeyDown={(e) => {
+                const list = filteredProducts.slice(0, 30);
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setActiveProduct((i) => Math.min(i + 1, list.length - 1));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setActiveProduct((i) => Math.max(i - 1, 0));
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  const p = list[activeProduct];
+                  if (p && p.isAvailable !== false) handleAddProduct(p);
+                } else if (e.key === "Escape") {
+                  setShowProductDropdown(false);
+                }
+              }}
+              className={`${input} pl-9`}
+            />
+            {showProductDropdown && searchQuery && (
+              <div className="absolute left-0 right-0 z-30 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
+                {filteredProducts.length === 0 ? (
+                  <div className="px-3 py-3 text-sm text-slate-500">No product matches “{searchQuery}”.</div>
+                ) : (
+                  filteredProducts.slice(0, 30).map((p, i) => {
+                    const off = p.isAvailable === false;
+                    const inList = invoiceItems.find((it) => it.productId === p.id);
+                    const stock = stockFor(p.id);
                     return (
                       <button
                         key={p.id}
                         type="button"
-                        disabled={isDisabled}
-                        onClick={() => !isDisabled && handleAddProduct(p)}
-                        className={`w-full text-left px-4 py-3 transition-colors flex items-center justify-between ${
-                          isDisabled ? "opacity-60 cursor-not-allowed bg-slate-50/70" : "hover:bg-slate-50"
+                        disabled={off}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => !off && handleAddProduct(p)}
+                        onMouseEnter={() => setActiveProduct(i)}
+                        className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 ${
+                          off ? "opacity-50 cursor-not-allowed" : i === activeProduct ? "bg-slate-50" : ""
                         }`}
                       >
-                        <div>
-                          <div className="font-semibold text-slate-800 text-sm">{p.name}</div>
-                          <div className="text-xs text-slate-400 font-medium">
-                            Unit: {p.unit} • Stock: <strong className="text-slate-700">{stockVal}</strong>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
+                          <div className={`text-xs ${stock <= 0 ? "text-rose-700" : "text-slate-500"}`}>
+                            {off ? "Not available" : `${stock} in stock`}
+                            {inList ? ` · already added (${inList.quantity})` : ""}
                           </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          {isOutOfStock && (
-                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded">
-                              {language === "en" ? "Out of Stock" : "غير متوفر"}
-                            </span>
-                          )}
-                          {isAlreadyAdded && (
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                              {language === "en" ? "Already in List" : "مضاف في القائمة"}
-                            </span>
-                          )}
-                          <span className="font-bold text-sm text-[#1B2A4A]">{currencyCode} {p.price.toFixed(dp)}</span>
-                        </div>
+                        <span className="text-sm text-slate-700 shrink-0">{money(p.price)}</span>
                       </button>
                     );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {invoiceItems.length === 0 ? (
-              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                <p className="text-sm font-semibold text-slate-400">Search and add items to list to build invoice</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="border border-slate-100 rounded-xl overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase">Product Name</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Unit Price</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-24">Qty</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-36">Discount Price</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Subtotal</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-14"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {invoiceItems.map((item, idx) => {
-                        const itemCountry = selectedCustomer?.country || user?.country || "UAE";
-                        const stocks = stockMap.get(String(item.productId));
-                        const availableStock = itemCountry === "Oman" ? (stocks?.oman ?? 0) : (stocks?.uae ?? 0);
-                        const isInsufficient = (Number(item.quantity) || 0) > availableStock;
-
-                        return (
-                          <tr key={item.productId} className="align-middle">
-                            <td className="px-4 py-4">
-                              <span className="font-bold text-slate-700 block">{item.productName}</span>
-                              <span className="text-[11px] font-medium text-slate-400">
-                                Available Stock ({itemCountry}): <span className="font-bold text-slate-700">{availableStock}</span>
-                              </span>
-                              {isInsufficient && (
-                                <div className="text-[11px] font-bold text-rose-600 mt-0.5">
-                                  Insufficient stock. Available quantity: {availableStock}.
-                                </div>
-                              )}
-                            </td>
-                          <td className="px-2 py-4">
-                            <div className="relative flex items-center w-28 mx-auto">
-                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencyCode}</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                inputMode="decimal"
-                                value={item.price !== undefined && item.price !== null ? item.price : ""}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  if (raw === "") {
-                                    handleUpdateUnitPrice(idx, "");
-                                  } else {
-                                    const parsed = parseFloat(raw);
-                                    handleUpdateUnitPrice(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
-                                  }
-                                }}
-                                onFocus={(e) => e.target.select()}
-                                className="w-full pl-10 pr-2 py-1.5 border border-slate-200 rounded-lg text-right font-bold text-sm text-slate-800 focus:outline-none focus:border-accent"
-                              />
-                            </div>
-                          </td>
-                          <td className="px-2 py-4">
-                            <input
-                              type="number"
-                              min="0"
-                              inputMode="numeric"
-                              value={item.quantity !== undefined && item.quantity !== null ? item.quantity : ""}
-                              onChange={(e) => {
-                                const raw = e.target.value;
-                                if (raw === "") {
-                                  handleUpdateQuantity(idx, "");
-                                } else {
-                                  const parsed = parseInt(raw, 10);
-                                  handleUpdateQuantity(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
-                                }
-                              }}
-                              onFocus={(e) => e.target.select()}
-                              className="w-16 mx-auto px-2 py-1.5 border border-slate-200 rounded-lg text-center font-bold focus:outline-none focus:border-accent"
-                            />
-                          </td>
-                          <td className="px-2 py-4">
-                            <div className="relative flex flex-col items-center w-32 mx-auto">
-                              <div className="relative flex items-center w-full">
-                                <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencyCode}</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={item.price}
-                                  step="any"
-                                  inputMode="decimal"
-                                  placeholder="Optional"
-                                  value={item.discountPrice !== undefined && item.discountPrice !== null ? item.discountPrice : item.manualDiscount !== undefined ? item.manualDiscount : ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    if (raw === "") {
-                                      handleUpdateDiscount(idx, "");
-                                    } else {
-                                      const parsed = parseFloat(raw);
-                                      handleUpdateDiscount(idx, isNaN(parsed) ? "" : parsed);
-                                    }
-                                  }}
-                                  onFocus={(e) => e.target.select()}
-                                  className={`w-full pl-10 pr-2 py-1.5 border rounded-lg text-right font-bold text-sm focus:outline-none transition ${
-                                    (item.discountPrice !== undefined && item.discountPrice !== null && String(item.discountPrice).trim() !== "" && Number(item.discountPrice) > item.price) ||
-                                    (item.manualDiscount !== undefined && item.manualDiscount !== null && String(item.manualDiscount).trim() !== "" && Number(item.manualDiscount) > item.price)
-                                      ? "border-rose-500 bg-rose-50 text-rose-800"
-                                      : "border-slate-200 text-slate-800 focus:border-accent"
-                                  }`}
-                                />
-                              </div>
-                              {item.discount > 0 && (
-                                <span className="text-[10px] font-bold text-emerald-600 mt-1">
-                                  Disc: {currencyCode} {item.discount.toFixed(dp)}/unit
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-right font-bold text-slate-800">{currencyCode} {item.total.toFixed(dp)}</td>
-                          <td className="px-4 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(idx)}
-                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 transition"
-                            >
-                              <Trash2 className="w-4.5 h-4.5" />
-                            </button>
-                          </td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                  })
+                )}
               </div>
             )}
           </div>
-        </div>
 
-        {/* Right Side: Summary Card (1/3 width) */}
-        <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 sticky top-20">
-            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3">Invoice Summary</h3>
-            
-            <div className="space-y-3.5 text-sm font-semibold">
-              <div className="flex justify-between text-slate-500">
-                <span>Items Count:</span>
-                <span>{invoiceItems.reduce((acc, curr) => acc + curr.quantity, 0)} items</span>
+          {invoiceItems.length === 0 ? (
+            <p className="text-sm text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-lg">
+              No products yet. Search above to add one.
+            </p>
+          ) : (
+            <div>
+              <div className="hidden md:grid grid-cols-[1fr_84px_120px_110px_32px] gap-3 px-1 pb-2 text-xs text-slate-500 border-b border-slate-100">
+                <span>Product</span>
+                <span className="text-center">Qty</span>
+                <span className="text-right">Rate</span>
+                <span className="text-right">Amount</span>
+                <span />
               </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Subtotal:</span>
-                <span>{currencyCode} {subtotal.toFixed(dp)}</span>
+              <ul className="divide-y divide-slate-100">
+                {invoiceItems.map((item, idx) => {
+                  const stock = stockFor(String(item.productId));
+                  const short = (Number(item.quantity) || 0) > stock;
+                  const list = item.listPrice ?? item.price;
+                  const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
+                  const off = Math.max(0, list - rateNum);
+                  const backToSearch = (e: React.KeyboardEvent) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      productSearchRef.current?.focus();
+                    }
+                  };
+                  return (
+                    <li key={item.productId} className="py-3 md:grid md:grid-cols-[1fr_84px_120px_110px_32px] md:gap-3 md:items-center">
+                      <div className="flex items-start justify-between gap-2 md:block min-w-0">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-slate-900">{item.productName}</div>
+                          <div className="text-xs text-slate-500">
+                            List {money(list)}
+                            {off > 0 && rateNum > 0 && <span className="text-emerald-700"> · {money(off)} off each</span>}
+                            {rateNum === 0 && <span className="text-emerald-700"> · free</span>}
+                          </div>
+                          <div className={`text-xs ${short ? "text-rose-700 font-medium" : "text-slate-400"}`}>
+                            {short ? `Only ${stock} in stock` : `${stock} in stock`}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(idx)}
+                          className="md:hidden p-1.5 text-slate-400 hover:text-rose-600"
+                          aria-label={`Remove ${item.productName}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mt-2 md:contents">
+                        <label className="block">
+                          <span className="md:hidden text-xs text-slate-500">Qty</span>
+                          <input
+                            ref={(el) => {
+                              if (el) qtyRefs.current.set(String(item.productId), el);
+                              else qtyRefs.current.delete(String(item.productId));
+                            }}
+                            type="number"
+                            min="0"
+                            inputMode="numeric"
+                            value={item.quantity ?? ""}
+                            onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={backToSearch}
+                            className={`${input} text-center px-2 ${short ? "border-rose-300" : ""}`}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="md:hidden text-xs text-slate-500">Rate</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            inputMode="decimal"
+                            placeholder={list.toFixed(dp)}
+                            value={item.rate ?? ""}
+                            onChange={(e) => handleUpdateRate(idx, e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={backToSearch}
+                            className={`${input} text-right px-2`}
+                          />
+                        </label>
+                        <div className="text-right">
+                          <span className="md:hidden text-xs text-slate-500 block">Amount</span>
+                          <span className="text-sm font-semibold text-slate-900 leading-[42px] md:leading-normal">{money(item.total)}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(idx)}
+                        className="hidden md:flex p-1.5 text-slate-400 hover:text-rose-600 justify-center"
+                        aria-label={`Remove ${item.productName}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-xs text-slate-400 pt-2">Leave Rate empty to charge the list price. Enter 0 for a free unit.</p>
+            </div>
+          )}
+
+          {seriesSplit && seriesSplit.omanCount > 0 && (
+            <p className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-900">
+              {seriesSplit.uaeCount > 0
+                ? editInvoiceNumber
+                  ? "UAE- and Oman-registered products can't share one invoice. Move one kind to a separate invoice."
+                  : `This will save as two invoices: UAE-registered ${money(seriesSplit.uaeTotal)} and Oman-registered ${money(seriesSplit.omanTotal)} (printed without the company header).`
+                : "Oman-registered products only: saved with its own number and printed without the company header."}
+            </p>
+          )}
+        </section>
+
+        {/* Payment */}
+        <section className={card}>
+          <h2 className={`${heading} mb-3`}>Payment</h2>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={chip(status === "Paid")} onClick={() => setStatus("Paid")}>
+              Paid now
+            </button>
+            <button type="button" className={chip(status === "Credit")} onClick={() => setStatus("Credit")}>
+              On credit
+            </button>
+          </div>
+
+          {status === "Paid" ? (
+            <div className="mt-4">
+              <div className="text-xs text-slate-500 mb-2">Paid by</div>
+              <div className="flex flex-wrap gap-2">
+                {(["Cash", "Bank Transfer", "Cheque", "Other"] as const).map((m) => (
+                  <button key={m} type="button" className={chip(paymentMethod === m)} onClick={() => setPaymentMethod(m)}>
+                    {m === "Bank Transfer" ? "Bank transfer" : m}
+                  </button>
+                ))}
               </div>
-              {discountTotal > 0 && (
-                <div className="flex justify-between text-slate-500">
-                  <span>Discount Total:</span>
-                  <span className="text-emerald-600">-{discountTotal.toFixed(dp)}</span>
+              <p className="text-xs text-slate-400 mt-2">
+                {paymentMethod === "Cash" ? "A receipt is made and the cash is added to your cash in hand." : "A receipt is made. Cash in hand is not changed."}
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4">
+              <div className="text-xs text-slate-500 mb-2">Due in</div>
+              <div className="flex flex-wrap items-center gap-2">
+                {[30, 60, 90].map((d) => (
+                  <button key={d} type="button" className={chip(creditDaysNum === d)} onClick={() => setCreditDays(d)}>
+                    {d} days
+                  </button>
+                ))}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={creditDays}
+                    onChange={(e) => setCreditDays(e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    onBlur={() => {
+                      if (creditDays === "") setCreditDays(30);
+                    }}
+                    className={`${input} w-20 text-center`}
+                    aria-label="Credit days"
+                  />
+                  <span className="text-sm text-slate-500">days</span>
                 </div>
-              )}
-
-              <div className="flex justify-between text-lg font-bold text-slate-900 border-t border-slate-100 pt-4 mt-2">
-                <span>Grand Total:</span>
-                <span>{currencyCode} {grandTotal.toFixed(dp)}</span>
               </div>
+              <p className="text-xs text-slate-400 mt-2">Due on {dueDateLabel}.</p>
             </div>
+          )}
 
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">
-                Special Remarks / Delivery Notes
-              </label>
-              <textarea
-                rows={3}
-                placeholder="e.g. standard payment terms 30 days..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-              />
-            </div>
-
-            <div className="space-y-3 pt-2">
-              <button
-                type="submit"
-                disabled={isSaving || !selectedCustomerId || invoiceItems.length === 0}
-                className="flex w-full justify-center items-center gap-2 py-3.5 px-4 text-base font-bold text-white bg-primary rounded-xl hover:bg-[#15223c] focus:outline-none disabled:opacity-50 transition duration-150 cursor-pointer shadow-md shadow-primary/10"
-              >
-                <CheckCircle className="w-5 h-5" />
-                {isSaving ? "Saving Invoice..." : "Save Invoice"}
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            {showNotes ? (
+              <>
+                <label htmlFor="inv-notes" className="text-xs text-slate-500 block mb-1.5">
+                  Note on the invoice
+                </label>
+                <textarea id="inv-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={input} />
+              </>
+            ) : (
+              <button type="button" onClick={() => setShowNotes(true)} className="text-sm font-semibold text-accent hover:underline">
+                + Add a note
               </button>
-              <Link
-                href="/invoices"
-                className="flex w-full justify-center items-center py-3.5 px-4 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition duration-150"
-              >
-                Cancel
-              </Link>
+            )}
+          </div>
+        </section>
+
+        {/* Total and save */}
+        <div className="sticky bottom-0 z-20 -mx-4 md:mx-0 px-4 md:px-5 py-3 bg-white/95 backdrop-blur border-t md:border border-slate-200 md:rounded-t-xl flex items-center justify-between gap-4">
+          <div>
+            <div className="text-xs text-slate-500">
+              Total{discountTotal > 0 ? ` · ${money(discountTotal)} discount` : ""}
             </div>
+            <div className="text-xl font-semibold text-slate-900">{money(grandTotal)}</div>
+          </div>
+          <div className="flex items-center gap-3">
+            {saveBlocker && <span className="hidden sm:inline text-xs text-slate-500">{saveBlocker}</span>}
+            <Link href="/invoices" className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-2 py-2">
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={isSaving || !!saveBlocker}
+              className="px-5 py-2.5 min-h-[44px] text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {isSaving ? "Saving…" : editInvoiceNumber ? "Save changes" : status === "Paid" ? "Save invoice & receipt" : "Save invoice"}
+            </button>
           </div>
         </div>
       </form>
-      </div>
-
-      {showProductDropdown && (
-        <div className="fixed inset-0 z-10" onClick={() => setShowProductDropdown(false)} />
-      )}
 
       {/* Success Modal */}
       {successMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-150">
-            <CheckCircle className="w-12 h-12 text-emerald-500 mx-auto mb-4 animate-bounce" />
+            <CheckCircle className="w-10 h-10 text-emerald-600 mx-auto mb-3" />
             <h3 className="text-lg font-bold text-slate-900 mb-2">Invoice Saved</h3>
             <p className="text-sm text-slate-500 mb-6">{successMessage}</p>
             <button
@@ -1229,9 +1170,9 @@ function NewInvoiceForm() {
           <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl relative text-left">
             {formCustSuccess ? (
               <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
-                <CheckCircle className="w-12 h-12 text-emerald-500 animate-bounce" />
-                <h4 className="text-lg font-bold text-slate-900">Customer Added Successfully</h4>
-                <p className="text-sm text-slate-400">Syncing with database...</p>
+                <CheckCircle className="w-10 h-10 text-emerald-600" />
+                <h4 className="text-lg font-bold text-slate-900">Customer added</h4>
+                
               </div>
             ) : (
               <>
@@ -1315,8 +1256,7 @@ function NewInvoiceForm() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl relative text-left border border-amber-200">
             <div className="flex items-center gap-3 text-amber-600 mb-3">
-              <span className="p-2 bg-amber-50 rounded-xl text-lg">⚠️</span>
-              <h3 className="text-base font-bold text-slate-900">Confirm Payment Correction</h3>
+                            <h3 className="text-base font-bold text-slate-900">Change paid invoice to credit?</h3>
             </div>
             <p className="text-sm text-slate-600 mb-6 leading-relaxed">
               Changing this invoice from <strong>Paid</strong> to <strong>Credit</strong> will reverse the associated receipt and collection entry and update the customer's outstanding balance.
@@ -1337,7 +1277,7 @@ function NewInvoiceForm() {
                 }}
                 className="w-1/2 py-2.5 text-xs font-bold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition"
               >
-                Confirm & Reconcile
+                Change to credit
               </button>
             </div>
           </div>
@@ -1352,7 +1292,7 @@ export default function NewInvoicePage() {
     <Suspense fallback={
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3 text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#61989B] mb-2" />
-        <p className="text-sm font-semibold text-slate-500 animate-pulse">Loading Invoice Interface...</p>
+        <p className="text-sm font-semibold text-slate-500 animate-pulse">Loading…</p>
       </div>
     }>
       <NewInvoiceForm />
