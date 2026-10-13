@@ -17,7 +17,8 @@ import {
   X,
   Wallet,
   CreditCard,
-  Percent
+  Percent,
+  Globe2
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/context/LanguageContext";
@@ -31,7 +32,8 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: SidebarProps) {
   const pathname = usePathname();
-  const { logout, permissions, profile } = useAuth();
+  const { logout, permissions, profile, countries, switchCountry } = useAuth();
+  const [switching, setSwitching] = React.useState<string | null>(null);
   const { t, isRtl } = useLanguage();
 
   const isSalesperson = profile?.role === "salesperson";
@@ -74,7 +76,8 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       title: t("navAdministration"),
       visible: !isSalesperson && (isSuperAdmin || isAccountant),
       items: [
-        { name: t("salespersonsUsers"), href: "/users", icon: Users, visible: isSuperAdmin },
+        // The accountant sees the users list too (number series); only the admin manages logins.
+        { name: t("salespersonsUsers"), href: "/users", icon: Users, visible: isSuperAdmin || isAccountant },
         { name: t("categories"), href: "/settings/categories", icon: Package, visible: isSuperAdmin || isAccountant },
         { name: t("settings"), href: "/settings", icon: Settings, visible: isSuperAdmin || isAccountant },
       ]
@@ -129,6 +132,59 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
           </button>
         )}
       </div>
+
+      {/* Country switcher (users covering several countries) */}
+      {countries.length > 1 && profile && (
+        <div className={`px-3.5 pt-4 ${isCollapsed ? "flex justify-center" : ""}`}>
+          {isCollapsed ? (
+            <button
+              type="button"
+              title={`Working in ${profile.country} - switch country`}
+              disabled={switching !== null}
+              onClick={async () => {
+                const next = countries.find((c) => c !== profile.country);
+                if (!next) return;
+                setSwitching(next);
+                const r = await switchCountry(next);
+                if (!r.success) setSwitching(null);
+              }}
+              className="flex h-11 w-11 flex-col items-center justify-center rounded-xl bg-white/5 text-[10px] font-extrabold text-teal-200 hover:bg-white/10 cursor-pointer"
+            >
+              <Globe2 className="h-4 w-4" />
+              {profile.country}
+            </button>
+          ) : (
+            <div>
+              <div className="px-1 pb-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[#5294A5]">Country</div>
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1" role="group" aria-label="Country">
+                {countries.map((c) => {
+                  const active = c === profile.country;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      aria-pressed={active}
+                      disabled={active || switching !== null}
+                      onClick={async () => {
+                        setSwitching(c);
+                        const r = await switchCountry(c);
+                        if (!r.success) setSwitching(null);
+                      }}
+                      className={`rounded-lg px-3 py-2 text-xs font-extrabold transition ${
+                        active
+                          ? "bg-gradient-to-r from-[#174D58] to-[#256874] text-white"
+                          : "text-slate-300 hover:bg-white/10 hover:text-white cursor-pointer"
+                      } ${switching === c ? "animate-pulse" : ""}`}
+                    >
+                      {c}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Navigation items grouped by sections */}
       <nav className="flex-1 px-3.5 py-4 space-y-6 overflow-y-auto">

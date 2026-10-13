@@ -3,21 +3,24 @@ import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { generateTemporaryPassword, validatePassword } from "@/lib/auth/password";
 import { UserRole, UserCountry } from "@/types";
+import { normalizeCountries } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const { profile: adminProfile, supabase } = await requireAuth(["super_admin"]);
+    // The accountant may see the list (e.g. for number series); only admins change users.
+    const { profile: adminProfile, supabase } = await requireAuth(["super_admin", "accountant"]);
 
     const adminClient = createAdminClient();
     
     if (adminClient) {
-      // Admins manage users of their own country only.
+      // Users who work in this country, including a shared accountant who has
+      // the other country open right now.
       const { data: profiles, error } = await adminClient
         .from("profiles")
         .select("*")
-        .eq("country", adminProfile.country)
+        .or(`country.eq.${adminProfile.country},countries.cs.{${adminProfile.country}}`)
         .order("created_at", { ascending: false });
 
       if (!error && profiles) {
@@ -35,7 +38,7 @@ export async function GET() {
     const { data: profiles, error } = await supabase
       .from("profiles")
       .select("*")
-      .eq("country", adminProfile.country)
+      .or(`country.eq.${adminProfile.country},countries.cs.{${adminProfile.country}}`)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -57,7 +60,7 @@ export async function POST(request: Request) {
     const { profile: adminProfile, supabase } = await requireAuth(["super_admin"]);
 
     const body = await request.json();
-    const { email, password, full_name, phone, role, country } = body;
+    const { email, password, full_name, phone, role, country, countries } = body;
 
     if (!email || !full_name) {
       return NextResponse.json({ error: "Email and full name are required" }, { status: 400 });
@@ -86,6 +89,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `You can only create users in ${adminProfile.country}.` }, { status: 403 });
     }
     const validCountry: UserCountry = adminProfile.country === "Oman" ? "Oman" : "UAE";
+    // An accountant can also cover the other country (ticked on the Users page).
+    const validCountries = normalizeCountries(validRole, validCountry, countries);
 
     // 0. Check if user with this email already exists in profiles
     const { data: existingProfile } = await supabase
@@ -140,6 +145,7 @@ export async function POST(request: Request) {
       phone: phone ? String(phone).trim() : "",
       role: validRole,
       country: validCountry,
+      countries: validCountries,
       is_active: true,
       updated_at: new Date().toISOString(),
     };
@@ -168,7 +174,7 @@ export async function POST(request: Request) {
         performed_at: new Date().toISOString(),
         action: "CREATE_USER",
         target_user: newUserId,
-        details: { email: trimmedEmail, role: validRole, country: validCountry },
+        details: { email: trimmedEmail, role: validRole, country: validCountry, countries: validCountries },
       }]);
     } catch {
       // Non-blocking log catch

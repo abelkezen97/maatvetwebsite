@@ -336,9 +336,11 @@ export default function CustomersPage() {
     );
   }
 
-  const isSuperAdmin = profile?.role === "super_admin" || user?.role === "super_admin";
+  // Office staff (admin or accountant) get the full customers view.
+  const isStaffView =
+    profile?.role === "super_admin" || profile?.role === "accountant" || user?.role === "super_admin" || user?.role === "accountant";
 
-  if (isSuperAdmin) {
+  if (isStaffView) {
     return (
       <SuperAdminCustomersView
         customers={customers}

@@ -28,7 +28,7 @@ export default function InventoryDashboardPage() {
   // There is no global role: stock is managed per country, in the user's own country only.
   const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
 
-  const isSuperAdmin = profile?.role === "super_admin";
+  const isStaff = profile?.role === "super_admin" || profile?.role === "accountant"; // admin or accountant
   const canViewGlobal = profile?.role === "super_admin" || profile?.role === "accountant";
   const isUaeSalesperson = profile?.role === "salesperson" && profile?.country === "UAE";
   const isOmanSalesperson = profile?.role === "salesperson" && profile?.country === "Oman";
@@ -66,7 +66,7 @@ export default function InventoryDashboardPage() {
     }
   };
 
-  // Modals state (Super Admin only)
+  // Modals state (admin or accountant)
   const [showOpeningModal, setShowOpeningModal] = useState<boolean>(false);
   const [showReceivingModal, setShowReceivingModal] = useState<boolean>(false);
 
@@ -199,7 +199,7 @@ export default function InventoryDashboardPage() {
               Stock Movements Log
             </Link>
 
-            {isSuperAdmin && (
+            {isStaff && (
               <>
                 <Link
                   href="/inventory/adjustments"

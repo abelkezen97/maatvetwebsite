@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, ChevronDown, X } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
-import { useAuth } from "@/hooks/useAuth";
 import { formatMoney } from "@/lib/currency";
 import type { CommissionReport, SalesmanCommission, CommissionBand } from "@/lib/db/commission";
 
@@ -134,7 +133,6 @@ function SalesmanDetail({ s, showName }: { s: SalesmanCommission; showName?: boo
 }
 
 export default function CommissionPage() {
-  const { isSuperAdmin } = useAuth();
   const [{ year, quarter }, setPeriod] = useState(currentQuarter);
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
@@ -299,7 +297,7 @@ export default function CommissionPage() {
                             {s.payout ? (
                               <span className="text-xs font-semibold text-slate-600">
                                 Paid {shortDate(s.payout.paidAt.slice(0, 10))} ({money(s.payout.commissionAmount)})
-                                {isSuperAdmin && (
+                                {isStaff && (
                                   <button
                                     onClick={() => undoPaid(s)}
                                     disabled={busy === s.salesmanId}

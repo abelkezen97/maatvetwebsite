@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { Profile, UserRole, UserCountry } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
-import { roleLabel } from "@/lib/auth/permissions";
+import { roleLabel, workCountries } from "@/lib/auth/permissions";
 import { PageHeader } from "@/components/PageHeader";
 
 interface UserStats extends Profile {
@@ -32,7 +32,7 @@ interface UserStats extends Profile {
 }
 
 export default function UsersManagementPage() {
-  const { isSuperAdmin, loading: authLoading } = useAuth();
+  const { isSuperAdmin, isStaff, loading: authLoading } = useAuth();
   const router = useRouter();
   const [users, setUsers] = useState<UserStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,10 +82,10 @@ export default function UsersManagementPage() {
   };
 
   useEffect(() => {
-    if (isSuperAdmin) {
+    if (isStaff) {
       fetchUsersWithStats();
     }
-  }, [isSuperAdmin]);
+  }, [isStaff]);
 
   const filteredUsers = users.filter((u) => {
     const q = searchQuery.toLowerCase();
@@ -106,6 +106,7 @@ export default function UsersManagementPage() {
         title="Salespersons & User Directory"
         description="Operational team management, territory assignments, and performance overview across field agents."
         action={
+          isSuperAdmin && (
           <Link
             href="/settings/users"
             className="inline-flex items-center justify-center gap-2 px-5 py-3 min-h-[44px] rounded-xl bg-white text-[#1B2A4A] font-extrabold hover:bg-slate-100 transition shadow-md cursor-pointer text-sm"
@@ -113,6 +114,7 @@ export default function UsersManagementPage() {
             <UserPlus className="w-4 h-4" />
             Provision New User
           </Link>
+          )
         }
       />
 
@@ -202,7 +204,7 @@ export default function UsersManagementPage() {
                     </td>
 
                     <td className="py-4 px-4 font-bold text-slate-800">
-                      {u.country}
+                      {workCountries(u).join(" + ")}
                     </td>
 
                     <td className="py-4 px-4 text-center font-extrabold text-slate-800">

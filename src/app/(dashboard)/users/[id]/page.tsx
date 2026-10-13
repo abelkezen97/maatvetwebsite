@@ -26,7 +26,7 @@ export default function SalespersonProfilePage() {
   const params = useParams();
   const router = useRouter();
   const userId = params?.id as string;
-  const { isSuperAdmin, loading: authLoading } = useAuth();
+  const { isStaff, loading: authLoading } = useAuth(); // admin or accountant
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -71,10 +71,10 @@ export default function SalespersonProfilePage() {
       }
     }
 
-    if (isSuperAdmin) {
+    if (isStaff) {
       loadSalespersonData();
     }
-  }, [userId, isSuperAdmin]);
+  }, [userId, isStaff]);
 
   // Outstanding Balance Managed by salesperson
   const totalOutstanding = useMemo(() => {

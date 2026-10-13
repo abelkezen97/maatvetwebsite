@@ -89,7 +89,7 @@ export async function POST(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    const { profile, supabase } = await requireAuth(["super_admin"]);
+    const { profile, supabase } = await requireAuth(["super_admin", "accountant"]);
     const { salesmanId, year, quarter } = await parse(request);
     const client = createAdminClient() || supabase;
     const { data, error } = await client

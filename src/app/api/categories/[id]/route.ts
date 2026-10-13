@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
+import { isCountryStaff } from "@/lib/auth/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,8 @@ export async function PUT(
   try {
     const { profile, supabase } = await requireAuth();
 
-    if (profile.role !== "super_admin") {
-      return NextResponse.json({ error: "Forbidden: Only super_admin can edit product categories" }, { status: 403 });
+    if (!isCountryStaff(profile)) {
+      return NextResponse.json({ error: "Forbidden: Only an Admin or Accountant can edit product categories" }, { status: 403 });
     }
 
     const { id } = await params;
@@ -61,8 +62,8 @@ export async function DELETE(
   try {
     const { profile, supabase } = await requireAuth();
 
-    if (profile.role !== "super_admin") {
-      return NextResponse.json({ error: "Forbidden: Only super_admin can delete product categories" }, { status: 403 });
+    if (!isCountryStaff(profile)) {
+      return NextResponse.json({ error: "Forbidden: Only an Admin or Accountant can delete product categories" }, { status: 403 });
     }
 
     const { id } = await params;

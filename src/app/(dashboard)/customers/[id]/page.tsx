@@ -134,7 +134,7 @@ export default function CustomerDetailPage() {
   const params = useParams();
   const router = useRouter();
   const customerId = params?.id as string;
-  const { profile, permissions, isSuperAdmin, isAccountant, isSalesperson } = useAuth();
+  const { profile, permissions, isSuperAdmin, isAccountant, isSalesperson, isStaff } = useAuth();
 
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -382,9 +382,9 @@ export default function CustomerDetailPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
             <div>
               <span className="font-bold">Cash only.</span>{" "}
-              {customer.cashOnlyReason || "A cheque from this customer bounced."} No credit invoices or cheque payments until an admin removes the flag.
+              {customer.cashOnlyReason || "A cheque from this customer bounced."} No credit invoices or cheque payments until an admin or accountant removes the flag.
             </div>
-            {isSuperAdmin && (
+            {isStaff && (
               <button
                 type="button"
                 onClick={async () => {

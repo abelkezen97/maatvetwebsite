@@ -30,6 +30,7 @@ import { DashboardCard } from "@/components/DashboardCard";
 import { DataTable } from "@/components/DataTable";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
+import { AccountantDashboard } from "@/components/AccountantDashboard";
 
 export default function DashboardPage() {
   const { t, translateBusinessText, formatCurrency, formatDate, isRtl } = useLanguage();
@@ -37,6 +38,8 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const isAdminOrAccountant = profile?.role === "super_admin" || profile?.role === "accountant";
+  // The accountant gets the accounts dashboard (tabs) instead of the sales overview.
+  const isAccountantView = profile?.role === "accountant";
 
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -50,6 +53,8 @@ export default function DashboardPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
+    // Wait for the profile; the accountant's dashboard loads its own data.
+    if (!profile || isAccountantView) return;
     async function loadDashboardData() {
       try {
         setLoading(true);
@@ -99,7 +104,7 @@ export default function DashboardPage() {
     }
 
     loadDashboardData();
-  }, []);
+  }, [profile?.role, isAccountantView]);
 
   // Calculate Admin KPIs
   const metrics = useMemo(() => {
@@ -477,6 +482,10 @@ export default function DashboardPage() {
 
       {/* Main Dashboard Content Area */}
       <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
+        {isAccountantView && profile ? (
+          <AccountantDashboard country={profile.country} name={profile.full_name || "Accountant"} />
+        ) : (
+        <>
         {/* SUPER ADMIN / ACCOUNTANT 4-KPI OPERATIONS BANNER */}
         {isAdminOrAccountant ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -662,6 +671,8 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+        </>
+        )}
       </div>
 
       {/* Quote Detail Modal */}
