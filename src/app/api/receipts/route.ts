@@ -143,6 +143,11 @@ export async function POST(request: Request) {
     if (isCheque && (!chequeNumber || !chequeDate)) {
       return NextResponse.json({ error: "Cheque number and cheque date are required for cheque payments." }, { status: 400 });
     }
+    // Bank transfers need the transfer reference; the bank is optional.
+    const isTransfer = paymentMethod === "Bank Transfer";
+    if (isTransfer && !String(referenceNo).trim()) {
+      return NextResponse.json({ error: "Enter the bank transfer reference." }, { status: 400 });
+    }
 
     // Allocations: which invoices this payment settles. Older clients send a single invoiceId.
     type RequestedAllocation = { invoiceId: string; amount?: number };
@@ -366,7 +371,7 @@ export async function POST(request: Request) {
         notes,
         chequeNumber: isCheque ? chequeNumber : undefined,
         chequeDate: isCheque ? chequeDate : undefined,
-        bankName: isCheque ? bankName : undefined,
+        bankName: isCheque || isTransfer ? bankName || undefined : undefined,
         chequeStatus: isCheque ? "Pending" : undefined,
       });
 

@@ -2,9 +2,36 @@
 
 import React, { useState, useMemo, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Search, CheckCircle, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Calendar,
+  CheckCircle,
+  ClipboardCheck,
+  Clock,
+  CreditCard,
+  FileText,
+  Hash,
+  Info,
+  Landmark,
+  MapPin,
+  MessageSquare,
+  Minus,
+  Package,
+  Plus,
+  Search,
+  ShieldAlert,
+  ShoppingBag,
+  Trash2,
+  User,
+  UserPlus,
+  Users,
+  Wallet,
+  X,
+} from "lucide-react";
+import { Avatar, ChoiceTile, ReviewSection, StepPanel, WizardBar, WizardStep, WizardStepper } from "@/components/wizard/WizardUI";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
+import { AccountSnapshot, SavedDocuments } from "@/components/CustomerAccountPanels";
 import { Product, Customer, QuoteItem, Quote, Invoice, Receipt } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
@@ -62,6 +89,7 @@ function NewInvoiceForm() {
   const [activeCustomer, setActiveCustomer] = useState(0);
   const [showNotes, setShowNotes] = useState(false);
   // Wizard: 0 customer, 1 products, 2 payment, 3 review.
+  const [saved, setSaved] = useState<{ title: string; invoiceIds: string[]; paid: boolean } | null>(null);
   const [step, setStep] = useState(editInvoiceNumber ? 3 : fromQuoteNumber ? 1 : 0);
   // Payment details (cheque / bank transfer paid at invoice time).
   const [chequeNumber, setChequeNumber] = useState("");
@@ -624,16 +652,16 @@ function NewInvoiceForm() {
         ? resData.invoices.map((i: any) => i.invoiceNumber)
         : [resData.invoiceNumber || newInvoice.invoiceNumber];
       const numbersText = savedNumbers.join(" and ");
-      setSuccessMessage(
-        language === "en"
-          ? `${savedNumbers.length > 1 ? "Invoices" : "Invoice"} ${numbersText} successfully saved!`
-          : `تم حفظ الفاتورة ${numbersText} بنجاح!`
-      );
+      const savedIds: string[] = Array.isArray(resData.invoices) && resData.invoices.length > 0
+        ? resData.invoices.map((i: any) => i.id).filter(Boolean)
+        : [resData.id || newInvoice.id].filter((x: any) => x && !String(x).startsWith("inv-mock"));
+      setSaved({
+        title: `${savedNumbers.length > 1 ? "Invoices" : "Invoice"} ${numbersText} ${editInvoiceNumber ? "updated" : "saved"}`,
+        invoiceIds: savedIds,
+        paid: status === "Paid",
+      });
       setIsSaving(false);
-
-      setTimeout(() => {
-        router.push("/invoices");
-      }, 800);
+      setTimeout(() => topRef.current?.scrollIntoView({ block: "start" }), 30);
     } catch (err: any) {
       console.error("Invoice save error:", err);
       setErrorMessage(err.message || "Failed to save invoice to database.");
@@ -715,6 +743,8 @@ function NewInvoiceForm() {
   const askDetails = !editInvoiceNumber && status === "Paid";
   const methodLabel = (m: string) => (m === "Bank Transfer" ? "Bank transfer" : m);
 
+  const zeroLine = invoiceItems.find((it) => !(Number(it.quantity) > 0));
+  const productsBlocker = invoiceItems.length === 0 ? "Add at least one product" : zeroLine ? `Set a quantity for ${zeroLine.productName} or remove it` : null;
   const paymentBlocker = (() => {
     if (cashOnly && status === "Credit") return "This customer is cash only. Choose Paid now.";
     if (cashOnly && status === "Paid" && paymentMethod === "Cheque") return "This customer is cash only. Cheques are not accepted.";
@@ -722,27 +752,24 @@ function NewInvoiceForm() {
     if (askDetails && paymentMethod === "Bank Transfer" && !transferRef.trim()) return "Enter the transfer reference";
     return null;
   })();
-  const maxStep = !selectedCustomerId ? 0 : invoiceItems.length === 0 ? 1 : paymentBlocker ? 2 : 3;
-  const STEPS = ["Customer", "Products", "Payment", "Review"];
+  const maxStep = !selectedCustomerId ? 0 : productsBlocker ? 1 : paymentBlocker ? 2 : 3;
+  const STEPS: WizardStep[] = [
+    { label: "Customer", icon: Users },
+    { label: "Products", icon: Package },
+    { label: "Payment", icon: CreditCard },
+    { label: "Review", icon: ClipboardCheck },
+  ];
+  const stepHint = step === 0 ? "Choose a customer" : step === 1 ? productsBlocker : step === 2 ? paymentBlocker : null;
+  const METHODS = [
+    { key: "Cash", icon: Wallet, hint: "Adds to your cash in hand" },
+    { key: "Bank Transfer", icon: Landmark, hint: "Reference needed" },
+    { key: "Cheque", icon: FileText, hint: "Paid once it clears" },
+    { key: "Other", icon: CreditCard, hint: "Card or anything else" },
+  ] as const;
 
-  const chip = (on: boolean, disabled = false) =>
-    `px-4 py-2.5 min-h-[44px] rounded-lg text-sm font-semibold border transition ${
-      disabled
-        ? "bg-slate-50 text-slate-300 border-slate-100 cursor-not-allowed"
-        : on
-          ? "bg-primary text-white border-primary cursor-pointer"
-          : "bg-white text-slate-700 border-slate-200 hover:border-slate-400 cursor-pointer"
-    }`;
-  const card = "bg-white border border-slate-200 rounded-xl p-4 md:p-6";
-  const title = "text-lg font-semibold text-slate-900";
-  const label = "block text-sm font-medium text-slate-700 mb-1.5";
   const input =
-    "w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15";
-  const editLink = (s: number) => (
-    <button type="button" onClick={() => goTo(s)} className="text-sm font-semibold text-accent hover:underline">
-      Edit
-    </button>
-  );
+    "w-full px-3.5 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/10";
+  const label = "block text-sm font-medium text-slate-700 mb-1.5";
 
   return (
     <div className="w-full">
@@ -763,574 +790,629 @@ function NewInvoiceForm() {
             handleSubmit();
           }
         }}
-        className="px-4 md:px-6 pt-5 max-w-3xl mx-auto text-start"
+        className="px-4 sm:px-6 lg:px-8 pt-6 md:pt-8 pb-4 max-w-5xl mx-auto text-start"
       >
         <div ref={topRef} className="scroll-mt-24" />
 
-        {/* Steps */}
-        <ol className="flex items-center gap-1 sm:gap-2 mb-5" aria-label="Steps">
-          {STEPS.map((s, i) => {
-            const done = i < step;
-            const current = i === step;
-            const reachable = i <= maxStep;
-            return (
-              <li key={s} className="flex items-center gap-1 sm:gap-2 flex-1 last:flex-none">
-                <button
-                  type="button"
-                  disabled={!reachable}
-                  onClick={() => reachable && goTo(i)}
-                  aria-current={current ? "step" : undefined}
-                  className={`flex items-center gap-2 text-sm whitespace-nowrap ${reachable ? "cursor-pointer" : "cursor-default"}`}
-                >
-                  <span
-                    className={`w-7 h-7 rounded-full grid place-items-center text-xs font-semibold border ${
-                      current ? "bg-primary text-white border-primary" : done ? "bg-accent text-white border-accent" : "bg-white text-slate-400 border-slate-200"
-                    }`}
-                  >
-                    {done ? <CheckCircle className="w-4 h-4" /> : i + 1}
-                  </span>
-                  <span className={`hidden sm:inline ${current ? "font-semibold text-slate-900" : done ? "text-slate-700" : "text-slate-400"}`}>{s}</span>
+        {saved && (
+          <SavedDocuments
+            title={saved.title}
+            customerId={selectedCustomerId}
+            invoiceIds={saved.invoiceIds}
+            invoiceIdsForReceipts={saved.paid ? saved.invoiceIds : []}
+            newHref="/invoices/new"
+            newLabel="New invoice"
+            listHref="/invoices"
+            listLabel="Go to invoices"
+          />
+        )}
+
+        {!saved && (
+          <>
+            <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onGo={goTo} />
+
+            {errorMessage && (
+              <div className="wiz-in flex items-start justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 mb-5 text-sm text-rose-800">
+                <span className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  {errorMessage}
+                </span>
+                <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800" aria-label="Dismiss">
+                  <X className="w-4 h-4" />
                 </button>
-                {i < STEPS.length - 1 && <span className={`h-px flex-1 ${i < step ? "bg-accent" : "bg-slate-200"}`} />}
-              </li>
-            );
-          })}
-        </ol>
+              </div>
+            )}
 
-        {errorMessage && (
-          <div className="flex items-start justify-between gap-3 rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 mb-4 text-sm text-rose-800">
-            <span>{errorMessage}</span>
-            <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800" aria-label="Dismiss">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* STEP 1: CUSTOMER */}
-        {step === 0 && (
-          <section className={card}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className={title}>Who is this invoice for?</h2>
-              <button type="button" onClick={() => setIsCustModalOpen(true)} className="text-sm font-semibold text-accent hover:underline flex items-center gap-1">
-                <Plus className="w-4 h-4" /> New customer
-              </button>
-            </div>
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
-              <input
-                type="text"
-                autoFocus
-                placeholder="Search clinic, farm or doctor"
-                value={selectedCustomer && customerSearchQuery.startsWith(selectedCustomer.company) ? "" : customerSearchQuery}
-                onChange={(e) => {
-                  setCustomerSearchQuery(e.target.value);
-                  setActiveCustomer(0);
-                }}
-                onKeyDown={(e) => {
-                  const list = filteredCustomers.slice(0, 40);
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setActiveCustomer((i) => Math.min(i + 1, list.length - 1));
-                  } else if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setActiveCustomer((i) => Math.max(i - 1, 0));
-                  } else if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (list[activeCustomer]) pickCustomer(list[activeCustomer]);
-                  }
-                }}
-                className={`${input} pl-9`}
-              />
-            </div>
-            <div className="border border-slate-100 rounded-lg divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
-              {filteredCustomers.length === 0 ? (
-                <div className="px-3 py-4 text-sm text-slate-500">
-                  No match.{" "}
-                  <button type="button" onClick={() => setIsCustModalOpen(true)} className="font-semibold text-accent hover:underline">
-                    Add a new customer
+            {/* STEP 1: CUSTOMER */}
+            {step === 0 && (
+              <StepPanel
+                stepKey="customer"
+                icon={Users}
+                title="Who is this invoice for?"
+                subtitle="Search and tap a customer to continue."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => setIsCustModalOpen(true)}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-accent bg-accent-light hover:bg-accent hover:text-white rounded-xl px-3.5 py-2.5 transition"
+                  >
+                    <UserPlus className="w-4 h-4" /> New customer
                   </button>
+                }
+              >
+                <div className="relative mb-4">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Search clinic, farm or doctor"
+                    value={selectedCustomer && customerSearchQuery.startsWith(selectedCustomer.company) ? "" : customerSearchQuery}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      setActiveCustomer(0);
+                    }}
+                    onKeyDown={(e) => {
+                      const list = filteredCustomers.slice(0, 40);
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setActiveCustomer((i) => Math.min(i + 1, list.length - 1));
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setActiveCustomer((i) => Math.max(i - 1, 0));
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (list[activeCustomer]) pickCustomer(list[activeCustomer]);
+                      }
+                    }}
+                    className={`${input} pl-12 py-3.5 text-base`}
+                  />
                 </div>
-              ) : (
-                filteredCustomers.slice(0, 40).map((c, i) => {
-                  const chosen = c.id === selectedCustomerId;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => pickCustomer(c)}
-                      onMouseEnter={() => setActiveCustomer(i)}
-                      className={`w-full text-left px-3 py-3 flex items-center justify-between gap-3 ${
-                        chosen ? "bg-accent-light" : i === activeCustomer ? "bg-slate-50" : ""
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-slate-900 truncate">{c.company}</div>
-                        {(c.name || c.address) && <div className="text-xs text-slate-500 truncate">{[c.name, c.address].filter(Boolean).join(" · ")}</div>}
-                      </div>
-                      <div className="text-right shrink-0">
-                        {(c.pendingBillwiseAmount || 0) > 0 && <div className="text-xs text-rose-700">owes {money(c.pendingBillwiseAmount || 0)}</div>}
-                        {c.cashOnly && <div className="text-xs text-amber-700">cash only</div>}
-                      </div>
+                {filteredCustomers.length === 0 ? (
+                  <div className="text-center py-10">
+                    <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">No customer matches.</p>
+                    <button type="button" onClick={() => setIsCustModalOpen(true)} className="mt-2 text-sm font-semibold text-accent hover:underline">
+                      Add a new customer
                     </button>
-                  );
-                })
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* STEP 2: PRODUCTS */}
-        {step === 1 && (
-          <section className={card}>
-            <div className="flex items-baseline justify-between gap-3 mb-1">
-              <h2 className={title}>What are they buying?</h2>
-              {selectedCustomer && <span className="text-sm text-slate-500 truncate">for {selectedCustomer.company}</span>}
-            </div>
-            <p className="text-sm text-slate-500 mb-4">Search a product and press Enter. Leave Rate empty for the list price.</p>
-
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 pointer-events-none" />
-              <input
-                ref={productSearchRef}
-                type="text"
-                placeholder="Search product name or code"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setShowProductDropdown(true);
-                  setActiveProduct(0);
-                }}
-                onFocus={() => setShowProductDropdown(true)}
-                onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
-                onKeyDown={(e) => {
-                  const list = filteredProducts.slice(0, 30);
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setActiveProduct((i) => Math.min(i + 1, list.length - 1));
-                  } else if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setActiveProduct((i) => Math.max(i - 1, 0));
-                  } else if (e.key === "Enter") {
-                    e.preventDefault();
-                    const p = list[activeProduct];
-                    if (p && p.isAvailable !== false) handleAddProduct(p);
-                  } else if (e.key === "Escape") {
-                    setShowProductDropdown(false);
-                  }
-                }}
-                className={`${input} pl-9`}
-              />
-              {showProductDropdown && searchQuery && (
-                <div className="absolute left-0 right-0 z-30 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-72 overflow-y-auto">
-                  {filteredProducts.length === 0 ? (
-                    <div className="px-3 py-3 text-sm text-slate-500">No product matches “{searchQuery}”.</div>
-                  ) : (
-                    filteredProducts.slice(0, 30).map((p, i) => {
-                      const off = p.isAvailable === false;
-                      const inList = invoiceItems.find((it) => it.productId === p.id);
-                      const stock = stockFor(p.id);
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto -mx-1 px-1 py-1">
+                    {filteredCustomers.slice(0, 40).map((c, i) => {
+                      const chosen = c.id === selectedCustomerId;
+                      const active = i === activeCustomer;
                       return (
                         <button
-                          key={p.id}
+                          key={c.id}
                           type="button"
-                          disabled={off}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => !off && handleAddProduct(p)}
-                          onMouseEnter={() => setActiveProduct(i)}
-                          className={`w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 ${
-                            off ? "opacity-50 cursor-not-allowed" : i === activeProduct ? "bg-slate-50" : ""
+                          onClick={() => pickCustomer(c)}
+                          onMouseEnter={() => setActiveCustomer(i)}
+                          className={`wiz-in flex items-center gap-3 text-left rounded-xl border p-3 transition-all duration-150 ${
+                            chosen
+                              ? "border-accent bg-accent-light/60 ring-2 ring-accent/20"
+                              : active
+                                ? "border-slate-300 bg-slate-50 shadow-sm"
+                                : "border-slate-200 bg-white hover:border-slate-300"
                           }`}
+                          style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}
                         >
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
-                            <div className={`text-xs ${stock <= 0 ? "text-rose-700" : "text-slate-500"}`}>
-                              {off ? "Not available" : `${stock} in stock`}
-                              {inList ? ` · on this invoice (${inList.quantity})` : ""}
+                          <Avatar name={c.company} />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-900 truncate">{c.company}</div>
+                            <div className="text-xs text-slate-500 truncate flex items-center gap-1">
+                              {c.address && <MapPin className="w-3 h-3 shrink-0" />}
+                              {[c.name, c.address].filter(Boolean).join(" · ") || "—"}
                             </div>
                           </div>
-                          <span className="text-sm text-slate-700 shrink-0">{money(p.price)}</span>
+                          <div className="text-right shrink-0">
+                            {(c.pendingBillwiseAmount || 0) > 0 ? (
+                              <span className="inline-block text-xs font-medium text-rose-700 bg-rose-50 rounded-full px-2 py-0.5">{money(c.pendingBillwiseAmount || 0)}</span>
+                            ) : (
+                              <span className="inline-block text-xs text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">Clear</span>
+                            )}
+                            {c.cashOnly && <div className="text-[11px] text-amber-700 mt-1">Cash only</div>}
+                          </div>
                         </button>
                       );
-                    })
+                    })}
+                  </div>
+                )}
+              </StepPanel>
+            )}
+
+            {/* STEP 2: PRODUCTS */}
+            {step === 1 && (
+              <StepPanel
+                stepKey="products"
+                icon={Package}
+                title="What are they buying?"
+                subtitle={selectedCustomer ? <>for <span className="font-medium text-slate-700">{selectedCustomer.company}</span></> : undefined}
+              >
+                <div className="relative mb-5">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
+                  <input
+                    ref={productSearchRef}
+                    type="text"
+                    placeholder="Search product name or code, then press Enter"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setShowProductDropdown(true);
+                      setActiveProduct(0);
+                    }}
+                    onFocus={() => setShowProductDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
+                    onKeyDown={(e) => {
+                      const list = filteredProducts.slice(0, 30);
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setActiveProduct((i) => Math.min(i + 1, list.length - 1));
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setActiveProduct((i) => Math.max(i - 1, 0));
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        const p = list[activeProduct];
+                        if (p && p.isAvailable !== false) handleAddProduct(p);
+                      } else if (e.key === "Escape") {
+                        setShowProductDropdown(false);
+                      }
+                    }}
+                    className={`${input} pl-12 py-3.5 text-base`}
+                  />
+                  {showProductDropdown && searchQuery && (
+                    <div className="wiz-in absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl shadow-slate-900/10 max-h-80 overflow-y-auto p-1.5">
+                      {filteredProducts.length === 0 ? (
+                        <div className="px-3 py-4 text-sm text-slate-500">No product matches “{searchQuery}”.</div>
+                      ) : (
+                        filteredProducts.slice(0, 30).map((p, i) => {
+                          const off = p.isAvailable === false;
+                          const inList = invoiceItems.find((it) => it.productId === p.id);
+                          const stock = stockFor(p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              disabled={off}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => !off && handleAddProduct(p)}
+                              onMouseEnter={() => setActiveProduct(i)}
+                              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 ${
+                                off ? "opacity-50 cursor-not-allowed" : i === activeProduct ? "bg-slate-100" : ""
+                              }`}
+                            >
+                              <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 grid place-items-center shrink-0">
+                                <Package className="w-4 h-4" />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
+                                <div className={`text-xs ${stock <= 0 ? "text-rose-700" : "text-slate-500"}`}>
+                                  {off ? "Not available" : `${stock} in stock`}
+                                  {inList ? ` · ${inList.quantity} on this invoice` : ""}
+                                </div>
+                              </div>
+                              <span className="text-sm font-semibold text-slate-800 shrink-0">{money(p.price)}</span>
+                              {!off && <Plus className="w-4 h-4 text-accent shrink-0" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {invoiceItems.length === 0 ? (
-              <p className="text-sm text-slate-500 py-8 text-center border border-dashed border-slate-200 rounded-lg">No products added yet.</p>
-            ) : (
-              <ul className="divide-y divide-slate-100 border-t border-slate-100">
-                {invoiceItems.map((item, idx) => {
-                  const stock = stockFor(String(item.productId));
-                  const qty = Number(item.quantity) || 0;
-                  const short = qty > stock;
-                  const list = item.listPrice ?? item.price;
-                  const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
-                  const off = Math.max(0, list - rateNum);
-                  const backToSearch = (e: React.KeyboardEvent) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      productSearchRef.current?.focus();
-                    }
-                  };
-                  return (
-                    <li key={item.productId} className="py-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-slate-900">{item.productName}</div>
-                          <div className="text-xs text-slate-500">
-                            List {money(list)}
-                            {off > 0 && rateNum > 0 && <span className="text-emerald-700"> · {money(off)} off each</span>}
-                            {rateNum === 0 && <span className="text-emerald-700"> · free</span>}
-                            {" · "}
-                            <span className={short ? "text-rose-700 font-medium" : ""}>{short ? `only ${stock} in stock` : `${stock} in stock`}</span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(idx)}
-                          className="p-1 text-slate-400 hover:text-rose-600"
-                          aria-label={`Remove ${item.productName}`}
+                {invoiceItems.length === 0 ? (
+                  <div className="text-center py-12 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                    <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-slate-600">No products yet</p>
+                    <p className="text-xs text-slate-400 mt-1">Search above and press Enter to add.</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-3">
+                    {invoiceItems.map((item, idx) => {
+                      const stock = stockFor(String(item.productId));
+                      const qty = Number(item.quantity) || 0;
+                      const short = qty > stock;
+                      const zero = qty <= 0;
+                      const list = item.listPrice ?? item.price;
+                      const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
+                      const off = Math.max(0, list - rateNum);
+                      const backToSearch = (e: React.KeyboardEvent) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          productSearchRef.current?.focus();
+                        }
+                      };
+                      return (
+                        <li
+                          key={item.productId}
+                          className={`wiz-in rounded-xl border p-4 transition ${zero || short ? "border-rose-200 bg-rose-50/40" : "border-slate-200 bg-white hover:border-slate-300"}`}
                         >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-end gap-3">
-                        <div>
-                          <span className="block text-xs text-slate-500 mb-1">Qty</span>
-                          <div className={`flex items-center border rounded-lg ${short ? "border-rose-300" : "border-slate-200"}`}>
-                            <button type="button" onClick={() => handleUpdateQuantity(idx, String(Math.max(0, qty - 1)))} className="w-9 h-10 grid place-items-center text-slate-600 hover:bg-slate-50 rounded-l-lg" aria-label="One less">
-                              −
-                            </button>
-                            <input
-                              ref={(el) => {
-                                if (el) qtyRefs.current.set(String(item.productId), el);
-                                else qtyRefs.current.delete(String(item.productId));
-                              }}
-                              type="number"
-                              min="0"
-                              inputMode="numeric"
-                              value={item.quantity ?? ""}
-                              onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
-                              onFocus={(e) => e.target.select()}
-                              onKeyDown={backToSearch}
-                              className="w-14 h-10 text-center text-sm text-slate-900 border-x border-slate-200 focus:outline-none"
-                              aria-label={`Quantity of ${item.productName}`}
-                            />
-                            <button type="button" onClick={() => handleUpdateQuantity(idx, String(qty + 1))} className="w-9 h-10 grid place-items-center text-slate-600 hover:bg-slate-50 rounded-r-lg" aria-label="One more">
-                              +
+                          <div className="flex items-start gap-3">
+                            <span className="w-10 h-10 rounded-lg bg-accent-light text-accent grid place-items-center shrink-0">
+                              <Package className="w-5 h-5" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold text-slate-900">{item.productName}</div>
+                              <div className="flex flex-wrap gap-1.5 mt-1">
+                                <span className="text-[11px] text-slate-600 bg-slate-100 rounded-full px-2 py-0.5">List {money(list)}</span>
+                                {off > 0 && rateNum > 0 && <span className="text-[11px] text-emerald-800 bg-emerald-50 rounded-full px-2 py-0.5">{money(off)} off each</span>}
+                                {rateNum === 0 && <span className="text-[11px] text-emerald-800 bg-emerald-50 rounded-full px-2 py-0.5">Free</span>}
+                                <span className={`text-[11px] rounded-full px-2 py-0.5 ${short ? "text-rose-800 bg-rose-100" : "text-slate-600 bg-slate-100"}`}>
+                                  {short ? `Only ${stock} in stock` : `${stock} in stock`}
+                                </span>
+                                {zero && <span className="text-[11px] text-rose-800 bg-rose-100 rounded-full px-2 py-0.5">Quantity is 0</span>}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="p-2 -m-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                              aria-label={`Remove ${item.productName}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
-                        </div>
-                        <label className="block">
-                          <span className="block text-xs text-slate-500 mb-1">Rate ({currencyCode})</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            inputMode="decimal"
-                            placeholder={list.toFixed(dp)}
-                            value={item.rate ?? ""}
-                            onChange={(e) => handleUpdateRate(idx, e.target.value)}
-                            onFocus={(e) => e.target.select()}
-                            onKeyDown={backToSearch}
-                            className={`${input} w-28 h-10 text-right`}
+                          <div className="mt-4 grid grid-cols-2 sm:grid-cols-[auto_auto_1fr] gap-3 sm:gap-5 items-end">
+                            <div>
+                              <span className="block text-xs text-slate-500 mb-1.5">Quantity</span>
+                              <div className={`inline-flex items-center rounded-xl border bg-white ${zero || short ? "border-rose-300" : "border-slate-200"}`}>
+                                <button type="button" onClick={() => handleUpdateQuantity(idx, String(Math.max(0, qty - 1)))} className="w-11 h-11 grid place-items-center text-slate-600 hover:bg-slate-100 rounded-l-xl transition" aria-label="One less">
+                                  <Minus className="w-4 h-4" />
+                                </button>
+                                <input
+                                  ref={(el) => {
+                                    if (el) qtyRefs.current.set(String(item.productId), el);
+                                    else qtyRefs.current.delete(String(item.productId));
+                                  }}
+                                  type="number"
+                                  min="0"
+                                  inputMode="numeric"
+                                  value={item.quantity ?? ""}
+                                  onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
+                                  onFocus={(e) => e.target.select()}
+                                  onKeyDown={backToSearch}
+                                  className="w-14 h-11 text-center text-base font-semibold text-slate-900 border-x border-slate-200 focus:outline-none"
+                                  aria-label={`Quantity of ${item.productName}`}
+                                />
+                                <button type="button" onClick={() => handleUpdateQuantity(idx, String(qty + 1))} className="w-11 h-11 grid place-items-center text-slate-600 hover:bg-slate-100 rounded-r-xl transition" aria-label="One more">
+                                  <Plus className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            <label className="block">
+                              <span className="block text-xs text-slate-500 mb-1.5">Rate ({currencyCode})</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                inputMode="decimal"
+                                placeholder={list.toFixed(dp)}
+                                value={item.rate ?? ""}
+                                onChange={(e) => handleUpdateRate(idx, e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                onKeyDown={backToSearch}
+                                className={`${input} w-full sm:w-32 h-11 py-0 text-right font-semibold`}
+                              />
+                            </label>
+                            <div className="col-span-2 sm:col-span-1 text-right">
+                              <span className="block text-xs text-slate-500 mb-1">Amount</span>
+                              <span className="text-lg font-semibold text-slate-900">{money(item.total)}</span>
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {invoiceItems.length > 0 && <p className="text-xs text-slate-400 mt-4">Leave Rate empty to charge the list price. Enter 0 for a free unit.</p>}
+
+                {seriesSplit && seriesSplit.omanCount > 0 && (
+                  <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+                    <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                    {seriesSplit.uaeCount > 0
+                      ? editInvoiceNumber
+                        ? "UAE- and Oman-registered products can't share one invoice. Move one kind to a separate invoice."
+                        : `This will save as two invoices: UAE-registered ${money(seriesSplit.uaeTotal)} and Oman-registered ${money(seriesSplit.omanTotal)}.`
+                      : "Oman-registered products only: saved with its own number and printed without the company header."}
+                  </p>
+                )}
+              </StepPanel>
+            )}
+
+            {/* STEP 3: PAYMENT */}
+            {step === 2 && (
+              <StepPanel stepKey="payment" icon={CreditCard} title="How are they paying?" subtitle={<>Invoice total <span className="font-semibold text-slate-800">{money(grandTotal)}</span></>}>
+                {cashOnly && (
+                  <p className="mb-5 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+                    <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                    {selectedCustomer?.cashOnlyReason || "A cheque from this customer bounced."} Cash only: no credit and no cheques.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <ChoiceTile selected={status === "Paid"} icon={CheckCircle} title="Paid now" hint="A receipt is made with the invoice" onClick={() => setStatus("Paid")} />
+                  <ChoiceTile
+                    selected={status === "Credit"}
+                    disabled={cashOnly}
+                    icon={Clock}
+                    title="On credit"
+                    hint={cashOnly ? "Not allowed for this customer" : "Customer pays later"}
+                    onClick={() => setStatus("Credit")}
+                  />
+                </div>
+
+                {status === "Paid" ? (
+                  <div key="paid" className="wiz-in mt-7">
+                    <span className={label}>Paid by</span>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      {METHODS.map((m) => {
+                        const blocked = cashOnly && m.key === "Cheque";
+                        return (
+                          <ChoiceTile
+                            key={m.key}
+                            selected={paymentMethod === m.key}
+                            disabled={blocked}
+                            icon={m.icon}
+                            title={methodLabel(m.key)}
+                            hint={blocked ? "Not accepted" : m.hint}
+                            onClick={() => setPaymentMethod(m.key)}
                           />
-                        </label>
-                        <div className="ml-auto text-right">
-                          <span className="block text-xs text-slate-500 mb-1">Amount</span>
-                          <span className="text-base font-semibold text-slate-900 leading-10">{money(item.total)}</span>
+                        );
+                      })}
+                    </div>
+
+                    {askDetails && paymentMethod === "Cheque" && (
+                      <div key="cheque" className="wiz-in mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 md:p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-4">
+                          <FileText className="w-4 h-4 text-accent" /> Cheque details
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <label className="block">
+                            <span className={label}>Cheque no.</span>
+                            <input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} className={input} inputMode="numeric" placeholder="e.g. 000123" />
+                          </label>
+                          <label className="block">
+                            <span className={label}>Cheque date</span>
+                            <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className={input} />
+                          </label>
+                          <label className="block">
+                            <span className={label}>
+                              Bank <span className="font-normal text-slate-400">(optional)</span>
+                            </span>
+                            <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={input} placeholder="e.g. Emirates NBD" />
+                          </label>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-3">The invoice counts as paid once the office marks the cheque cleared.</p>
+                      </div>
+                    )}
+
+                    {askDetails && paymentMethod === "Bank Transfer" && (
+                      <div key="transfer" className="wiz-in mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 md:p-5">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-4">
+                          <Landmark className="w-4 h-4 text-accent" /> Transfer details
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <label className="block">
+                            <span className={label}>Transfer reference</span>
+                            <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} className={input} placeholder="Ref. no. on the transfer slip" />
+                          </label>
+                          <label className="block">
+                            <span className={label}>
+                              From bank <span className="font-normal text-slate-400">(optional)</span>
+                            </span>
+                            <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={input} placeholder="e.g. ADCB" />
+                          </label>
                         </div>
                       </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {seriesSplit && seriesSplit.omanCount > 0 && (
-              <p className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-900">
-                {seriesSplit.uaeCount > 0
-                  ? editInvoiceNumber
-                    ? "UAE- and Oman-registered products can't share one invoice. Move one kind to a separate invoice."
-                    : `This will save as two invoices: UAE-registered ${money(seriesSplit.uaeTotal)} and Oman-registered ${money(seriesSplit.omanTotal)}.`
-                  : "Oman-registered products only: saved with its own number and printed without the company header."}
-              </p>
-            )}
-          </section>
-        )}
-
-        {/* STEP 3: PAYMENT */}
-        {step === 2 && (
-          <section className={card}>
-            <h2 className={`${title} mb-1`}>How are they paying?</h2>
-            <p className="text-sm text-slate-500 mb-4">Total {money(grandTotal)}</p>
-
-            {cashOnly && (
-              <p className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-900">
-                {selectedCustomer?.cashOnlyReason || "A cheque from this customer bounced."} Cash only: no credit and no cheques.
-              </p>
-            )}
-
-            <div className="grid grid-cols-2 gap-2 max-w-sm">
-              <button type="button" className={chip(status === "Paid")} onClick={() => setStatus("Paid")}>
-                Paid now
-              </button>
-              <button type="button" disabled={cashOnly} className={chip(status === "Credit", cashOnly)} onClick={() => setStatus("Credit")}>
-                On credit
-              </button>
-            </div>
-
-            {status === "Paid" ? (
-              <div className="mt-5">
-                <span className={label}>Paid by</span>
-                <div className="flex flex-wrap gap-2">
-                  {(["Cash", "Bank Transfer", "Cheque", "Other"] as const).map((m) => {
-                    const blocked = cashOnly && m === "Cheque";
-                    return (
-                      <button key={m} type="button" disabled={blocked} className={chip(paymentMethod === m, blocked)} onClick={() => setPaymentMethod(m)}>
-                        {methodLabel(m)}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {askDetails && paymentMethod === "Cheque" && (
-                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg bg-slate-50 border border-slate-200 p-4">
-                    <label className="block">
-                      <span className={label}>Cheque no.</span>
-                      <input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} className={input} inputMode="numeric" required />
-                    </label>
-                    <label className="block">
-                      <span className={label}>Cheque date</span>
-                      <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className={input} required />
-                    </label>
-                    <label className="block">
-                      <span className={label}>Bank <span className="font-normal text-slate-400">(optional)</span></span>
-                      <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={input} placeholder="e.g. Emirates NBD" />
-                    </label>
-                    <p className="sm:col-span-3 text-xs text-slate-500">The invoice counts as paid once the office marks the cheque cleared.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div key="credit" className="wiz-in mt-7">
+                    <span className={label}>Due in</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {[30, 60, 90].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => setCreditDays(d)}
+                          className={`px-5 py-3 min-h-[48px] rounded-xl text-sm font-semibold border-2 transition ${
+                            creditDaysNum === d ? "border-accent bg-accent-light/60 text-accent" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                          }`}
+                        >
+                          {d} days
+                        </button>
+                      ))}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          inputMode="numeric"
+                          value={creditDays}
+                          onChange={(e) => setCreditDays(e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          onBlur={() => {
+                            if (creditDays === "") setCreditDays(30);
+                          }}
+                          className={`${input} w-24 h-12 text-center font-semibold`}
+                          aria-label="Credit days"
+                        />
+                        <span className="text-sm text-slate-500">days</span>
+                      </div>
+                    </div>
+                    <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                      <Calendar className="w-4 h-4 text-accent" /> Due on <span className="font-semibold text-slate-900">{dueDateLabel}</span>
+                    </p>
                   </div>
                 )}
 
-                {askDetails && paymentMethod === "Bank Transfer" && (
-                  <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-slate-50 border border-slate-200 p-4">
-                    <label className="block">
-                      <span className={label}>Transfer reference</span>
-                      <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} className={input} placeholder="Ref. no. on the transfer slip" required />
+                <div className="mt-7 pt-6 border-t border-slate-100">
+                  {showNotes ? (
+                    <label className="block wiz-in">
+                      <span className={label}>Note on the invoice</span>
+                      <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={input} />
                     </label>
-                    <label className="block">
-                      <span className={label}>From bank <span className="font-normal text-slate-400">(optional)</span></span>
-                      <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={input} placeholder="e.g. ADCB" />
-                    </label>
-                  </div>
-                )}
-
-                {paymentMethod === "Cash" && <p className="text-xs text-slate-500 mt-3">The cash is added to your cash in hand.</p>}
-              </div>
-            ) : (
-              <div className="mt-5">
-                <span className={label}>Due in</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  {[30, 60, 90].map((d) => (
-                    <button key={d} type="button" className={chip(creditDaysNum === d)} onClick={() => setCreditDays(d)}>
-                      {d} days
+                  ) : (
+                    <button type="button" onClick={() => setShowNotes(true)} className="flex items-center gap-1.5 text-sm font-semibold text-accent hover:bg-accent-light rounded-lg px-2.5 py-1.5 -mx-2.5 transition">
+                      <MessageSquare className="w-4 h-4" /> Add a note
                     </button>
-                  ))}
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      min="0"
-                      inputMode="numeric"
-                      value={creditDays}
-                      onChange={(e) => setCreditDays(e.target.value === "" ? "" : Math.max(0, parseInt(e.target.value, 10) || 0))}
-                      onBlur={() => {
-                        if (creditDays === "") setCreditDays(30);
-                      }}
-                      className={`${input} w-20 h-11 text-center`}
-                      aria-label="Credit days"
+                  )}
+                </div>
+              </StepPanel>
+            )}
+
+            {/* STEP 4: REVIEW */}
+            {step === 3 && (
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
+                <div className="space-y-5 min-w-0">
+                  <ReviewSection icon={User} title="Customer" onEdit={editInvoiceNumber ? undefined : () => goTo(0)}>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={selectedCustomer?.company || customerSearchQuery} size="lg" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">{selectedCustomer?.company || customerSearchQuery}</div>
+                        {(selectedCustomer?.name || selectedCustomer?.address) && (
+                          <div className="text-sm text-slate-500 truncate">{[selectedCustomer?.name, selectedCustomer?.address].filter(Boolean).join(" · ")}</div>
+                        )}
+                      </div>
+                    </div>
+                  </ReviewSection>
+
+                  <ReviewSection icon={Package} title={`Products · ${invoiceItems.length} ${invoiceItems.length === 1 ? "line" : "lines"}, ${unitsTotal} units`} onEdit={() => goTo(1)} delay={60}>
+                    <div className="overflow-x-auto -mx-1">
+                      <table className="w-full text-sm min-w-[420px]">
+                        <thead>
+                          <tr className="text-xs text-slate-500 border-b border-slate-100">
+                            <th className="text-left font-medium pb-2.5 px-1">Product</th>
+                            <th className="text-right font-medium pb-2.5 px-1 w-14">Qty</th>
+                            <th className="text-right font-medium pb-2.5 px-1 w-24">Rate</th>
+                            <th className="text-right font-medium pb-2.5 px-1 w-28">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {invoiceItems.map((item) => {
+                            const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
+                            return (
+                              <tr key={item.productId}>
+                                <td className="py-3 px-1 text-slate-900">{item.productName}</td>
+                                <td className="py-3 px-1 text-right text-slate-700">{item.quantity}</td>
+                                <td className="py-3 px-1 text-right text-slate-700">{rateNum.toFixed(dp)}</td>
+                                <td className="py-3 px-1 text-right font-medium text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {seriesSplit && seriesSplit.omanCount > 0 && seriesSplit.uaeCount > 0 && !editInvoiceNumber && (
+                      <p className="mt-4 flex items-start gap-2 text-xs text-amber-900 bg-amber-50 rounded-lg px-3 py-2">
+                        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        Saves as two invoices: UAE-registered {money(seriesSplit.uaeTotal)} and Oman-registered {money(seriesSplit.omanTotal)}.
+                      </p>
+                    )}
+                  </ReviewSection>
+
+                  <ReviewSection icon={CreditCard} title="Payment" onEdit={() => goTo(2)} delay={120}>
+                    <div className="flex items-center gap-3">
+                      <span className={`w-10 h-10 rounded-xl grid place-items-center ${status === "Paid" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                        {status === "Paid" ? <CheckCircle className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                      </span>
+                      <div>
+                        {status === "Paid" ? (
+                          <>
+                            <div className="font-semibold text-slate-900">Paid now · {methodLabel(paymentMethod)}</div>
+                            {askDetails && paymentMethod === "Cheque" && (
+                              <div className="text-sm text-slate-500">
+                                Cheque {chequeNumber} dated {fmtDate(chequeDate)}
+                                {payBank ? ` · ${payBank}` : ""}
+                              </div>
+                            )}
+                            {askDetails && paymentMethod === "Bank Transfer" && (
+                              <div className="text-sm text-slate-500">
+                                Ref. {transferRef}
+                                {payBank ? ` · ${payBank}` : ""}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div className="font-semibold text-slate-900">On credit · {creditDaysNum} days</div>
+                            <div className="text-sm text-slate-500">Due {dueDateLabel}</div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {notes && <p className="text-sm text-slate-600 mt-3 bg-slate-50 rounded-lg px-3 py-2">{notes}</p>}
+                  </ReviewSection>
+                </div>
+
+                <div className="space-y-5 lg:sticky lg:top-6">
+                  <section className="wiz-in rounded-2xl overflow-hidden shadow-lg shadow-primary/10" style={{ animationDelay: "80ms" }}>
+                    <div className="bg-gradient-to-br from-primary to-accent text-white px-6 py-6">
+                      <div className="text-xs uppercase tracking-wide text-white/70">Invoice total</div>
+                      <div className="text-3xl font-semibold mt-1">{money(grandTotal)}</div>
+                      <div className="text-sm text-white/80 mt-1">
+                        {unitsTotal} units · {status === "Paid" ? `paid by ${methodLabel(paymentMethod).toLowerCase()}` : `due ${dueDateLabel}`}
+                      </div>
+                    </div>
+                    <dl className="bg-white border-x border-b border-slate-200 rounded-b-2xl px-6 py-4 space-y-2 text-sm">
+                      {discountTotal > 0 && (
+                        <>
+                          <div className="flex justify-between text-slate-500">
+                            <dt>At list price</dt>
+                            <dd>{money(subtotal)}</dd>
+                          </div>
+                          <div className="flex justify-between text-emerald-700">
+                            <dt>Discount</dt>
+                            <dd>−{money(discountTotal)}</dd>
+                          </div>
+                        </>
+                      )}
+                      <div className="flex justify-between items-center text-slate-500">
+                        <dt className="flex items-center gap-1.5">
+                          <Hash className="w-3.5 h-3.5" /> Invoice no.
+                        </dt>
+                        <dd>
+                          {canEditNumber ? (
+                            <input
+                              value={invoiceNumber}
+                              onChange={(e) => {
+                                setInvoiceNumber(e.target.value);
+                                setIsCustomInvoiceNumber(true);
+                              }}
+                              className="w-28 px-2 py-1 border border-slate-200 focus:border-accent rounded-lg font-semibold text-right text-slate-900 bg-white focus:outline-none"
+                            />
+                          ) : (
+                            <span className="font-semibold text-slate-900">{editInvoiceNumber || invoiceNumber || "—"}</span>
+                          )}
+                        </dd>
+                      </div>
+                      {!editInvoiceNumber && <p className="text-[11px] text-slate-400 text-right">Final number is given on save</p>}
+                    </dl>
+                  </section>
+
+                  {selectedCustomerId && !editInvoiceNumber && (
+                    <AccountSnapshot
+                      customerId={selectedCustomerId}
+                      change={{ kind: "invoice", amount: grandTotal, credit: status === "Credit", cheque: status === "Paid" && paymentMethod === "Cheque" }}
                     />
-                    <span className="text-sm text-slate-500">days</span>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-500 mt-2">Payment due on {dueDateLabel}.</p>
-              </div>
-            )}
-
-            <div className="mt-6 pt-5 border-t border-slate-100">
-              {showNotes ? (
-                <label className="block">
-                  <span className={label}>Note on the invoice</span>
-                  <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={input} />
-                </label>
-              ) : (
-                <button type="button" onClick={() => setShowNotes(true)} className="text-sm font-semibold text-accent hover:underline">
-                  + Add a note
-                </button>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* STEP 4: REVIEW */}
-        {step === 3 && (
-          <div className="space-y-4">
-            <section className={card}>
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-medium text-slate-500">Customer</h2>
-                {!editInvoiceNumber && editLink(0)}
-              </div>
-              <div className="font-semibold text-slate-900">{selectedCustomer?.company || customerSearchQuery}</div>
-              {(selectedCustomer?.name || selectedCustomer?.address) && (
-                <div className="text-sm text-slate-500">{[selectedCustomer?.name, selectedCustomer?.address].filter(Boolean).join(" · ")}</div>
-              )}
-              {owed > 0 && <div className="text-sm text-rose-700 mt-1">Already owes {money(owed)}</div>}
-            </section>
-
-            <section className={card}>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-medium text-slate-500">
-                  Products · {invoiceItems.length} {invoiceItems.length === 1 ? "line" : "lines"}, {unitsTotal} units
-                </h2>
-                {editLink(1)}
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-slate-500 border-b border-slate-100">
-                    <th className="text-left font-normal pb-2">Product</th>
-                    <th className="text-right font-normal pb-2 w-14">Qty</th>
-                    <th className="text-right font-normal pb-2 w-24">Rate</th>
-                    <th className="text-right font-normal pb-2 w-28">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {invoiceItems.map((item) => {
-                    const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
-                    return (
-                      <tr key={item.productId}>
-                        <td className="py-2 pr-2 text-slate-900">{item.productName}</td>
-                        <td className="py-2 text-right text-slate-700">{item.quantity}</td>
-                        <td className="py-2 text-right text-slate-700">{rateNum.toFixed(dp)}</td>
-                        <td className="py-2 text-right text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <dl className="mt-3 pt-3 border-t border-slate-100 space-y-1 text-sm">
-                {discountTotal > 0 && (
-                  <>
-                    <div className="flex justify-between text-slate-500">
-                      <dt>At list price</dt>
-                      <dd>{money(subtotal)}</dd>
-                    </div>
-                    <div className="flex justify-between text-emerald-700">
-                      <dt>Discount</dt>
-                      <dd>−{money(discountTotal)}</dd>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between text-base font-semibold text-slate-900 pt-1">
-                  <dt>Total</dt>
-                  <dd>{money(grandTotal)}</dd>
-                </div>
-              </dl>
-              {seriesSplit && seriesSplit.omanCount > 0 && seriesSplit.uaeCount > 0 && !editInvoiceNumber && (
-                <p className="mt-3 text-xs text-amber-800">Saves as two invoices: UAE-registered {money(seriesSplit.uaeTotal)} and Oman-registered {money(seriesSplit.omanTotal)}.</p>
-              )}
-            </section>
-
-            <section className={card}>
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-medium text-slate-500">Payment</h2>
-                {editLink(2)}
-              </div>
-              {status === "Paid" ? (
-                <div className="text-slate-900">
-                  Paid now by {methodLabel(paymentMethod).toLowerCase()}
-                  {askDetails && paymentMethod === "Cheque" && (
-                    <div className="text-sm text-slate-500">
-                      Cheque {chequeNumber} dated {fmtDate(chequeDate)}
-                      {payBank ? ` · ${payBank}` : ""}
-                    </div>
-                  )}
-                  {askDetails && paymentMethod === "Bank Transfer" && (
-                    <div className="text-sm text-slate-500">
-                      Ref. {transferRef}
-                      {payBank ? ` · ${payBank}` : ""}
-                    </div>
                   )}
                 </div>
-              ) : (
-                <div className="text-slate-900">
-                  On credit, {creditDaysNum} days <span className="text-sm text-slate-500">· due {dueDateLabel}</span>
-                </div>
-              )}
-              {notes && <p className="text-sm text-slate-500 mt-2">Note: {notes}</p>}
-            </section>
-
-            <div className="flex items-center gap-2 text-sm text-slate-500 px-1">
-              <span>Invoice no.</span>
-              {canEditNumber ? (
-                <input
-                  value={invoiceNumber}
-                  onChange={(e) => {
-                    setInvoiceNumber(e.target.value);
-                    setIsCustomInvoiceNumber(true);
-                  }}
-                  className="w-28 px-2 py-1 border border-slate-200 focus:border-accent rounded-md font-semibold text-slate-900 bg-white focus:outline-none"
-                />
-              ) : (
-                <span className="font-semibold text-slate-900">{editInvoiceNumber || invoiceNumber || "—"}</span>
-              )}
-              {!editInvoiceNumber && <span className="text-xs text-slate-400">the final number is given on save</span>}
-            </div>
-          </div>
-        )}
-
-        {/* Bottom bar */}
-        <div className="sticky bottom-0 z-20 mt-5 -mx-4 md:mx-0 px-4 md:px-5 py-3 bg-white/95 backdrop-blur border-t md:border border-slate-200 md:rounded-t-xl flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            {step === 0 ? (
-              <Link href="/invoices" className="text-sm font-semibold text-slate-600 hover:text-slate-900">
-                Cancel
-              </Link>
-            ) : (
-              <button type="button" onClick={() => goTo(step - 1)} className="text-sm font-semibold text-slate-600 hover:text-slate-900 px-1 py-2">
-                ← Back
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            {step >= 1 && (
-              <div className="text-right">
-                <div className="text-xs text-slate-500">{unitsTotal} units</div>
-                <div className="text-base font-semibold text-slate-900">{money(grandTotal)}</div>
               </div>
             )}
-            {step < 3 ? (
-              <button
-                type="button"
-                disabled={step >= maxStep}
-                onClick={() => goTo(step + 1)}
-                title={step === 0 ? "Choose a customer" : step === 1 ? (invoiceItems.length === 0 ? "Add a product" : undefined) : paymentBlocker || undefined}
-                className="px-5 py-2.5 min-h-[44px] text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {step === 2 ? "Review" : "Next"} →
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={isSaving || maxStep < 3}
-                className="px-5 py-2.5 min-h-[44px] text-sm font-semibold text-white bg-accent rounded-lg hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isSaving ? "Saving…" : editInvoiceNumber ? "Save changes" : "Save invoice"}
-              </button>
-            )}
-          </div>
-        </div>
-        {step === 2 && paymentBlocker && <p className="text-xs text-rose-700 text-right mt-1 mb-3">{paymentBlocker}</p>}
+
+            <WizardBar
+              step={step}
+              onBack={() => goTo(step - 1)}
+              cancelHref="/invoices"
+              summaryLabel={step >= 1 && invoiceItems.length > 0 ? `${unitsTotal} units` : undefined}
+              summaryValue={step >= 1 && invoiceItems.length > 0 ? money(grandTotal) : undefined}
+              next={
+                step < 3
+                  ? { label: step === 2 ? "Review" : "Next", disabled: step >= maxStep, onClick: () => goTo(step + 1), hint: stepHint }
+                  : { label: isSaving ? "Saving…" : editInvoiceNumber ? "Save changes" : "Save invoice", disabled: isSaving || maxStep < 3, submit: true, tone: "accent" }
+              }
+            />
+          </>
+        )}
       </form>
 
       {/* Success Modal */}
