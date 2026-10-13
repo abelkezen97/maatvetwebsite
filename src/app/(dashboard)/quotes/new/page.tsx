@@ -1,8 +1,29 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, Suspense } from "react";
+import React, { useState, useMemo, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Trash2, Search, ArrowLeft, Percent, CheckCircle, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Calendar,
+  CheckCircle,
+  ClipboardCheck,
+  FileText,
+  Hash,
+  MapPin,
+  MessageSquare,
+  Minus,
+  Package,
+  Plus,
+  Search,
+  ShoppingBag,
+  Trash2,
+  User,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
+import { Avatar, ReviewSection, StepPanel, WizardBar, WizardStep, WizardStepper } from "@/components/wizard/WizardUI";
+import { AccountSnapshot, SavedDocuments } from "@/components/CustomerAccountPanels";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { Product, Customer, QuoteItem, Quote } from "@/types";
@@ -13,6 +34,12 @@ import { currencyFor, decimalsFor } from "@/lib/currency";
 
 interface QuoteItemWithManual extends QuoteItem {
   manualUnitPrice?: number;
+  /** List (or quantity-tier) price before any discount. */
+  listPrice?: number;
+  /** What was typed in the Rate box ("" = list price). */
+  rate?: number | string;
+  /** Added in this session, so quantity tiers apply. */
+  tiered?: boolean;
 }
 
 function NewQuoteForm() {
@@ -51,6 +78,15 @@ function NewQuoteForm() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(true);
+
+  // Wizard: 0 customer, 1 products, 2 terms, 3 review.
+  const [step, setStep] = useState(editQuoteNumber ? 3 : 0);
+  const [activeCustomer, setActiveCustomer] = useState(0);
+  const [activeProduct, setActiveProduct] = useState(0);
+  const [saved, setSaved] = useState<{ title: string; quoteId: string | null; quoteNumber: string } | null>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  const productSearchRef = useRef<HTMLInputElement>(null);
+  const qtyRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   // Load products, customers, and quotes on mount
   useEffect(() => {
@@ -130,6 +166,9 @@ function NewQuoteForm() {
           price: item.price, // Unit price
           discount: item.discount, // Explicit discount per unit
           total: item.total, // Line total: quantity * (price - discount)
+          listPrice: item.price,
+          rate: item.discount > 0 ? Math.max(0, item.price - item.discount) : "",
+          discountPrice: item.discount > 0 ? Math.max(0, item.price - item.discount) : "",
         }));
         setQuoteItems(mappedItems);
       }
@@ -197,134 +236,79 @@ function NewQuoteForm() {
   }, [subtotal, discountTotal, taxTotal]);
 
   // Handlers
+  // Each line keeps the list price (price) and, when a lower rate is quoted,
+  // that rate (discountPrice). The screen shows one "Rate" box.
+  const tierPriceFor = (product: Product | undefined, qty: number, fallback: number) => {
+    if (!product) return fallback;
+    if (qty >= 100 && product.price100) return product.price100;
+    if (qty >= 50 && product.price50) return product.price50;
+    if (qty >= 10 && product.price10) return product.price10;
+    return product.price;
+  };
+
+  const lineWith = (item: QuoteItemWithManual, listPrice: number, rateRaw: string | number | undefined, qty: number | string) => {
+    const q = Number(qty) || 0;
+    const rateStr = rateRaw === undefined || rateRaw === null ? "" : String(rateRaw).trim();
+    const rate = rateStr === "" ? listPrice : Math.max(0, Number(rateStr) || 0);
+    const price = rate > listPrice ? rate : listPrice;
+    const discountPrice = rateStr === "" || rate >= price ? "" : rate;
+    return {
+      ...item,
+      quantity: qty as any,
+      price,
+      listPrice,
+      rate: rateStr === "" ? "" : rateRaw,
+      discountPrice,
+      manualDiscount: discountPrice,
+      discount: Math.max(0, price - rate),
+      total: Math.max(0, q * rate),
+    } as QuoteItemWithManual;
+  };
+
   const handleAddProduct = (product: Product) => {
     const existingIndex = quoteItems.findIndex((item) => item.productId === product.id);
-
     if (existingIndex > -1) {
+      const item = quoteItems[existingIndex];
+      const newQty = (Number(item.quantity) || 0) + 1;
+      const list = item.tiered ? tierPriceFor(product, newQty, item.listPrice ?? item.price) : (item.listPrice ?? item.price);
       const updated = [...quoteItems];
-      const newQty = (Number(updated[existingIndex].quantity) || 0) + 1;
-      
-      let tierPrice = product.price;
-      if (newQty >= 100) {
-        tierPrice = product.price100 ?? tierPrice;
-      } else if (newQty >= 50) {
-        tierPrice = product.price50 ?? tierPrice;
-      } else if (newQty >= 10) {
-        tierPrice = product.price10 ?? tierPrice;
-      }
-
-      updated[existingIndex].quantity = newQty;
-      updated[existingIndex].price = tierPrice;
-
-      const rawDiscPrice = updated[existingIndex].discountPrice ?? updated[existingIndex].manualDiscount;
-      const effective = (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "")
-        ? Math.min(tierPrice, Math.max(0, Number(rawDiscPrice)))
-        : tierPrice;
-
-      updated[existingIndex].discount = Math.max(0, tierPrice - effective);
-      updated[existingIndex].total = newQty * effective;
+      updated[existingIndex] = lineWith(item, list, item.rate, newQty);
       setQuoteItems(updated);
     } else {
       setQuoteItems([
         ...quoteItems,
-        {
-          productId: product.id,
-          productName: product.name,
-          quantity: 1,
-          price: product.price,
-          discount: 0,
-          discountPrice: "",
-          manualDiscount: "",
-          total: product.price,
-        },
+        lineWith(
+          { productId: product.id, productName: product.name, quantity: 1, price: product.price, discount: 0, total: product.price, tiered: true },
+          product.price,
+          "",
+          1
+        ),
       ]);
     }
     setSearchQuery("");
     setShowProductDropdown(false);
+    setActiveProduct(0);
+    setTimeout(() => {
+      const el = qtyRefs.current.get(String(product.id));
+      el?.focus();
+      el?.select();
+    }, 30);
   };
 
-  const handleUpdateUnitPrice = (index: number, val: number | string) => {
+  const handleUpdateQuantity = (index: number, val: string) => {
+    const item = quoteItems[index];
+    const qty = val === "" ? "" : Math.max(0, parseInt(val, 10) || 0);
+    const product = products.find((p) => p.id === item.productId);
+    const list = item.tiered ? tierPriceFor(product, Number(qty) || 0, item.listPrice ?? item.price) : (item.listPrice ?? item.price);
     const updated = [...quoteItems];
-    const item = updated[index];
-    const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
-
-    const newUnitPrice = typeof val === "number" ? val : (val === "" ? 0 : parseFloat(val) || 0);
-    updated[index].price = val as any;
-
-    const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
-    let discountVal = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
-
-    if (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "") {
-      const discPriceNum = parseFloat(String(rawDiscPrice));
-      if (!isNaN(discPriceNum)) {
-        const effective = Math.min(newUnitPrice, Math.max(0, discPriceNum));
-        discountVal = Math.max(0, newUnitPrice - effective);
-      }
-    } else {
-      discountVal = Math.min(newUnitPrice, Math.max(0, discountVal));
-    }
-
-    updated[index].discount = discountVal;
-    const effectiveUnitPrice = Math.max(0, newUnitPrice - discountVal);
-    updated[index].total = Math.max(0, numQty * effectiveUnitPrice);
+    updated[index] = lineWith(item, list, item.rate, qty);
     setQuoteItems(updated);
   };
 
-  const handleUpdateQuantity = (index: number, val: number | string) => {
+  const handleUpdateRate = (index: number, val: string) => {
+    const item = quoteItems[index];
     const updated = [...quoteItems];
-    const item = updated[index];
-    const numQty = typeof val === "number" ? val : (parseInt(val as any, 10) || 0);
-    const unitPrice = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
-
-    updated[index].quantity = val as any;
-
-    const rawDiscPrice = item.discountPrice ?? item.manualDiscount;
-    let discountVal = typeof item.discount === "number" ? item.discount : (parseFloat(item.discount as any) || 0);
-
-    if (rawDiscPrice !== undefined && rawDiscPrice !== null && String(rawDiscPrice).trim() !== "") {
-      const discPriceNum = parseFloat(String(rawDiscPrice));
-      if (!isNaN(discPriceNum)) {
-        const effective = Math.min(unitPrice, Math.max(0, discPriceNum));
-        discountVal = Math.max(0, unitPrice - effective);
-      }
-    } else {
-      discountVal = Math.min(unitPrice, Math.max(0, discountVal));
-    }
-
-    updated[index].discount = discountVal;
-    const effective = Math.max(0, unitPrice - discountVal);
-    updated[index].total = Math.max(0, numQty * effective);
-    setQuoteItems(updated);
-  };
-
-  const handleUpdateDiscount = (index: number, val: number | string | undefined) => {
-    const updated = [...quoteItems];
-    const item = updated[index];
-    const numQty = typeof item.quantity === "number" ? item.quantity : (parseInt(item.quantity as any, 10) || 0);
-    const unitPrice = typeof item.price === "number" ? item.price : (parseFloat(item.price as any) || 0);
-
-    const valStr = val !== undefined && val !== null ? String(val).trim() : "";
-    if (valStr === "") {
-      updated[index].discountPrice = "";
-      updated[index].manualDiscount = "";
-      updated[index].discount = 0;
-      updated[index].total = Math.max(0, numQty * unitPrice);
-    } else {
-      const discPriceNum = parseFloat(valStr);
-      if (!isNaN(discPriceNum)) {
-        if (discPriceNum > unitPrice) {
-          setErrorMessage(`Discount Price (${currencySymbol} ${discPriceNum.toFixed(dp)}) cannot be greater than Unit Price (${currencySymbol} ${unitPrice.toFixed(dp)})`);
-        } else {
-          setErrorMessage(null);
-        }
-        const validPrice = Math.max(0, discPriceNum);
-        const effective = Math.min(unitPrice, validPrice);
-        updated[index].discountPrice = val as any;
-        updated[index].manualDiscount = val as any;
-        updated[index].discount = Math.max(0, unitPrice - effective);
-        updated[index].total = Math.max(0, numQty * effective);
-      }
-    }
+    updated[index] = lineWith(item, item.listPrice ?? item.price, val, item.quantity);
     setQuoteItems(updated);
   };
 
@@ -334,12 +318,26 @@ function NewQuoteForm() {
     setQuoteItems(updated);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const goTo = (s: number) => {
+    setStep(s);
+    setTimeout(() => {
+      topRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      if (s === 1) productSearchRef.current?.focus({ preventScroll: true });
+    }, 30);
+  };
+
+  const pickCustomer = (c: Customer) => {
+    setSelectedCustomerId(c.id);
+    setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
+    goTo(1);
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!selectedCustomerId || quoteItems.length === 0 || isSaving) return;
 
     setIsSaving(true);
-    const dateStr = new Date().toISOString().split("T")[0];
+    const dateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
 
     const quotePayload = {
       quoteNumber: editQuoteNumber || undefined,
@@ -376,11 +374,12 @@ function NewQuoteForm() {
       }
 
       const assignedNum = resData.quotationNumber || editQuoteNumber || "Quotation";
-      setSuccessMessage(
-        language === "en"
-          ? `Quotation ${assignedNum} successfully saved!`
-          : `تم حفظ عرض السعر ${assignedNum} بنجاح!`
-      );
+      setSaved({
+        title: `Quotation ${assignedNum} ${editQuoteNumber ? "updated" : "saved"}`,
+        quoteId: resData.quotationId || null,
+        quoteNumber: assignedNum,
+      });
+      setTimeout(() => topRef.current?.scrollIntoView({ block: "start" }), 30);
     } catch (err: any) {
       console.error("Save quote error:", err);
       setErrorMessage(err.message || "Failed to save quotation");
@@ -415,6 +414,7 @@ function NewQuoteForm() {
         setSelectedCustomerId(added.id);
         setCustomerSearchQuery(`${added.company} ${added.name ? `(${added.name})` : ""}`);
         setFormCustSuccess(true);
+        goTo(1);
         setTimeout(() => {
           setIsCustModalOpen(false);
           setFormCustSuccess(false);
@@ -442,415 +442,506 @@ function NewQuoteForm() {
     );
   }
 
+  const money = (n: number) =>
+    `${currencySymbol} ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
+  const unitsTotal = quoteItems.reduce((acc, it) => acc + (Number(it.quantity) || 0), 0);
+  const zeroLine = quoteItems.find((it) => !(Number(it.quantity) > 0));
+  const productsBlocker = quoteItems.length === 0 ? "Add at least one product" : zeroLine ? `Set a quantity for ${zeroLine.productName} or remove it` : null;
+  const maxStep = !selectedCustomerId ? 0 : productsBlocker ? 1 : 3;
+  const STEPS: WizardStep[] = [
+    { label: "Customer", icon: Users },
+    { label: "Products", icon: Package },
+    { label: "Terms", icon: MessageSquare },
+    { label: "Review", icon: ClipboardCheck },
+  ];
+  const stepHint = step === 0 ? "Choose a customer" : step === 1 ? productsBlocker : null;
+  const validityFooter = (days: number) => `This is a computer generated quote. Pricing valid for ${days} days.`;
+  const validityDays = [7, 15, 30, 60].find((d) => footerText === validityFooter(d));
+
+  const downloadQuote = async () => {
+    if (!saved) return;
+    let quote: Quote | null = null;
+    if (saved.quoteId) {
+      const res = await fetch(`/api/quotes/${saved.quoteId}?t=${Date.now()}`);
+      const data = res.ok ? await res.json() : null;
+      quote = data?.quote || null;
+    }
+    if (!quote) {
+      const res = await fetch(`/api/quotes?t=${Date.now()}`);
+      const list = res.ok ? await res.json() : [];
+      quote = Array.isArray(list) ? list.find((q: Quote) => q.quoteNumber === saved.quoteNumber) || null : null;
+    }
+    if (!quote) {
+      setErrorMessage("Could not load the quotation for the PDF. Try again from the quotations list.");
+      return;
+    }
+    buildPDF({ ...quote, footerText }).save(`MAAT-QUOTE-${quote.quoteNumber}.pdf`);
+  };
+
+  const input =
+    "w-full px-3.5 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/10";
+  const label = "block text-sm font-medium text-slate-700 mb-1.5";
+
   return (
     <div className="w-full">
       <PageHeader
-        title={editQuoteNumber ? `Edit Quotation` : `New Quotation`}
-        description={
-          editQuoteNumber
-            ? `Modify items, customize price tiers, or write remarks for Ref: ${editQuoteNumber}.`
-            : `Select a clinic/client, add medications from inventory, and set custom discounts.`
-        }
+        title={editQuoteNumber ? `Edit quotation ${editQuoteNumber}` : "New quotation"}
         breadcrumbs={[
           { label: "Quotations", href: "/quotes" },
-          { label: editQuoteNumber ? "Edit Quote" : "New Quote" }
+          { label: editQuoteNumber ? "Edit" : "New" },
         ]}
       />
 
-      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* Left Side: Builder Details (2/3 width) */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Step 1: Client details */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-bold text-[#1B2A4A] uppercase tracking-wider">
-                1. Select Customer
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsCustModalOpen(true)}
-                className="text-xs font-bold text-[#61989B] hover:text-[#4e7d80] transition flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add New Customer
-              </button>
-            </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (step < 3) {
+            if (step < maxStep) goTo(step + 1);
+          } else {
+            handleSubmit();
+          }
+        }}
+        className="px-4 sm:px-6 lg:px-8 pt-6 md:pt-8 pb-4 max-w-5xl mx-auto text-start"
+      >
+        <div ref={topRef} className="scroll-mt-24" />
 
-            <div className="relative">
-              <div className="relative flex items-center">
-                <Search className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none animate-none" />
-                <input
-                  type="text"
-                  placeholder="Search customer name, company, or clinic..."
-                  value={customerSearchQuery}
-                  onChange={(e) => {
-                    setCustomerSearchQuery(e.target.value);
-                    setShowCustomerDropdown(true);
-                  }}
-                  onFocus={() => setShowCustomerDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 200)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all font-semibold"
-                />
-              </div>
+        {saved && (
+          <SavedDocuments
+            title={saved.title}
+            customerId={selectedCustomerId}
+            extraDownloads={[{ key: "quote", label: `Quotation ${saved.quoteNumber}`, icon: FileText, tone: "bg-sky-50 text-sky-700", onClick: downloadQuote }]}
+            extraAction={{ href: `/invoices/new?fromQuote=${encodeURIComponent(saved.quoteNumber)}`, label: "Convert to invoice" }}
+            newHref="/quotes/new"
+            newLabel="New quotation"
+            listHref="/quotes"
+            listLabel="Go to quotations"
+          />
+        )}
 
-              {/* Customer dropdown search suggestions */}
-              {showCustomerDropdown && (
-                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-                  {filteredCustomers.length === 0 ? (
-                    <div className="px-4 py-3 text-sm text-slate-400 text-center font-medium">
-                      No customers found
-                    </div>
-                  ) : (
-                    filteredCustomers.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedCustomerId(c.id);
-                          setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
-                          setShowCustomerDropdown(false);
-                        }}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between"
-                      >
-                        <div>
-                          <div className="font-bold text-slate-800 text-sm">{c.company}</div>
-                          {c.name && <div className="text-xs text-slate-400 font-medium">Doctor: {c.name}</div>}
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          {c.address && (
-                            <span className="text-xs font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                              {c.address}
-                            </span>
-                          )}
-                          {(c.pendingBillwiseAmount || 0) > 0 && (
-                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">
-                              Pending: {currencySymbol} {(c.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp })}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+        {!saved && (
+          <>
+            <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onGo={goTo} />
 
-            {/* Selected Customer Pending Billwise Details Box */}
-            {selectedCustomer && (
-              <div className="mt-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                <div>
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Selected Account</span>
-                  <span className="font-extrabold text-slate-800 text-sm">{selectedCustomer.company}</span>
-                  {selectedCustomer.name && <span className="text-xs font-semibold text-slate-500 ml-2">({selectedCustomer.name})</span>}
-                </div>
-                <div className="text-right">
-                  <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Pending Billwise Amount</span>
-                  <span className={`text-sm font-extrabold ${(selectedCustomer.pendingBillwiseAmount || 0) > 0 ? "text-rose-600" : "text-emerald-600"}`}>
-                    {currencySymbol} {(selectedCustomer.pendingBillwiseAmount || 0).toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp })}
-                  </span>
-                </div>
+            {errorMessage && (
+              <div className="wiz-in flex items-start justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 mb-5 text-sm text-rose-800">
+                <span className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  {errorMessage}
+                </span>
+                <button type="button" onClick={() => setErrorMessage(null)} className="text-rose-500 hover:text-rose-800" aria-label="Dismiss">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
-          </div>
 
-
-          {/* Product Items Selector */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h3 className="text-base font-bold text-slate-800">2. Items Configuration</h3>
-              <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl hover:bg-slate-100 transition w-fit">
-                <input
-                  type="checkbox"
-                  checked={showBasePrice}
-                  onChange={(e) => setShowBasePrice(e.target.checked)}
-                  className="w-4 h-4 rounded text-[#61989B] focus:ring-accent border-slate-300 cursor-pointer"
-                />
-                <span className="text-xs font-bold text-slate-700">
-                  {language === "en" ? "Show Base Price Column" : "إظهار عمود السعر الأساسي"}
-                </span>
-              </label>
-            </div>
-            
-            {/* Live Search bar */}
-            <div className="relative">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Search Products to Add
-              </label>
-              <div className="relative flex items-center">
-                <Search className="absolute left-4 text-slate-400 w-5 h-5 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Type product name, SKU, or active ingredients..."
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setShowProductDropdown(true);
-                  }}
-                  onFocus={() => setShowProductDropdown(true)}
-                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 200)}
-                  className="w-full pl-11 pr-4 py-3.5 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-                />
-              </div>
-
-              {/* Product dropdown search suggestions */}
-              {showProductDropdown && filteredProducts.length > 0 && (
-                <div className="absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
-                  {filteredProducts.map((p) => {
-                    const isOutOfStock = p.isAvailable === false;
-                    const isAlreadyAdded = quoteItems.some((item) => item.productId === p.id);
-                    const isDisabled = isOutOfStock || isAlreadyAdded;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        disabled={isDisabled}
-                        onClick={() => !isDisabled && handleAddProduct(p)}
-                        className={`w-full text-left px-4 py-3 transition-colors flex items-center justify-between ${
-                          isDisabled 
-                            ? "opacity-60 cursor-not-allowed bg-slate-50/70" 
-                            : "hover:bg-slate-50"
-                        }`}
-                      >
-                        <div>
-                          <div className="font-semibold text-slate-800 text-sm">{p.name}</div>
-                          <div className="text-xs text-slate-400 font-medium">Unit: {p.unit}</div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {isOutOfStock && (
-                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2 py-0.5 rounded">
-                              {language === "en" ? "Out of Stock" : "غير متوفر"}
-                            </span>
-                          )}
-                          {isAlreadyAdded && (
-                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                              {language === "en" ? "Already in List" : "مضاف في القائمة"}
-                            </span>
-                          )}
-                          <span className="font-bold text-sm text-[#1B2A4A]">{currencySymbol} {p.price.toFixed(dp)}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
+            {/* STEP 1: CUSTOMER */}
+            {step === 0 && (
+              <StepPanel
+                stepKey="customer"
+                icon={Users}
+                title="Who is this quotation for?"
+                subtitle="Search and tap a customer to continue."
+                action={
+                  <button
+                    type="button"
+                    onClick={() => setIsCustModalOpen(true)}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-accent bg-accent-light hover:bg-accent hover:text-white rounded-xl px-3.5 py-2.5 transition"
+                  >
+                    <UserPlus className="w-4 h-4" /> New customer
+                  </button>
+                }
+              >
+                <div className="relative mb-4">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder="Search clinic, farm or doctor"
+                    value={selectedCustomer && customerSearchQuery.startsWith(selectedCustomer.company) ? "" : customerSearchQuery}
+                    onChange={(e) => {
+                      setCustomerSearchQuery(e.target.value);
+                      setActiveCustomer(0);
+                    }}
+                    onKeyDown={(e) => {
+                      const list = filteredCustomers.slice(0, 40);
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setActiveCustomer((i) => Math.min(i + 1, list.length - 1));
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setActiveCustomer((i) => Math.max(i - 1, 0));
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (list[activeCustomer]) pickCustomer(list[activeCustomer]);
+                      }
+                    }}
+                    className={`${input} pl-12 py-3.5 text-base`}
+                  />
                 </div>
-              )}
-            </div>
+                {filteredCustomers.length === 0 ? (
+                  <div className="text-center py-10">
+                    <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">No customer matches.</p>
+                    <button type="button" onClick={() => setIsCustModalOpen(true)} className="mt-2 text-sm font-semibold text-accent hover:underline">
+                      Add a new customer
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto -mx-1 px-1 py-1">
+                    {filteredCustomers.slice(0, 40).map((c, i) => {
+                      const chosen = c.id === selectedCustomerId;
+                      const active = i === activeCustomer;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => pickCustomer(c)}
+                          onMouseEnter={() => setActiveCustomer(i)}
+                          className={`wiz-in flex items-center gap-3 text-left rounded-xl border p-3 transition-all duration-150 ${
+                            chosen
+                              ? "border-accent bg-accent-light/60 ring-2 ring-accent/20"
+                              : active
+                                ? "border-slate-300 bg-slate-50 shadow-sm"
+                                : "border-slate-200 bg-white hover:border-slate-300"
+                          }`}
+                          style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}
+                        >
+                          <Avatar name={c.company} />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-slate-900 truncate">{c.company}</div>
+                            <div className="text-xs text-slate-500 truncate flex items-center gap-1">
+                              {c.address && <MapPin className="w-3 h-3 shrink-0" />}
+                              {[c.name, c.address].filter(Boolean).join(" · ") || "—"}
+                            </div>
+                          </div>
+                          {(c.pendingBillwiseAmount || 0) > 0 ? (
+                            <span className="shrink-0 text-xs font-medium text-rose-700 bg-rose-50 rounded-full px-2 py-0.5">{money(c.pendingBillwiseAmount || 0)}</span>
+                          ) : (
+                            <span className="shrink-0 text-xs text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">Clear</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </StepPanel>
+            )}
 
-            {/* Configured Item List Table */}
-            {quoteItems.length === 0 ? (
-              <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                <p className="text-sm font-semibold text-slate-400">Search and add items to list to build quote</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="border border-slate-100 rounded-xl overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase">Product Name</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Unit Price</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-24">Qty</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-36">Discount Price</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-right w-28">Subtotal</th>
-                        <th className="px-4 py-3.5 text-xs font-bold text-slate-400 uppercase text-center w-14"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {quoteItems.map((item, idx) => (
-                        <tr key={item.productId} className="align-middle">
-                          <td className="px-4 py-4 font-bold text-slate-700">
-                            {item.productName}
-                          </td>
-                          <td className="px-2 py-4">
-                            <div className="relative flex items-center w-32 ml-auto">
-                              <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencySymbol}</span>
+            {/* STEP 2: PRODUCTS */}
+            {step === 1 && (
+              <StepPanel
+                stepKey="products"
+                icon={Package}
+                title="What are you quoting?"
+                subtitle={selectedCustomer ? <>for <span className="font-medium text-slate-700">{selectedCustomer.company}</span></> : undefined}
+              >
+                <div className="relative mb-5">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
+                  <input
+                    ref={productSearchRef}
+                    type="text"
+                    placeholder="Search product name or code, then press Enter"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setShowProductDropdown(true);
+                      setActiveProduct(0);
+                    }}
+                    onFocus={() => setShowProductDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
+                    onKeyDown={(e) => {
+                      const list = filteredProducts.slice(0, 30);
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setActiveProduct((i) => Math.min(i + 1, list.length - 1));
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setActiveProduct((i) => Math.max(i - 1, 0));
+                      } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        const p = list[activeProduct];
+                        if (p && p.isAvailable !== false) handleAddProduct(p);
+                      } else if (e.key === "Escape") {
+                        setShowProductDropdown(false);
+                      }
+                    }}
+                    className={`${input} pl-12 py-3.5 text-base`}
+                  />
+                  {showProductDropdown && searchQuery && (
+                    <div className="wiz-in absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl shadow-slate-900/10 max-h-80 overflow-y-auto p-1.5">
+                      {filteredProducts.length === 0 ? (
+                        <div className="px-3 py-4 text-sm text-slate-500">No product matches “{searchQuery}”.</div>
+                      ) : (
+                        filteredProducts.slice(0, 30).map((p, i) => {
+                          const off = p.isAvailable === false;
+                          const inList = quoteItems.find((it) => it.productId === p.id);
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              disabled={off}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => !off && handleAddProduct(p)}
+                              onMouseEnter={() => setActiveProduct(i)}
+                              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 ${
+                                off ? "opacity-50 cursor-not-allowed" : i === activeProduct ? "bg-slate-100" : ""
+                              }`}
+                            >
+                              <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 grid place-items-center shrink-0">
+                                <Package className="w-4 h-4" />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
+                                <div className="text-xs text-slate-500">
+                                  {off ? "Not available" : p.unit || ""}
+                                  {inList ? ` · ${inList.quantity} on this quotation` : ""}
+                                </div>
+                              </div>
+                              <span className="text-sm font-semibold text-slate-800 shrink-0">{money(p.price)}</span>
+                              {!off && <Plus className="w-4 h-4 text-accent shrink-0" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {quoteItems.length === 0 ? (
+                  <div className="text-center py-12 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                    <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-slate-600">No products yet</p>
+                    <p className="text-xs text-slate-400 mt-1">Search above and press Enter to add.</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-3">
+                    {quoteItems.map((item, idx) => {
+                      const qty = Number(item.quantity) || 0;
+                      const zero = qty <= 0;
+                      const list = item.listPrice ?? item.price;
+                      const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
+                      const off = Math.max(0, list - rateNum);
+                      const backToSearch = (e: React.KeyboardEvent) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          productSearchRef.current?.focus();
+                        }
+                      };
+                      return (
+                        <li
+                          key={item.productId}
+                          className={`wiz-in rounded-xl border p-4 transition ${zero ? "border-rose-200 bg-rose-50/40" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="w-10 h-10 rounded-lg bg-accent-light text-accent grid place-items-center shrink-0">
+                              <Package className="w-5 h-5" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold text-slate-900">{item.productName}</div>
+                              <div className="flex flex-wrap gap-1.5 mt-1">
+                                <span className="text-[11px] text-slate-600 bg-slate-100 rounded-full px-2 py-0.5">List {money(list)}</span>
+                                {off > 0 && rateNum > 0 && <span className="text-[11px] text-emerald-800 bg-emerald-50 rounded-full px-2 py-0.5">{money(off)} off each</span>}
+                                {rateNum === 0 && <span className="text-[11px] text-emerald-800 bg-emerald-50 rounded-full px-2 py-0.5">Free</span>}
+                                {zero && <span className="text-[11px] text-rose-800 bg-rose-100 rounded-full px-2 py-0.5">Quantity is 0</span>}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveItem(idx)}
+                              className="p-2 -m-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                              aria-label={`Remove ${item.productName}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 sm:grid-cols-[auto_auto_1fr] gap-3 sm:gap-5 items-end">
+                            <div>
+                              <span className="block text-xs text-slate-500 mb-1.5">Quantity</span>
+                              <div className={`inline-flex items-center rounded-xl border bg-white ${zero ? "border-rose-300" : "border-slate-200"}`}>
+                                <button type="button" onClick={() => handleUpdateQuantity(idx, String(Math.max(0, qty - 1)))} className="w-11 h-11 grid place-items-center text-slate-600 hover:bg-slate-100 rounded-l-xl transition" aria-label="One less">
+                                  <Minus className="w-4 h-4" />
+                                </button>
+                                <input
+                                  ref={(el) => {
+                                    if (el) qtyRefs.current.set(String(item.productId), el);
+                                    else qtyRefs.current.delete(String(item.productId));
+                                  }}
+                                  type="number"
+                                  min="0"
+                                  inputMode="numeric"
+                                  value={item.quantity ?? ""}
+                                  onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
+                                  onFocus={(e) => e.target.select()}
+                                  onKeyDown={backToSearch}
+                                  className="w-14 h-11 text-center text-base font-semibold text-slate-900 border-x border-slate-200 focus:outline-none"
+                                  aria-label={`Quantity of ${item.productName}`}
+                                />
+                                <button type="button" onClick={() => handleUpdateQuantity(idx, String(qty + 1))} className="w-11 h-11 grid place-items-center text-slate-600 hover:bg-slate-100 rounded-r-xl transition" aria-label="One more">
+                                  <Plus className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                            <label className="block">
+                              <span className="block text-xs text-slate-500 mb-1.5">Rate ({currencySymbol})</span>
                               <input
                                 type="number"
                                 min="0"
                                 step="any"
                                 inputMode="decimal"
-                                value={item.manualUnitPrice !== undefined ? item.manualUnitPrice : item.price}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  if (raw === "") {
-                                    handleUpdateUnitPrice(idx, "");
-                                  } else {
-                                    const parsed = parseFloat(raw);
-                                    handleUpdateUnitPrice(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
-                                  }
-                                }}
+                                placeholder={list.toFixed(dp)}
+                                value={item.rate ?? ""}
+                                onChange={(e) => handleUpdateRate(idx, e.target.value)}
                                 onFocus={(e) => e.target.select()}
-                                className="w-full pl-10 pr-2 py-2.5 min-h-[44px] border border-slate-200 rounded-xl text-right font-bold text-sm text-slate-800 focus:outline-none focus:border-accent"
+                                onKeyDown={backToSearch}
+                                className={`${input} w-full sm:w-32 h-11 py-0 text-right font-semibold`}
                               />
+                            </label>
+                            <div className="col-span-2 sm:col-span-1 text-right">
+                              <span className="block text-xs text-slate-500 mb-1">Amount</span>
+                              <span className="text-lg font-semibold text-slate-900">{money(item.total)}</span>
                             </div>
-                          </td>
-                          <td className="px-2 py-4">
-                            <input
-                              type="number"
-                              min="0"
-                              inputMode="numeric"
-                              value={item.quantity !== undefined && item.quantity !== null ? item.quantity : ""}
-                              onChange={(e) => {
-                                const raw = e.target.value;
-                                if (raw === "") {
-                                  handleUpdateQuantity(idx, "");
-                                } else {
-                                  const parsed = parseInt(raw, 10);
-                                  handleUpdateQuantity(idx, isNaN(parsed) ? "" : Math.max(0, parsed));
-                                }
-                              }}
-                              onFocus={(e) => e.target.select()}
-                              className="w-20 mx-auto px-2 py-2.5 min-h-[44px] border border-slate-200 rounded-xl text-center font-bold text-sm focus:outline-none focus:border-accent"
-                            />
-                          </td>
-                          <td className="px-2 py-4">
-                            <div className="relative flex flex-col items-center w-32 mx-auto">
-                              <div className="relative flex items-center w-full">
-                                <span className="absolute left-2.5 text-xs font-bold text-slate-400">{currencySymbol}</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={item.price}
-                                  step="any"
-                                  inputMode="decimal"
-                                  placeholder="Optional"
-                                  value={item.discountPrice !== undefined && item.discountPrice !== null ? item.discountPrice : item.manualDiscount !== undefined ? item.manualDiscount : ""}
-                                  onChange={(e) => {
-                                    const raw = e.target.value;
-                                    if (raw === "") {
-                                      handleUpdateDiscount(idx, "");
-                                    } else {
-                                      const parsed = parseFloat(raw);
-                                      handleUpdateDiscount(idx, isNaN(parsed) ? "" : parsed);
-                                    }
-                                  }}
-                                  onFocus={(e) => e.target.select()}
-                                  className={`w-full pl-10 pr-2 py-2.5 min-h-[44px] border rounded-xl text-right font-bold text-sm focus:outline-none transition ${
-                                    (item.discountPrice !== undefined && item.discountPrice !== "" && Number(item.discountPrice) > item.price) ||
-                                    (item.manualDiscount !== undefined && item.manualDiscount !== "" && Number(item.manualDiscount) > item.price)
-                                      ? "border-rose-500 bg-rose-50 text-rose-800"
-                                      : "border-slate-200 text-slate-800 focus:border-accent"
-                                  }`}
-                                />
-                              </div>
-                              {item.discount > 0 && (
-                                <span className="text-[10px] font-bold text-emerald-600 mt-1">
-                                  Disc: {currencySymbol} {item.discount.toFixed(dp)}/unit
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-right font-extrabold text-slate-900 text-sm">
-                            {currencySymbol} {item.total.toFixed(dp)}
-                          </td>
-                          <td className="px-4 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(idx)}
-                              className="p-2.5 min-h-[44px] min-w-[44px] inline-flex items-center justify-center rounded-xl text-rose-500 hover:bg-rose-50 transition cursor-pointer"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {quoteItems.length > 0 && <p className="text-xs text-slate-400 mt-4">Leave Rate empty to quote the list price. Enter 0 for a free unit.</p>}
+              </StepPanel>
+            )}
+
+            {/* STEP 3: TERMS */}
+            {step === 2 && (
+              <StepPanel stepKey="terms" icon={MessageSquare} title="Notes and terms" subtitle="Both are optional. The terms print at the bottom of the PDF.">
+                <span className={label}>Prices valid for</span>
+                <div className="flex flex-wrap gap-2 mb-5">
+                  {[7, 15, 30, 60].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setFooterText(validityFooter(d))}
+                      className={`flex items-center gap-2 px-4 py-3 min-h-[48px] rounded-xl text-sm font-semibold border-2 transition ${
+                        validityDays === d ? "border-accent bg-accent-light/60 text-accent" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                      }`}
+                    >
+                      <Calendar className="w-4 h-4" /> {d} days
+                    </button>
+                  ))}
+                </div>
+                <label className="block mb-6">
+                  <span className={label}>Terms printed on the quotation</span>
+                  <textarea rows={2} value={footerText} onChange={(e) => setFooterText(e.target.value)} className={input} />
+                </label>
+                <label className="block">
+                  <span className={label}>
+                    Note <span className="font-normal text-slate-400">(optional)</span>
+                  </span>
+                  <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className={input} placeholder="e.g. Delivery within 2 days of confirmation" />
+                </label>
+              </StepPanel>
+            )}
+
+            {/* STEP 4: REVIEW */}
+            {step === 3 && (
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
+                <div className="space-y-5 min-w-0">
+                  <ReviewSection icon={User} title="Customer" onEdit={() => goTo(0)}>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={selectedCustomer?.company || customerSearchQuery} size="lg" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">{selectedCustomer?.company || customerSearchQuery}</div>
+                        {(selectedCustomer?.name || selectedCustomer?.address) && (
+                          <div className="text-sm text-slate-500 truncate">{[selectedCustomer?.name, selectedCustomer?.address].filter(Boolean).join(" · ")}</div>
+                        )}
+                      </div>
+                    </div>
+                  </ReviewSection>
+
+                  <ReviewSection icon={Package} title={`Products · ${quoteItems.length} ${quoteItems.length === 1 ? "line" : "lines"}, ${unitsTotal} units`} onEdit={() => goTo(1)} delay={60}>
+                    <div className="overflow-x-auto -mx-1">
+                      <table className="w-full text-sm min-w-[420px]">
+                        <thead>
+                          <tr className="text-xs text-slate-500 border-b border-slate-100">
+                            <th className="text-left font-medium pb-2.5 px-1">Product</th>
+                            <th className="text-right font-medium pb-2.5 px-1 w-14">Qty</th>
+                            <th className="text-right font-medium pb-2.5 px-1 w-24">Rate</th>
+                            <th className="text-right font-medium pb-2.5 px-1 w-28">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {quoteItems.map((item) => {
+                            const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
+                            return (
+                              <tr key={item.productId}>
+                                <td className="py-3 px-1 text-slate-900">{item.productName}</td>
+                                <td className="py-3 px-1 text-right text-slate-700">{item.quantity}</td>
+                                <td className="py-3 px-1 text-right text-slate-700">{rateNum.toFixed(dp)}</td>
+                                <td className="py-3 px-1 text-right font-medium text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </ReviewSection>
+
+                  <ReviewSection icon={MessageSquare} title="Notes and terms" onEdit={() => goTo(2)} delay={120}>
+                    {notes ? <p className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2 mb-2">{notes}</p> : <p className="text-sm text-slate-400 mb-2">No note.</p>}
+                    <p className="text-sm text-slate-500">{footerText || "No terms."}</p>
+                  </ReviewSection>
+                </div>
+
+                <div className="space-y-5 lg:sticky lg:top-6">
+                  <section className="wiz-in rounded-2xl overflow-hidden shadow-lg shadow-primary/10" style={{ animationDelay: "80ms" }}>
+                    <div className="bg-gradient-to-br from-primary to-accent text-white px-6 py-6">
+                      <div className="text-xs uppercase tracking-wide text-white/70">Quotation total</div>
+                      <div className="text-3xl font-semibold mt-1">{money(grandTotal)}</div>
+                      <div className="text-sm text-white/80 mt-1">
+                        {unitsTotal} units{validityDays ? ` · valid ${validityDays} days` : ""}
+                      </div>
+                    </div>
+                    <dl className="bg-white border-x border-b border-slate-200 rounded-b-2xl px-6 py-4 space-y-2 text-sm">
+                      {discountTotal > 0 && (
+                        <>
+                          <div className="flex justify-between text-slate-500">
+                            <dt>At list price</dt>
+                            <dd>{money(subtotal)}</dd>
+                          </div>
+                          <div className="flex justify-between text-emerald-700">
+                            <dt>Discount</dt>
+                            <dd>−{money(discountTotal)}</dd>
+                          </div>
+                        </>
+                      )}
+                      <div className="flex justify-between items-center text-slate-500">
+                        <dt className="flex items-center gap-1.5">
+                          <Hash className="w-3.5 h-3.5" /> Quotation no.
+                        </dt>
+                        <dd className="font-semibold text-slate-900">{editQuoteNumber || "Given on save"}</dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  {selectedCustomerId && <AccountSnapshot customerId={selectedCustomerId} />}
                 </div>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Right Side: Summary Card (1/3 width) */}
-        <div className="space-y-6">
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6 sticky top-20">
-            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3">Quotation Summary</h3>
-            
-            {/* Calculation summary stack */}
-            <div className="space-y-3.5 text-sm font-semibold">
-              <div className="flex justify-between text-slate-500">
-                <span>Items Count:</span>
-                <span>{quoteItems.reduce((acc, curr) => acc + (typeof curr.quantity === "number" ? curr.quantity : 0), 0)} items</span>
-              </div>
-              <div className="flex justify-between text-slate-500">
-                <span>Subtotal:</span>
-                <span>{currencySymbol} {subtotal.toFixed(dp)}</span>
-              </div>
-              {discountTotal > 0 && (
-                <div className="flex justify-between text-slate-500">
-                  <span>Discount Total:</span>
-                  <span className="text-emerald-600">-{currencySymbol} {discountTotal.toFixed(dp)}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between text-lg font-bold text-slate-900 border-t border-slate-100 pt-4 mt-2">
-                <span>Grand Total:</span>
-                <span>{currencySymbol} {grandTotal.toFixed(dp)}</span>
-              </div>
-            </div>
-
-            {/* Remarks / Delivery instructions */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">
-                Special Remarks / Delivery Notes
-              </label>
-              <textarea
-                rows={2}
-                placeholder="e.g. deliver before 10 AM, check calcium batch..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-              />
-            </div>
-
-            {/* Quotation Footer / Terms */}
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">
-                Quotation Footer / Terms & Conditions
-              </label>
-              <textarea
-                rows={2}
-                placeholder="e.g. This is a computer generated quote. Pricing valid for 30 days."
-                value={footerText}
-                onChange={(e) => setFooterText(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-800 text-sm focus:outline-none focus:ring-2 focus:ring-accent/15 transition-all"
-              />
-            </div>
-
-            {/* Actions */}
-            <div className="space-y-3 pt-2">
-              <button
-                type="submit"
-                disabled={isSaving || !selectedCustomerId || quoteItems.length === 0}
-                className="flex w-full justify-center items-center gap-2 py-3.5 px-4 text-base font-bold text-white bg-primary rounded-xl hover:bg-[#15223c] focus:outline-none disabled:opacity-50 transition duration-150 cursor-pointer shadow-md shadow-primary/10"
-              >
-                <CheckCircle className="w-5 h-5" />
-                {isSaving
-                  ? editQuoteNumber
-                    ? "Updating Quotation..."
-                    : "Creating Quotation..."
-                  : editQuoteNumber
-                    ? "Update Quotation"
-                    : "Submit Quotation"}
-              </button>
-              <Link
-                href="/quotes"
-                className="flex w-full justify-center items-center py-3.5 px-4 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition duration-150"
-              >
-                Cancel
-              </Link>
-            </div>
-          </div>
-        </div>
-
+            <WizardBar
+              step={step}
+              onBack={() => goTo(step - 1)}
+              cancelHref="/quotes"
+              summaryLabel={step >= 1 && quoteItems.length > 0 ? `${unitsTotal} units` : undefined}
+              summaryValue={step >= 1 && quoteItems.length > 0 ? money(grandTotal) : undefined}
+              next={
+                step < 3
+                  ? { label: step === 2 ? "Review" : "Next", disabled: step >= maxStep, onClick: () => goTo(step + 1), hint: stepHint }
+                  : { label: isSaving ? "Saving…" : editQuoteNumber ? "Save changes" : "Save quotation", disabled: isSaving || maxStep < 3, submit: true, tone: "accent" }
+              }
+            />
+          </>
+        )}
       </form>
-      </div>
-
-      {/* Click backdrop to close product selector dropdown */}
-      {showProductDropdown && (
-        <div className="fixed inset-0 z-10" onClick={() => setShowProductDropdown(false)} />
-      )}
 
       {/* Add Customer Modal */}
       {isCustModalOpen && (
@@ -858,7 +949,7 @@ function NewQuoteForm() {
           <div className="w-full max-w-md bg-white rounded-2xl p-6 shadow-2xl relative text-left">
             {formCustSuccess ? (
               <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
-                <CheckCircle className="w-12 h-12 text-emerald-500 animate-bounce" />
+                <CheckCircle className="wiz-pop w-12 h-12 text-emerald-500" />
                 <h4 className="text-lg font-bold text-slate-900">Customer Added Successfully</h4>
                 <p className="text-sm text-slate-400">Syncing with database...</p>
               </div>
@@ -970,30 +1061,6 @@ function NewQuoteForm() {
         </div>
       )}
 
-      {/* Error Notification Modal */}
-      {errorMessage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl text-center space-y-4">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600 border border-rose-100">
-              <X className="h-6 w-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-lg font-bold text-slate-900">
-                {language === "en" ? "Action Failed" : "فشلت العملية"}
-              </h3>
-              <p className="text-sm text-slate-500 font-medium text-center">
-                {errorMessage}
-              </p>
-            </div>
-            <button
-              onClick={() => setErrorMessage(null)}
-              className="w-full py-2.5 px-4 text-sm font-bold text-white bg-[#1B2A4A] rounded-xl hover:bg-[#15223c] transition duration-150 cursor-pointer"
-            >
-              {language === "en" ? "Dismiss" : "إغلاق"}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

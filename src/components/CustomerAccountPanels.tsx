@@ -91,7 +91,7 @@ export type BalanceChange =
   | { kind: "invoice"; amount: number; credit: boolean; cheque: boolean }
   | { kind: "receipt"; amount: number; cheque: boolean };
 
-export function AccountSnapshot({ customerId, change }: { customerId: string; change: BalanceChange }) {
+export function AccountSnapshot({ customerId, change }: { customerId: string; change?: BalanceChange }) {
   const { ws, loading } = useCustomerWorkspace(customerId);
   if (loading && !ws) {
     return (
@@ -112,7 +112,9 @@ export function AccountSnapshot({ customerId, change }: { customerId: string; ch
   // Credit invoices and cheques both leave the money owed until paid / cleared.
   let after = f.pending;
   let afterNote = "";
-  if (change.kind === "invoice") {
+  if (!change) {
+    // Quotations: show the account only.
+  } else if (change.kind === "invoice") {
     if (change.credit || change.cheque) after = f.pending + change.amount;
     if (change.cheque) afterNote = "until the cheque clears";
   } else if (change.cheque) {
@@ -150,13 +152,15 @@ export function AccountSnapshot({ customerId, change }: { customerId: string; ch
           )}
         {ws.customer.cashOnly && row(AlertTriangle, "Status", "Cash only", "text-amber-700")}
       </dl>
+      {change && (
       <div className={`mt-3 -mx-5 md:-mx-6 -mb-5 md:-mb-6 px-5 md:px-6 py-4 rounded-b-2xl flex items-center justify-between gap-3 ${after > 0 ? "bg-rose-50/70" : "bg-emerald-50/70"}`}>
-        <span className="text-sm font-semibold text-slate-900">Pending after this {change.kind}</span>
-        <span className="text-right">
-          <span className={`text-base font-semibold ${after > 0 ? "text-rose-700" : "text-emerald-700"}`}>{money(after)}</span>
-          {afterNote && <span className="block text-xs text-slate-500">{afterNote}</span>}
-        </span>
-      </div>
+          <span className="text-sm font-semibold text-slate-900">Pending after this {change.kind}</span>
+          <span className="text-right">
+            <span className={`text-base font-semibold ${after > 0 ? "text-rose-700" : "text-emerald-700"}`}>{money(after)}</span>
+            {afterNote && <span className="block text-xs text-slate-500">{afterNote}</span>}
+          </span>
+        </div>
+      )}
     </section>
   );
 }
@@ -203,7 +207,11 @@ export function SavedDocuments({
   newLabel,
   listHref,
   listLabel,
+  extraDownloads = [],
+  extraAction,
 }: {
+  extraDownloads?: { key: string; label: string; icon?: LucideIcon; tone?: string; onClick: () => void | Promise<void> }[];
+  extraAction?: { href: string; label: string };
   title: string;
   customerId: string;
   /** Invoices saved now (ids). */
@@ -307,6 +315,9 @@ export function SavedDocuments({
           <p className="text-sm text-slate-500">Preparing…</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {extraDownloads.map((d) => (
+              <DownloadButton key={d.key} icon={d.icon} tone={d.tone} label={d.label} onClick={() => void d.onClick()} />
+            ))}
             {invoices.map((inv) => (
               <DownloadButton
                 key={inv.id}
@@ -342,6 +353,11 @@ export function SavedDocuments({
         <Link href={listHref} className="px-6 py-3 min-h-[48px] text-sm font-semibold text-slate-700 border border-slate-200 rounded-xl bg-white hover:border-slate-400 text-center">
           {listLabel}
         </Link>
+        {extraAction && (
+          <Link href={extraAction.href} className="px-6 py-3 min-h-[48px] text-sm font-semibold text-accent border border-accent/30 bg-accent-light rounded-xl hover:bg-accent hover:text-white text-center transition">
+            {extraAction.label}
+          </Link>
+        )}
         <a href={newHref} className="px-6 py-3 min-h-[48px] text-sm font-semibold text-white bg-primary rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-hover text-center">
           {newLabel}
         </a>
