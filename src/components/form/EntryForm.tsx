@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Search, UserPlus, X } from "lucide-react";
 import { Customer } from "@/types";
 
@@ -12,6 +12,24 @@ import { Customer } from "@/types";
 
 export const fieldInput =
   "w-full h-10 px-3 bg-white border border-slate-300 rounded-md text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15";
+
+/** True on tablet and desktop widths (768px and up); lines show as a table there, as cards below. */
+export function useWide(): boolean {
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const update = () => setWide(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
+
+/** A read-only value shown in a form row (not an input). */
+export function StaticValue({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
+  return <div className={`h-10 flex items-center text-sm ${muted ? "text-slate-500" : "text-slate-900 font-medium"}`}>{children}</div>;
+}
 
 /** A form row: label on the left (desktop), field on the right. */
 export function FieldRow({
