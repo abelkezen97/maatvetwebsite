@@ -3,7 +3,7 @@ import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapReceiptFromDb, mapReceiptToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
-import { nextReceiptNumber, nextSeriesNumber } from "@/lib/db/documentSeries";
+import { advanceSeriesPast, cleanDocumentNumber, nextReceiptNumber, nextSeriesNumber, seriesOfNumber } from "@/lib/db/documentSeries";
 import { BillingSeries } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
 
@@ -343,14 +343,35 @@ export async function POST(request: Request) {
       }
     };
 
-    for (const part of parts) {
-      // Number: the salesman's receipt series for this kind when set up; otherwise
-      // the number typed on the form (UAE-registered, if free) or REC- / RCM-.
-      const fromSeries = numberSalesmanId
+    // The admin / accountant may type the receipt number. It goes on the part
+    // whose series it belongs to, and that series then carries on after it.
+    let customReceipt: string | null = null;
+    let customReceiptIdx = -1;
+    if (payload.customNumber && isCountryStaff(profile)) {
+      customReceipt = cleanDocumentNumber(payload.customNumber);
+      if (!customReceipt) {
+        return NextResponse.json({ error: "A receipt number can only have letters, digits and - / ." }, { status: 400 });
+      }
+      const { data: taken } = await admin.from("receipts").select("id").eq("receipt_number", customReceipt).limit(1);
+      if (taken && taken.length > 0) {
+        return NextResponse.json({ error: `Receipt number ${customReceipt} is already used.` }, { status: 409 });
+      }
+      const typedSeries = await seriesOfNumber(admin, numberSalesmanId, "receipt", customReceipt);
+      customReceiptIdx = Math.max(0, parts.findIndex((p) => p.series === (typedSeries || parts[0].series)));
+    }
+
+    for (const [partIdx, part] of parts.entries()) {
+      // Number: typed by the admin; else the salesman's receipt series for this
+      // kind when set up; else the number from the form (UAE-registered, if free)
+      // or REC- / RCM-.
+      const isCustomPart = Boolean(customReceipt) && partIdx === customReceiptIdx;
+      const fromSeries = !isCustomPart && numberSalesmanId
         ? await nextSeriesNumber(admin, numberSalesmanId, "receipt", part.series)
         : null;
       let partNumber: string;
-      if (fromSeries) {
+      if (isCustomPart) {
+        partNumber = customReceipt as string;
+      } else if (fromSeries) {
         partNumber = fromSeries;
       } else if (clientNumberLeft && part.series === "standard") {
         partNumber = receiptNumber;
@@ -416,6 +437,9 @@ export async function POST(request: Request) {
         throw new Error("Failed to insert receipt after multiple concurrency retries.");
       }
       createdReceipts.push(inserted);
+      if (isCustomPart && inserted.receipt_number === customReceipt) {
+        await advanceSeriesPast(admin, numberSalesmanId, "receipt", part.series, customReceipt as string, profile.id);
+      }
 
       // Save allocations. If that fails, remove the receipts of this payment so a
       // half-saved payment never counts against the wrong invoice.

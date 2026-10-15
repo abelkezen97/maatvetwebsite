@@ -17,7 +17,7 @@ export default function NewReceiptPage() {
   const searchParams = useSearchParams();
   const preselectedCustomerId = searchParams.get("customerId");
   const preselectedInvoiceId = searchParams.get("invoiceId");
-  const { user } = useAuth();
+  const { user, isStaff } = useAuth();
 
   // Form states
   const [receiptNumber, setReceiptNumber] = useState("");
@@ -64,6 +64,8 @@ export default function NewReceiptPage() {
   const [chequeNumber, setChequeNumber] = useState("");
   const [chequeDate, setChequeDate] = useState<string>(() => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date()));
   const [bankName, setBankName] = useState("");
+  // Receipt number typed by the admin / accountant ("" = next in the series).
+  const [typedNumber, setTypedNumber] = useState("");
 
   // Wizard: 0 customer, 1 payment, 2 apply to invoices, 3 review.
   const [step, setStep] = useState(preselectedCustomerId || preselectedInvoiceId ? 1 : 0);
@@ -400,6 +402,7 @@ export default function NewReceiptPage() {
       paymentMethod: paymentMethod,
       referenceNo: referenceNo.trim() || undefined,
       notes: notes.trim() || undefined,
+      customNumber: isStaff && typedNumber.trim() ? typedNumber.trim() : undefined,
     };
 
     try {
@@ -617,6 +620,22 @@ export default function NewReceiptPage() {
                 <FieldRow label="Payment date" required htmlFor="rc-date">
                   <input id="rc-date" type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={`${fieldInput} max-w-xs`} />
                 </FieldRow>
+
+                {isStaff && (
+                  <FieldRow
+                    label="Receipt#"
+                    htmlFor="rc-number"
+                    hint={typedNumber.trim() ? "New receipts will continue after this number." : "Leave empty for the next number in the series."}
+                  >
+                    <input
+                      id="rc-number"
+                      value={typedNumber}
+                      onChange={(e) => setTypedNumber(e.target.value)}
+                      placeholder="Automatic"
+                      className={`${fieldInput} max-w-xs`}
+                    />
+                  </FieldRow>
+                )}
 
                 <FieldRow label="Payment mode" required>
                   <div className="inline-flex flex-wrap rounded-md border border-slate-300 overflow-hidden" role="radiogroup" aria-label="Payment mode">

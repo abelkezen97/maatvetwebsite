@@ -57,7 +57,7 @@ function NewInvoiceForm() {
   const { language } = useLanguage();
   const editInvoiceNumber = searchParams.get("edit");
   const fromQuoteNumber = searchParams.get("fromQuote");
-  const { user, profile } = useAuth();
+  const { user, profile, isStaff } = useAuth();
   const currencyCode = currencyFor(profile?.country);
   const dp = decimalsFor(profile?.country);
   
@@ -631,6 +631,8 @@ function NewInvoiceForm() {
       chequeDate: status === "Paid" && paymentMethod === "Cheque" ? chequeDate : undefined,
       bankName: status === "Paid" && (paymentMethod === "Cheque" || paymentMethod === "Bank Transfer") ? payBank.trim() || undefined : undefined,
       referenceNo: status === "Paid" && paymentMethod === "Bank Transfer" ? transferRef.trim() : undefined,
+      // Admin / accountant typed the number: the server uses it and the series carries on after it.
+      customNumber: !editInvoiceNumber && isCustomInvoiceNumber && invoiceNumber.trim() ? invoiceNumber.trim() : undefined,
     };
 
     try {
@@ -647,10 +649,25 @@ function NewInvoiceForm() {
         throw new Error(resData.error || "Failed to save invoice");
       }
 
+      // Editing: a changed number is saved separately (admin / accountant only).
+      let renamedTo: string | null = null;
+      if (editInvoiceNumber && isStaff && invoiceNumber.trim() && invoiceNumber.trim() !== editInvoiceNumber) {
+        const rn = await fetch("/api/documents/renumber", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ docType: "invoice", id: newInvoice.id, number: invoiceNumber.trim() }),
+        });
+        const rnData = await rn.json().catch(() => ({}));
+        if (!rn.ok) throw new Error(`Invoice saved, but the number was not changed: ${rnData.error || "unknown error"}`);
+        renamedTo = rnData.number || invoiceNumber.trim();
+      }
+
       // The server gives the real numbers (a mixed UAE sale becomes two invoices).
-      const savedNumbers: string[] = Array.isArray(resData.invoices) && resData.invoices.length > 0
-        ? resData.invoices.map((i: any) => i.invoiceNumber)
-        : [resData.invoiceNumber || newInvoice.invoiceNumber];
+      const savedNumbers: string[] = renamedTo
+        ? [renamedTo]
+        : Array.isArray(resData.invoices) && resData.invoices.length > 0
+          ? resData.invoices.map((i: any) => i.invoiceNumber)
+          : [resData.invoiceNumber || newInvoice.invoiceNumber];
       const numbersText = savedNumbers.join(" and ");
       const savedIds: string[] = Array.isArray(resData.invoices) && resData.invoices.length > 0
         ? resData.invoices.map((i: any) => i.id).filter(Boolean)
@@ -739,7 +756,8 @@ function NewInvoiceForm() {
     d.setUTCDate(d.getUTCDate() + creditDaysNum);
     return fmtDate(d.toISOString().slice(0, 10));
   })();
-  const canEditNumber = profile?.role !== "salesperson" && !editInvoiceNumber;
+  // Admin / accountant can type the number of a new invoice or change an existing one.
+  const canEditNumber = isStaff;
   const askDetails = !editInvoiceNumber && status === "Paid";
   const methodLabel = (m: string) => (m === "Bank Transfer" ? "Bank transfer" : m);
 
@@ -1385,7 +1403,17 @@ function NewInvoiceForm() {
                           )}
                         </dd>
                       </div>
-                      {!editInvoiceNumber && <p className="text-[11px] text-slate-400 text-right">Final number is given on save</p>}
+                      <p className="text-[11px] text-slate-400 text-right">
+                        {canEditNumber
+                          ? isCustomInvoiceNumber
+                            ? "New numbers will continue after this one"
+                            : editInvoiceNumber
+                              ? "You can change the number"
+                              : "Next in the series. Type to use another"
+                          : editInvoiceNumber
+                            ? ""
+                            : "Final number is given on save"}
+                      </p>
                     </dl>
                   </section>
 

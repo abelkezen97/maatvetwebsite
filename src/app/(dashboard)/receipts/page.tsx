@@ -13,6 +13,7 @@ import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { printReceiptThermalBill } from "@/lib/thermalPrintHelper";
 import { useAuth } from "@/hooks/useAuth";
+import { RenumberDialog } from "@/components/RenumberDialog";
 
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -26,6 +27,7 @@ export default function ReceiptsPage() {
   const [actionMessage, setActionMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
   // Delete (admin / accountant): the receipt asked about, and while it is being deleted.
   const [toDelete, setToDelete] = useState<Receipt | null>(null);
+  const [toRenumber, setToRenumber] = useState<Receipt | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const deleteReceipt = async (receipt: Receipt) => {
@@ -242,6 +244,7 @@ export default function ReceiptsPage() {
                   { label: "Mark cheque bounced", onClick: () => chequeAction(row, "bounce"), danger: true },
                 ]
               : []),
+            ...(canManageCheques ? [{ label: "Change number", onClick: () => setToRenumber(row) }] : []),
             ...(canManageCheques ? [{ label: "Delete receipt", onClick: () => setToDelete(row), danger: true }] : []),
           ]}
         />
@@ -406,6 +409,19 @@ export default function ReceiptsPage() {
             </div>
           </div>
         </div>
+      )}
+      {toRenumber && (
+        <RenumberDialog
+          docType="receipt"
+          id={toRenumber.id}
+          current={toRenumber.receiptNumber}
+          onClose={() => setToRenumber(null)}
+          onDone={(n, prev) => {
+            setToRenumber(null);
+            setActionMessage({ type: "ok", text: `Receipt ${prev} is now ${n}.` });
+            loadReceipts(true);
+          }}
+        />
       )}
       {toDelete && (() => {
         const siblings = toDelete.paymentGroupId
