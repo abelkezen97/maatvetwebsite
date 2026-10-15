@@ -128,3 +128,69 @@ export async function nextReceiptNumber(
   }
   return generateNextDocumentNumber(client, "receipts", "receipt_number", billingSeries === "oman_reg" ? "RCM" : "REC", 6);
 }
+
+/**
+ * A document number typed or changed by the admin. Letters, digits and
+ * - / . only, at most 30 characters. Returns the cleaned number or null.
+ */
+export function cleanDocumentNumber(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  if (!s || s.length > 30 || !/^[A-Za-z0-9][A-Za-z0-9\-/.]*$/.test(s)) return null;
+  return s;
+}
+
+/** The running number of `number` in a series with this prefix, or null if it isn't one of its numbers. */
+export function seriesNumberValue(prefix: string, number: string): number | null {
+  const p = (prefix || "").toUpperCase();
+  const n = number.trim().toUpperCase();
+  if (!n.startsWith(p)) return null;
+  const rest = n.slice(p.length);
+  return /^\d+$/.test(rest) ? parseInt(rest, 10) : null;
+}
+
+/** Which of a salesman's series (for this document type) a typed number belongs to, if any. */
+export async function seriesOfNumber(
+  client: SupabaseClient,
+  salesmanId: string | null | undefined,
+  docType: SeriesDocType,
+  number: string
+): Promise<BillingSeries | null> {
+  if (!salesmanId) return null;
+  const { data } = await client.from("document_series").select("billing_series, prefix").eq("salesman_id", salesmanId).eq("doc_type", docType);
+  // Longer prefixes first, so "D0410" is not read as a numbers-only series.
+  const rows = (data || []).sort((a: any, b: any) => String(b.prefix || "").length - String(a.prefix || "").length);
+  for (const r of rows) {
+    if (seriesNumberValue(r.prefix || "", number) !== null) return r.billing_series === "oman_reg" ? "oman_reg" : "standard";
+  }
+  return null;
+}
+
+/**
+ * After the admin sets a number by hand, the series carries on after it:
+ * if `number` belongs to the salesman's series and is at or past the next
+ * number, the next number becomes number + 1. It never moves backwards.
+ */
+export async function advanceSeriesPast(
+  client: SupabaseClient,
+  salesmanId: string | null | undefined,
+  docType: SeriesDocType,
+  billingSeries: BillingSeries,
+  number: string,
+  updatedBy: string
+): Promise<void> {
+  if (!salesmanId) return;
+  const { data } = await client
+    .from("document_series")
+    .select("id, prefix, next_number")
+    .eq("salesman_id", salesmanId)
+    .eq("doc_type", docType)
+    .eq("billing_series", billingSeries)
+    .maybeSingle();
+  if (!data) return;
+  const n = seriesNumberValue(data.prefix || "", number);
+  if (n === null || n + 1 <= Number(data.next_number)) return;
+  await client
+    .from("document_series")
+    .update({ next_number: n + 1, updated_by: updatedBy, updated_at: new Date().toISOString() })
+    .eq("id", data.id);
+}

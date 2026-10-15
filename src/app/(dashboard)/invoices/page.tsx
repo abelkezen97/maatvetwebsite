@@ -10,6 +10,7 @@ import { SearchInput } from "@/components/SearchInput";
 import { Invoice, Customer } from "@/types";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { useAuth } from "@/hooks/useAuth";
+import { RenumberDialog } from "@/components/RenumberDialog";
 import { Permissions } from "@/lib/auth/permissions";
 import { ActionDropdown, ActionOption } from "@/components/ActionDropdown";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
@@ -20,13 +21,15 @@ export default function InvoicesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const customerIdParam = searchParams.get("customerId");
-  const { user, profile } = useAuth();
+  const { user, profile, isStaff } = useAuth();
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [seriesFilter, setSeriesFilter] = useState<"all" | "standard" | "oman_reg">("all");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [toRenumber, setToRenumber] = useState<Invoice | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const loadInvoices = async () => {
     setIsLoading(true);
@@ -239,6 +242,10 @@ export default function InvoicesPage() {
           });
         }
 
+        if (isStaff) {
+          options.push({ label: "Change number", onClick: () => setToRenumber(row) });
+        }
+
         options.push(
           { label: t("print") || "Print Bill (80mm)", onClick: () => printInvoiceThermalBill(row) },
           { label: "Download PDF", onClick: () => generatePDF(row) },
@@ -331,6 +338,29 @@ export default function InvoicesPage() {
           />
         )}
       </div>
+
+      {toRenumber && (
+        <RenumberDialog
+          docType="invoice"
+          id={toRenumber.id}
+          current={toRenumber.invoiceNumber}
+          onClose={() => setToRenumber(null)}
+          onDone={(n, prev) => {
+            setToRenumber(null);
+            setNotice(`Invoice ${prev} is now ${n}.`);
+            loadInvoices();
+          }}
+        />
+      )}
+
+      {notice && (
+        <div className="wiz-in fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white text-sm rounded-xl shadow-xl px-4 py-3">
+          {notice}
+          <button onClick={() => setNotice(null)} className="text-white/60 hover:text-white" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Invoice Detail Modal */}
       {selectedInvoice && (

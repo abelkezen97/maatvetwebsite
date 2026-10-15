@@ -4,7 +4,7 @@ import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
-import { billingSeriesForProducts, mixedSeriesError, nextReceiptNumber, nextSeriesNumber, peekSeriesNumber } from "@/lib/db/documentSeries";
+import { advanceSeriesPast, billingSeriesForProducts, cleanDocumentNumber, mixedSeriesError, nextReceiptNumber, nextSeriesNumber, peekSeriesNumber, seriesOfNumber } from "@/lib/db/documentSeries";
 import { BillingSeries, QuoteItem, UserCountry } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { getProductStock, validateAndProcessInvoiceInventory, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
@@ -471,7 +471,26 @@ export async function POST(request: Request) {
       }
     };
 
-    for (const part of parts) {
+    // The admin / accountant may type the number of a new invoice. It goes on the
+    // part whose series it belongs to (e.g. "D0410" on the Oman-registered one),
+    // and that series then carries on after it.
+    let customNumber: string | null = null;
+    let customPartIdx = -1;
+    const typedNumber = payload.customNumber ?? invoiceData.customNumber;
+    if (!isEditMode && typedNumber && isCountryStaff(profile)) {
+      customNumber = cleanDocumentNumber(typedNumber);
+      if (!customNumber) {
+        return NextResponse.json({ error: "An invoice number can only have letters, digits and - / ." }, { status: 400 });
+      }
+      const { data: taken } = await admin.from("invoices").select("id").eq("invoice_number", customNumber).limit(1);
+      if (taken && taken.length > 0) {
+        return NextResponse.json({ error: `Invoice number ${customNumber} is already used.` }, { status: 409 });
+      }
+      const typedSeries = await seriesOfNumber(admin, finalSalesmanId, "invoice", customNumber);
+      customPartIdx = Math.max(0, parts.findIndex((p) => p.series === (typedSeries || parts[0].series)));
+    }
+
+    for (const [partIdx, part] of parts.entries()) {
       let partInvoiceId: string | null = isEditMode ? invoiceId : null;
       let partNumber: string = isEditMode ? invoiceNumber : "";
 
@@ -547,7 +566,9 @@ export async function POST(request: Request) {
         while (!inserted && insertAttempts < maxAttempts) {
           insertAttempts++;
 
+          const useCustom = Boolean(customNumber) && partIdx === customPartIdx;
           const candidateNum =
+            (useCustom ? customNumber : null) ||
             (await nextSeriesNumber(admin, finalSalesmanId, "invoice", part.series)) ||
             (part.series === "standard"
               ? await generateNextDocumentNumber(supabase, "invoices", "invoice_number", "D", 4)
@@ -589,6 +610,11 @@ export async function POST(request: Request) {
             insertErr?.message?.toLowerCase().includes("already exists") ||
             insertErr?.message?.toLowerCase().includes("duplicate key");
 
+          if (isCollision && useCustom) {
+            await rollbackCreated();
+            return NextResponse.json({ error: `Invoice number ${customNumber} is already used.` }, { status: 409 });
+          }
+
           if (isCollision) {
             console.warn(`[Invoice Concurrency Collision] Candidate ${candidateNum} already exists, retrying attempt ${insertAttempts + 1}...`);
             continue;
@@ -614,6 +640,9 @@ export async function POST(request: Request) {
 
         partInvoiceId = inserted.id;
         partNumber = inserted.invoice_number;
+        if (customNumber && partIdx === customPartIdx) {
+          await advanceSeriesPast(admin, finalSalesmanId, "invoice", part.series, customNumber, profile.id);
+        }
       }
 
       if (!partInvoiceId) continue;
