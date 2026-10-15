@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle, FileText, Search, X } from "lucide-react";
-import { CustomerBalanceStrip, CustomerCombobox, FieldRow, FormActionBar, fieldInput } from "@/components/form/EntryForm";
+import { CustomerBalanceStrip, CustomerCombobox, FieldRow, FormActionBar, StaticValue, fieldInput, useWide } from "@/components/form/EntryForm";
 import { SavedDocuments } from "@/components/CustomerAccountPanels";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
@@ -66,6 +66,7 @@ function NewQuoteForm() {
   const [activeProduct, setActiveProduct] = useState(0);
   const [saved, setSaved] = useState<{ title: string; quoteId: string | null; quoteNumber: string } | null>(null);
   const topRef = useRef<HTMLDivElement>(null);
+  const wide = useWide();
   const productSearchRef = useRef<HTMLInputElement>(null);
   const qtyRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
@@ -458,6 +459,76 @@ function NewQuoteForm() {
     buildPDF({ ...quote, footerText }).save(`MAAT-QUOTE-${quote.quoteNumber}.pdf`);
   };
 
+  const itemSearch = (
+    <div className="relative max-w-xl">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+      <input
+        ref={productSearchRef}
+        type="text"
+        autoFocus={!!editQuoteNumber}
+        placeholder="Type or click to select an item"
+        value={searchQuery}
+        onChange={(e) => {
+          setSearchQuery(e.target.value);
+          setShowProductDropdown(true);
+          setActiveProduct(0);
+        }}
+        onFocus={() => setShowProductDropdown(true)}
+        onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
+        onKeyDown={(e) => {
+          const list = filteredProducts.slice(0, 30);
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActiveProduct((i) => Math.min(i + 1, list.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActiveProduct((i) => Math.max(i - 1, 0));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const p = list[activeProduct];
+            if (p && p.isAvailable !== false) handleAddProduct(p);
+          } else if (e.key === "Escape") {
+            setShowProductDropdown(false);
+          }
+        }}
+        className={`${fieldInput} pl-9 border-dashed`}
+      />
+      {showProductDropdown && searchQuery && (
+        <div className="wiz-in absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-72 overflow-y-auto">
+          {filteredProducts.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">No item matches “{searchQuery}”.</div>
+          ) : (
+            filteredProducts.slice(0, 30).map((p, i) => {
+              const off = p.isAvailable === false;
+              const inList = quoteItems.find((it) => it.productId === p.id);
+              const on = i === activeProduct && !off;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={off}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => !off && handleAddProduct(p)}
+                  onMouseEnter={() => setActiveProduct(i)}
+                  className={`w-full text-left px-3 py-2 flex items-center justify-between gap-3 ${off ? "opacity-50 cursor-not-allowed" : on ? "bg-accent text-white" : "text-slate-900"}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm truncate">{p.name}</span>
+                    <span className={`block text-xs ${on ? "text-white/80" : "text-slate-500"}`}>
+                      {off ? "Not available" : p.unit || ""}
+                      {inList ? ` · ${inList.quantity} on this quotation` : ""}
+                    </span>
+                  </span>
+                  <span className={`text-sm shrink-0 ${on ? "text-white" : "text-slate-700"}`}>{money(p.price)}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="w-full">
       <PageHeader
@@ -530,11 +601,11 @@ function NewQuoteForm() {
                 </FieldRow>
 
                 <FieldRow label="Quotation#">
-                  <div className={`${fieldInput} max-w-xs flex items-center bg-slate-50 text-slate-500`}>{editQuoteNumber || "Given on save"}</div>
+                  <StaticValue muted={!editQuoteNumber}>{editQuoteNumber || "Given automatically on save"}</StaticValue>
                 </FieldRow>
 
                 <FieldRow label="Quotation date">
-                  <div className={`${fieldInput} max-w-xs flex items-center bg-slate-50 text-slate-700`}>{today}</div>
+                  <StaticValue>{today}</StaticValue>
                 </FieldRow>
 
                 <FieldRow label="Valid for">
@@ -562,6 +633,7 @@ function NewQuoteForm() {
                 <div className="px-5 md:px-8 pt-5 pb-3">
                   <h2 className="text-sm font-semibold text-slate-900">Item table</h2>
                 </div>
+                {wide ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[680px]">
                     <thead>
@@ -646,79 +718,89 @@ function NewQuoteForm() {
                       {/* New line: pick an item */}
                       <tr>
                         <td className="px-5 md:px-8 py-3" colSpan={5}>
-                          <div className="relative max-w-xl">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                            <input
-                              ref={productSearchRef}
-                              type="text"
-                              autoFocus={!!editQuoteNumber}
-                              placeholder="Type or click to select an item"
-                              value={searchQuery}
-                              onChange={(e) => {
-                                setSearchQuery(e.target.value);
-                                setShowProductDropdown(true);
-                                setActiveProduct(0);
-                              }}
-                              onFocus={() => setShowProductDropdown(true)}
-                              onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
-                              onKeyDown={(e) => {
-                                const list = filteredProducts.slice(0, 30);
-                                if (e.key === "ArrowDown") {
-                                  e.preventDefault();
-                                  setActiveProduct((i) => Math.min(i + 1, list.length - 1));
-                                } else if (e.key === "ArrowUp") {
-                                  e.preventDefault();
-                                  setActiveProduct((i) => Math.max(i - 1, 0));
-                                } else if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  const p = list[activeProduct];
-                                  if (p && p.isAvailable !== false) handleAddProduct(p);
-                                } else if (e.key === "Escape") {
-                                  setShowProductDropdown(false);
-                                }
-                              }}
-                              className={`${fieldInput} pl-9 border-dashed`}
-                            />
-                            {showProductDropdown && searchQuery && (
-                              <div className="wiz-in absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-72 overflow-y-auto">
-                                {filteredProducts.length === 0 ? (
-                                  <div className="px-3 py-3 text-sm text-slate-500">No item matches “{searchQuery}”.</div>
-                                ) : (
-                                  filteredProducts.slice(0, 30).map((p, i) => {
-                                    const off = p.isAvailable === false;
-                                    const inList = quoteItems.find((it) => it.productId === p.id);
-                                    const on = i === activeProduct && !off;
-                                    return (
-                                      <button
-                                        key={p.id}
-                                        type="button"
-                                        disabled={off}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => !off && handleAddProduct(p)}
-                                        onMouseEnter={() => setActiveProduct(i)}
-                                        className={`w-full text-left px-3 py-2 flex items-center justify-between gap-3 ${off ? "opacity-50 cursor-not-allowed" : on ? "bg-accent text-white" : "text-slate-900"}`}
-                                      >
-                                        <span className="min-w-0">
-                                          <span className="block text-sm truncate">{p.name}</span>
-                                          <span className={`block text-xs ${on ? "text-white/80" : "text-slate-500"}`}>
-                                            {off ? "Not available" : p.unit || ""}
-                                            {inList ? ` · ${inList.quantity} on this quotation` : ""}
-                                          </span>
-                                        </span>
-                                        <span className={`text-sm shrink-0 ${on ? "text-white" : "text-slate-700"}`}>{money(p.price)}</span>
-                                      </button>
-                                    );
-                                  })
-                                )}
-                              </div>
-                            )}
-                          </div>
+                          {itemSearch}
                           {quoteItems.length === 0 && <p className="text-xs text-slate-500 mt-2">Add the first item. Press Enter to add, type the quantity, then Enter again for the next item.</p>}
                         </td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
+                ) : (
+                <ul className="divide-y divide-slate-100 border-t border-slate-200">
+                  {quoteItems.map((item, idx) => {
+                    const qty = Number(item.quantity) || 0;
+                    const zero = qty <= 0;
+                    const list = item.listPrice ?? item.price;
+                    const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
+                    const off = Math.max(0, list - rateNum);
+                    const backToSearch = (e: React.KeyboardEvent) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        productSearchRef.current?.focus();
+                      }
+                    };
+                    return (
+                      <li key={item.productId} className="wiz-in px-5 py-3.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-slate-900">{item.productName}</div>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              List {money(list)}
+                              {off > 0 && rateNum > 0 && <span className="text-emerald-700"> · {money(off)} off each</span>}
+                              {rateNum === 0 && <span className="text-emerald-700"> · free</span>}
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => handleRemoveItem(idx)} className="p-1.5 -m-1 rounded text-slate-400 hover:text-rose-600" aria-label={`Remove ${item.productName}`}>
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mt-2.5 items-end">
+                          <label className="block">
+                            <span className="block text-[11px] text-slate-500 mb-1">Qty</span>
+                            <input
+                              ref={(el) => {
+                                if (el) qtyRefs.current.set(String(item.productId), el);
+                                else qtyRefs.current.delete(String(item.productId));
+                              }}
+                              type="number"
+                              min="0"
+                              inputMode="numeric"
+                              value={item.quantity ?? ""}
+                              onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onKeyDown={backToSearch}
+                              className={`${fieldInput} text-right ${zero ? "border-rose-400 bg-rose-50" : ""}`}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="block text-[11px] text-slate-500 mb-1">Rate</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              inputMode="decimal"
+                              placeholder={list.toFixed(dp)}
+                              value={item.rate ?? ""}
+                              onChange={(e) => handleUpdateRate(idx, e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onKeyDown={backToSearch}
+                              className={`${fieldInput} text-right`}
+                            />
+                          </label>
+                          <div className="text-right">
+                            <span className="block text-[11px] text-slate-500 mb-1">Amount</span>
+                            <span className="h-10 flex items-center justify-end text-sm font-semibold text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</span>
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                  <li className="px-5 py-3.5">
+                    {itemSearch}
+                    {quoteItems.length === 0 && <p className="text-xs text-slate-500 mt-2">Add the first item, type the quantity, then press Enter for the next one.</p>}
+                  </li>
+                </ul>
+                )}
 
                 {/* Notes and totals */}
                 <div className="px-5 md:px-8 py-5 flex flex-col md:flex-row gap-6 md:justify-between border-t border-slate-200">

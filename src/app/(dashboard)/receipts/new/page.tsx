@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Info, ShieldAlert, X } from "lucide-react";
-import { CustomerBalanceStrip, CustomerCombobox, FieldRow, FormActionBar, fieldInput } from "@/components/form/EntryForm";
+import { CustomerBalanceStrip, CustomerCombobox, FieldRow, FormActionBar, fieldInput, useWide } from "@/components/form/EntryForm";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { SavedDocuments } from "@/components/CustomerAccountPanels";
@@ -70,6 +70,7 @@ export default function NewReceiptPage() {
   const [activeCustomer, setActiveCustomer] = useState(0);
   const [saved, setSaved] = useState<{ title: string; receiptNumbers: string[]; customerId: string } | null>(null);
   const topRef = useRef<HTMLDivElement>(null);
+  const wide = useWide();
   const goTo = (s: number) => {
     setStep(s);
     setTimeout(() => topRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }), 30);
@@ -484,6 +485,8 @@ export default function NewReceiptPage() {
   const fmtDate = (iso: string) =>
     iso ? new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }) : "—";
   const openTotal = seriesInvoices.reduce((s, inv) => s + inv.availableToAllocate, 0);
+  // Only label UAE-/Oman-registered when this customer has both kinds open.
+  const mixedSeries = hasOmanReg && seriesInvoices.some((inv) => inv.billingSeries !== "oman_reg");
 
   const blocker = (() => {
     if (!selectedCustomerId) return "Choose a customer";
@@ -688,7 +691,7 @@ export default function NewReceiptPage() {
                         disabled={!numericAmount}
                         className="text-accent font-medium hover:underline disabled:opacity-40"
                       >
-                        {hasOmanReg ? "Apply UAE-registered first" : "Apply oldest first"}
+                        {mixedSeries ? "Apply UAE-registered first" : "Apply oldest first"}
                       </button>
                       <button
                         type="button"
@@ -714,7 +717,7 @@ export default function NewReceiptPage() {
                   </div>
                 ) : seriesInvoices.length === 0 ? (
                   <p className="px-5 md:px-8 pb-6 text-sm text-slate-500">No unpaid invoices. The amount is kept as an advance.</p>
-                ) : (
+                ) : wide ? (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm min-w-[640px]">
                       <thead>
@@ -738,8 +741,8 @@ export default function NewReceiptPage() {
                                 {inv.isOverdue && <div className="text-[11px] text-rose-700">{inv.daysOverdue} days overdue</div>}
                               </td>
                               <td className="px-3 py-2.5">
-                                <span className="font-medium text-slate-900">{inv.invoiceNumber}</span>
-                                {hasOmanReg && <span className="ml-2 text-[11px] text-slate-500">{inv.billingSeries === "oman_reg" ? "Oman-reg" : "UAE-reg"}</span>}
+                                <span className="font-medium text-slate-900 whitespace-nowrap">{inv.invoiceNumber}</span>
+                                {mixedSeries && <span className="ml-2 text-[11px] text-slate-500 whitespace-nowrap">{inv.billingSeries === "oman_reg" ? "Oman-reg" : "UAE-reg"}</span>}
                               </td>
                               <td className="px-3 py-2.5 text-right text-slate-700">{inv.grandTotal.toFixed(dp)}</td>
                               <td className="px-3 py-2.5 text-right text-slate-900">
@@ -773,6 +776,51 @@ export default function NewReceiptPage() {
                       </tbody>
                     </table>
                   </div>
+                ) : (
+                  <ul className="divide-y divide-slate-100 border-t border-slate-200">
+                    {seriesInvoices.map((inv, i) => {
+                      const typed = allocations[inv.invoiceId] ?? "";
+                      const amt = parseFloat(typed) || 0;
+                      const tooMuch = amt - inv.availableToAllocate > 0.0005;
+                      return (
+                        <li key={inv.invoiceId} className={`wiz-in px-5 py-3.5 ${amt > 0 ? "bg-accent-light/30" : ""}`} style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}>
+                          <div className="flex items-baseline justify-between gap-3">
+                            <span className="font-medium text-slate-900 whitespace-nowrap">
+                              {inv.invoiceNumber}
+                              {mixedSeries && <span className="ml-2 text-[11px] font-normal text-slate-500">{inv.billingSeries === "oman_reg" ? "Oman-reg" : "UAE-reg"}</span>}
+                            </span>
+                            <span className="text-xs text-slate-500 whitespace-nowrap">{fmtDate(String(inv.invoiceDate).slice(0, 10))}</span>
+                          </div>
+                          <div className="flex items-baseline justify-between gap-3 text-xs mt-0.5">
+                            <span className="text-slate-500">
+                              Due <span className="font-semibold text-slate-900">{money(inv.availableToAllocate)}</span> of {inv.grandTotal.toFixed(dp)}
+                            </span>
+                            {inv.isOverdue && <span className="text-rose-700">{inv.daysOverdue} days overdue</span>}
+                          </div>
+                          {inv.pendingCheques > 0 && <div className="text-[11px] text-amber-700 mt-0.5">{inv.pendingCheques.toFixed(dp)} cheque pending</div>}
+                          <div className="flex items-center gap-3 mt-2.5">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              inputMode="decimal"
+                              value={typed}
+                              placeholder="Payment 0.00"
+                              onChange={(e) => setApplied(inv.invoiceId, e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              className={`${fieldInput} flex-1 text-right ${tooMuch ? "border-rose-400 text-rose-700" : ""}`}
+                              aria-label={`Payment for ${inv.invoiceNumber}`}
+                            />
+                            {inv.availableToAllocate > 0 && amt + 0.0005 < inv.availableToAllocate && (
+                              <button type="button" onClick={() => setApplied(inv.invoiceId, inv.availableToAllocate.toFixed(dp))} className="text-sm text-accent font-medium whitespace-nowrap">
+                                Pay in full
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )}
 
                 {/* Totals */}
