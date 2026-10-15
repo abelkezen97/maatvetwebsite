@@ -450,6 +450,7 @@ export function mapReceiptFromDb(row: any, salesmanMap?: Map<string, string>): R
     clearedAt: row.cleared_at || undefined,
     bouncedAt: row.bounced_at || undefined,
     bounceReason: row.bounce_reason || undefined,
+    paymentGroupId: row.payment_group_id || undefined,
     allocations: Array.isArray(row.receipt_allocations)
       ? row.receipt_allocations.map((a: any) => ({
           invoiceId: a.invoice_id,

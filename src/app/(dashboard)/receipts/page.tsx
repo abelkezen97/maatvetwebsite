@@ -8,7 +8,7 @@ import { SearchInput } from "@/components/SearchInput";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { Receipt } from "@/types";
 import { useLanguage } from "@/context/LanguageContext";
-import { Plus, Download, FileText, RotateCw, X } from "lucide-react";
+import { Plus, Download, FileText, RotateCw, X, Trash2, AlertTriangle } from "lucide-react";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { printReceiptThermalBill } from "@/lib/thermalPrintHelper";
@@ -24,6 +24,29 @@ export default function ReceiptsPage() {
   const canManageCheques = isSuperAdmin || isAccountant;
   const [chequeFilter, setChequeFilter] = useState<"all" | "pending" | "bounced">("all");
   const [actionMessage, setActionMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  // Delete (admin / accountant): the receipt asked about, and while it is being deleted.
+  const [toDelete, setToDelete] = useState<Receipt | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const deleteReceipt = async (receipt: Receipt) => {
+    setDeleting(true);
+    setActionMessage(null);
+    try {
+      const res = await fetch(`/api/receipts/${receipt.id}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not delete the receipt");
+      const nums: string[] = Array.isArray(data.deleted) && data.deleted.length > 0 ? data.deleted : [receipt.receiptNumber];
+      setActionMessage({ type: "ok", text: `${nums.length > 1 ? "Receipts" : "Receipt"} ${nums.join(" and ")} deleted. The invoices it paid are open again.` });
+      setToDelete(null);
+      setSelectedReceipt(null);
+      loadReceipts(true);
+    } catch (err: any) {
+      setActionMessage({ type: "error", text: err.message || "Could not delete the receipt" });
+      setToDelete(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const chequeAction = async (receipt: Receipt, action: "received" | "clear" | "bounce") => {
     let reason: string | undefined;
@@ -219,6 +242,7 @@ export default function ReceiptsPage() {
                   { label: "Mark cheque bounced", onClick: () => chequeAction(row, "bounce"), danger: true },
                 ]
               : []),
+            ...(canManageCheques ? [{ label: "Delete receipt", onClick: () => setToDelete(row), danger: true }] : []),
           ]}
         />
       ),
@@ -362,7 +386,17 @@ export default function ReceiptsPage() {
               )}
             </div>
 
-            <div className="flex items-center justify-end border-t border-slate-100 pt-4 mt-6">
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4 mt-6">
+              {canManageCheques ? (
+                <button
+                  onClick={() => setToDelete(selectedReceipt)}
+                  className="flex items-center gap-1.5 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete receipt
+                </button>
+              ) : (
+                <span />
+              )}
               <button
                 onClick={() => setSelectedReceipt(null)}
                 className="px-5 py-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition focus:outline-none cursor-pointer"
@@ -373,6 +407,81 @@ export default function ReceiptsPage() {
           </div>
         </div>
       )}
+      {toDelete && (() => {
+        const siblings = toDelete.paymentGroupId
+          ? receipts.filter((r) => r.paymentGroupId === toDelete.paymentGroupId && r.id !== toDelete.id && !r.isDeleted)
+          : [];
+        const all = [toDelete, ...siblings];
+        const total = all.reduce((s, r) => s + (Number(r.amountPaid) || 0), 0);
+        const invoices = all.flatMap((r) => r.allocations || []).filter((a) => a.amount > 0);
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => !deleting && setToDelete(null)}>
+            <div className="wiz-in bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden text-start" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6">
+                <span className="wiz-pop w-12 h-12 rounded-xl bg-rose-50 text-rose-600 grid place-items-center mb-4">
+                  <Trash2 className="w-6 h-6" />
+                </span>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Delete {all.length > 1 ? `receipts ${all.map((r) => r.receiptNumber).join(" and ")}` : `receipt ${toDelete.receiptNumber}`}?
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  {toDelete.companyName} · {formatCurrency(total)} · {toDelete.paymentMethod}
+                  {toDelete.chequeNumber ? ` #${toDelete.chequeNumber}` : ""}
+                </p>
+
+                <ul className="mt-4 space-y-2 text-sm text-slate-700">
+                  {invoices.length > 0 ? (
+                    <li className="flex gap-2">
+                      <FileText className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+                      <span>
+                        These invoices become unpaid again:{" "}
+                        <span className="font-medium">{invoices.map((a) => `${a.invoiceNumber || "invoice"} (${formatCurrency(a.amount)})`).join(", ")}</span>
+                      </span>
+                    </li>
+                  ) : (
+                    <li className="flex gap-2">
+                      <FileText className="w-4 h-4 mt-0.5 text-slate-400 shrink-0" />
+                      <span>The customer's balance goes up by {formatCurrency(total)}.</span>
+                    </li>
+                  )}
+                  {toDelete.paymentMethod === "Cash" && (
+                    <li className="flex gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 text-amber-500 shrink-0" />
+                      <span>The collector's cash in hand drops by {formatCurrency(total)}.</span>
+                    </li>
+                  )}
+                  {siblings.length > 0 && (
+                    <li className="flex gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 text-amber-500 shrink-0" />
+                      <span>This payment was split into UAE- and Oman-registered receipts; both are deleted.</span>
+                    </li>
+                  )}
+                  <li className="flex gap-2 text-slate-500">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 text-slate-300 shrink-0" />
+                    <span>The receipt stays in the records as deleted, for audit.</span>
+                  </li>
+                </ul>
+              </div>
+              <div className="flex gap-3 justify-end bg-slate-50 border-t border-slate-100 px-6 py-4">
+                <button
+                  disabled={deleting}
+                  onClick={() => setToDelete(null)}
+                  className="px-5 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl hover:border-slate-400 transition cursor-pointer"
+                >
+                  Keep it
+                </button>
+                <button
+                  disabled={deleting}
+                  onClick={() => deleteReceipt(toDelete)}
+                  className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-lg shadow-rose-600/20 transition disabled:opacity-60 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" /> {deleting ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

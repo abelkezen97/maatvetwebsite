@@ -219,6 +219,8 @@ export interface Receipt {
   clearedAt?: string;
   bouncedAt?: string;
   bounceReason?: string;
+  /** Receipts saved together from one payment (UAE/Oman split) share this. */
+  paymentGroupId?: string;
   /** Invoices this payment settles; the rest is an advance. */
   allocations?: ReceiptAllocation[];
   isDeleted?: boolean;

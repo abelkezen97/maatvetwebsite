@@ -228,7 +228,7 @@ export async function DELETE(
 
     const { data: existing } = await supabase
       .from("receipts")
-      .select("id, customer_id, amount_paid, is_deleted")
+      .select("id, receipt_number, customer_id, amount_paid, is_deleted, payment_group_id")
       .eq("id", id)
       .eq("country", profile.country)
       .maybeSingle();
@@ -237,8 +237,25 @@ export async function DELETE(
       return NextResponse.json({ error: "Receipt not found or already deleted" }, { status: 404 });
     }
 
-    // Soft delete receipt (or hard delete fallback)
-    let { error: deleteErr } = await supabase
+    // One payment saved as two receipts (UAE/Oman split) is deleted together,
+    // so a cheque or transfer is never half there.
+    let ids: string[] = [existing.id];
+    let numbers: string[] = [existing.receipt_number];
+    if (existing.payment_group_id) {
+      const { data: group } = await supabase
+        .from("receipts")
+        .select("id, receipt_number")
+        .eq("payment_group_id", existing.payment_group_id)
+        .eq("country", profile.country)
+        .eq("is_deleted", false);
+      if (group && group.length > 0) {
+        ids = group.map((g: any) => g.id);
+        numbers = group.map((g: any) => g.receipt_number);
+      }
+    }
+
+    // Soft delete: kept for audit, left out of balances, commission and cash in hand.
+    const { error: deleteErr } = await supabase
       .from("receipts")
       .update({
         is_deleted: true,
@@ -246,12 +263,8 @@ export async function DELETE(
         deleted_by: profile.id,
         updated_by: profile.id,
       })
-      .eq("id", id).eq("country", profile.country);
-
-    if (deleteErr && (deleteErr.message.includes("is_deleted") || deleteErr.message.includes("deleted_by"))) {
-      const deleteRes = await supabase.from("receipts").delete().eq("id", id).eq("country", profile.country);
-      deleteErr = deleteRes.error;
-    }
+      .in("id", ids)
+      .eq("country", profile.country);
 
     if (deleteErr) {
       return NextResponse.json({ error: deleteErr.message }, { status: 500 });
@@ -266,7 +279,7 @@ export async function DELETE(
       }
     }
 
-    return NextResponse.json({ success: true, message: "Receipt deleted successfully" });
+    return NextResponse.json({ success: true, deleted: numbers, message: `Deleted ${numbers.join(" and ")}` });
   } catch (error: any) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
