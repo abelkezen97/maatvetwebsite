@@ -31,6 +31,7 @@ import { DataTable } from "@/components/DataTable";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 import { AccountantDashboard } from "@/components/AccountantDashboard";
+import { AdminOverview } from "@/components/AdminOverview";
 
 export default function DashboardPage() {
   const { t, translateBusinessText, formatCurrency, formatDate, isRtl } = useLanguage();
@@ -493,8 +494,11 @@ export default function DashboardPage() {
           <AccountantDashboard country={profile.country} name={profile.full_name || "Accountant"} />
         ) : (
         <>
+        {/* The admin's overview: today, this month, and what needs attention. */}
+        {profile.role === "super_admin" && <AdminOverview name={profile.full_name || "Admin"} />}
+
         {/* SUPER ADMIN / ACCOUNTANT 4-KPI OPERATIONS BANNER */}
-        {isAdminOrAccountant ? (
+        {profile.role === "super_admin" ? null : isAdminOrAccountant ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <DashboardCard
               title={t("todaysSales")}
