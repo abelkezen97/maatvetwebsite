@@ -421,12 +421,12 @@ export default function PerformancePage() {
                         return (
                           <li key={c.name} className="wiz-in" style={{ animationDelay: `${i * 40}ms` }}>
                             <button type="button" onClick={() => setOpenCompany(open ? null : c.name)} className="w-full text-left group">
-                              <div className="flex items-baseline justify-between gap-3 text-sm">
-                                <span className="flex items-center gap-1.5 text-slate-800 truncate">
-                                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
-                                  {c.name}
+                              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+                                <span className="flex items-start gap-1.5 text-slate-800 leading-snug break-words min-w-0 flex-1 basis-40">
+                                  <ChevronDown className={`w-4 h-4 mt-0.5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+                                  <span className="min-w-0 break-words">{c.name}</span>
                                 </span>
-                                <span className="whitespace-nowrap tabular-nums">
+                                <span className="whitespace-nowrap tabular-nums ml-auto pl-5 sm:pl-0">
                                   <span className="font-semibold text-slate-900">{fmtPct(c.share)}</span>
                                   <span className="text-slate-500"> · {m(c.value)} · {c.units} units</span>
                                 </span>
@@ -438,8 +438,8 @@ export default function PerformancePage() {
                             {open && (
                               <ul className="wiz-in mt-2 ml-6 pl-3 border-l-2 border-slate-100 space-y-1.5">
                                 {c.products.map((p) => (
-                                  <li key={p.name} className="flex justify-between gap-3 text-xs">
-                                    <span className="text-slate-700 truncate">{p.name}</span>
+                                  <li key={p.name} className="flex items-start justify-between gap-3 text-xs">
+                                    <span className="text-slate-700 leading-snug break-words min-w-0">{p.name}</span>
                                     <span className="text-slate-500 whitespace-nowrap tabular-nums">
                                       {p.units} units · {m(p.value)}
                                     </span>

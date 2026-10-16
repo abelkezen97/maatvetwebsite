@@ -90,7 +90,7 @@ export function buildPerformancePDF(r: PerformanceReport, preparedBy = ""): jsPD
       y += 6;
       return;
     }
-    ensure(10 + parts.length * 5);
+    ensure(14 + parts.length * 6);
     let x = M;
     const bw = W - 2 * M;
     parts.forEach((p, i) => {
@@ -100,23 +100,38 @@ export function buildPerformancePDF(r: PerformanceReport, preparedBy = ""): jsPD
       doc.rect(x, y, Math.max(w - 0.6, 0.4), 4, "F");
       x += w;
     });
-    y += 8;
-    doc.setFontSize(8.5);
+    y += 9;
+    // Rows: swatch and label (wrapped, never cut) on the left; percentage and amount in fixed right-hand columns.
+    const pctX = W - M - 38;
+    const labelW = pctX - M - 22;
     parts.forEach((p, i) => {
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      const lines: string[] = doc.splitTextToSize(p.label, labelW);
+      const rowH = lines.length * 3.9 + (p.note ? 3.6 : 0) + 1.8;
+      ensure(rowH + 1);
       doc.setFillColor(...(colors[i] || OTHER));
       doc.rect(M, y - 2.6, 2.6, 2.6, "F");
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(51, 65, 85);
-      doc.text(p.label, M + 4.5, y);
+      doc.setTextColor(30, 41, 59);
+      doc.text(lines, M + 5, y);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(15, 23, 42);
-      doc.text(pct((p.value / total) * 100), M + 95, y, { align: "right" });
+      doc.text(pct((p.value / total) * 100), pctX, y, { align: "right" });
       doc.setFont("helvetica", "normal");
       doc.setTextColor(...MUTED);
-      doc.text(`${money(p.value)}${p.note ? `  ·  ${p.note}` : ""}`, M + 99, y);
-      y += 4.6;
+      doc.text(money(p.value), W - M, y, { align: "right" });
+      let yy = y + (lines.length - 1) * 3.9;
+      if (p.note) {
+        doc.setFontSize(7.5);
+        yy += 3.6;
+        doc.text(p.note, M + 5, yy);
+      }
+      y = yy + 1.8;
+      doc.setDrawColor(...LINE);
+      doc.line(M, y - 0.6, W - M, y - 0.6);
+      y += 2.6;
     });
-    y += 2;
+    y += 1;
   };
   /** Table whose last column draws a bar of the row's share. */
   const barTable = (head: string[], rows: (string | number)[][], shares: number[], color: RGB = SERIES[0]) => {
