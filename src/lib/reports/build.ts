@@ -24,6 +24,8 @@ export interface ReportParams {
   overdueBy?: number;
   /** Expiry: 0 = expired only, n = expired or expiring within n months, -1 = everything. */
   expiryWithin?: number;
+  /** Slow-moving: no sale for at least this many months (default 6). */
+  slowFor?: number;
 }
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -690,6 +692,148 @@ export async function buildReport(
           value: round(rows.reduce((s, r) => s + r.value, 0)),
           ...(office ? { costValue: round(rows.reduce((s, r) => s + r.costValue, 0)) } : {}),
         },
+      });
+    }
+
+    case "slow-moving": {
+      const months = [3, 6, 12].includes(Number(params.slowFor)) ? Number(params.slowFor) : 6;
+      const since = (() => {
+        const d = new Date(`${today}T00:00:00Z`);
+        d.setUTCMonth(d.getUTCMonth() - months);
+        return d.toISOString().slice(0, 10);
+      })();
+      const nearLimit = (() => {
+        const d = new Date(`${today}T00:00:00Z`);
+        d.setUTCMonth(d.getUTCMonth() + 6);
+        return d.toISOString().slice(0, 10);
+      })();
+
+      // Stock on hand today.
+      const movements = await fetchAll(() =>
+        client.from("inventory_transactions").select("product_id, quantity").eq("country", country)
+      );
+      const onHand = new Map<string, number>();
+      movements.forEach((m: any) => onHand.set(m.product_id, (onHand.get(m.product_id) || 0) + num(m.quantity)));
+
+      // Last sale of each product (all invoices of the country that are not deleted).
+      const invs = await fetchAll(() => client.from("invoices").select("id, invoice_date, is_deleted").eq("country", country));
+      const dateOf = new Map<string, string>();
+      invs.filter((i: any) => i.is_deleted !== true).forEach((i: any) => dateOf.set(i.id, String(i.invoice_date).slice(0, 10)));
+      const ids = Array.from(dateOf.keys());
+      const lastSold = new Map<string, string>();
+      const soldSince = new Map<string, number>();
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += 200) chunks.push(ids.slice(i, i + 200));
+      for (let i = 0; i < chunks.length; i += 6) {
+        const group = await Promise.all(
+          chunks.slice(i, i + 6).map((chunk) =>
+            fetchAll(() => client.from("invoice_items").select("invoice_id, product_id, quantity").in("invoice_id", chunk))
+          )
+        );
+        group.flat().forEach((it: any) => {
+          if (!it.product_id || num(it.quantity) <= 0) return;
+          const d = dateOf.get(it.invoice_id);
+          if (!d) return;
+          if (!lastSold.has(it.product_id) || d > (lastSold.get(it.product_id) as string)) lastSold.set(it.product_id, d);
+          if (d >= since) soldSince.set(it.product_id, (soldSince.get(it.product_id) || 0) + num(it.quantity));
+        });
+      }
+
+      // Expiry lots with stock.
+      const lots = await fetchAll(() =>
+        client.from("batch_stock").select("product_id, expiry_date, qty_remaining, is_active").eq("country", country).gt("qty_remaining", 0)
+      );
+      const lotInfo = new Map<string, { expired: number; near: number; first: string | null }>();
+      lots
+        .filter((l: any) => l.is_active !== false && l.expiry_date)
+        .forEach((l: any) => {
+          const e = String(l.expiry_date).slice(0, 10);
+          const cur = lotInfo.get(l.product_id) || { expired: 0, near: 0, first: null };
+          if (e < today) cur.expired += num(l.qty_remaining);
+          else if (e <= nearLimit) cur.near += num(l.qty_remaining);
+          if (!cur.first || e < cur.first) cur.first = e;
+          lotInfo.set(l.product_id, cur);
+        });
+
+      const products = await fetchAll(() =>
+        client
+          .from("products")
+          .select("id, name, manufacturer, cost_price, selling_price, cost_price_omr, selling_price_omr, is_active")
+          .order("name", { ascending: true })
+      );
+      const omr = country === "Oman";
+      const daysAgo = (d: string) => Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${d}T00:00:00Z`)) / 86400000);
+
+      const rows = products
+        .filter((p: any) => p.is_active !== false && (onHand.get(p.id) || 0) > 0)
+        .map((p: any) => {
+          const qty = onHand.get(p.id) || 0;
+          const last = lastSold.get(p.id) || null;
+          const slow = !last || last < since;
+          const lot = lotInfo.get(p.id);
+          const expired = lot?.expired || 0;
+          const near = lot?.near || 0;
+          let priority = 0;
+          let action = "";
+          if (expired > 0) {
+            priority = 1;
+            action = `Expired stock (${expired}): remove from stock, return to the supplier or write off`;
+          } else if (near > 0 && slow) {
+            priority = 2;
+            action = `Not selling and ${near} expiring within 6 months: offer to customers at a discount or FOC now`;
+          } else if (near > 0) {
+            priority = 3;
+            action = `${near} expiring within 6 months: sell these lots first`;
+          } else if (slow && !last) {
+            priority = 4;
+            action = "Never sold: check if it is still worth stocking";
+          } else if (slow) {
+            priority = 4;
+            action = `No sale for ${months}+ months: push to customers, do not reorder`;
+          }
+          const price = num(omr ? p.selling_price_omr : p.selling_price);
+          const cost = num(omr ? p.cost_price_omr : p.cost_price);
+          return {
+            priority,
+            product: p.name,
+            company: p.manufacturer || "—",
+            qty,
+            lastSold: last,
+            daysSince: last ? daysAgo(last) : null,
+            soldRecent: soldSince.get(p.id) || 0,
+            nearestExpiry: lot?.first || null,
+            value: round(qty * price),
+            costValue: round(qty * cost),
+            action,
+          };
+        })
+        .filter((r) => r.priority > 0)
+        .sort((a, b) => a.priority - b.priority || b.costValue - a.costValue);
+
+      filters.push(`No sale for ${months} months or more, or expired / expiring within 6 months`);
+      const slowRows = rows.filter((r) => !r.lastSold || r.lastSold < since);
+      const sum = (list: typeof rows, k: "qty" | "value" | "costValue") => round(list.reduce((s, r) => s + num(r[k]), 0));
+      return base({
+        summary: [
+          { label: "Products needing action", value: rows.length, type: "number" },
+          { label: "Not selling", value: slowRows.length, type: "number" },
+          { label: "Expired or near expiry", value: rows.filter((r) => r.priority <= 3 && (r.priority !== 4)).length, type: "number" },
+          { label: "Stock value at cost", value: sum(rows, "costValue"), type: "money" },
+        ],
+        columns: [
+          { key: "product", label: "Product", type: "text" },
+          { key: "company", label: "Company", type: "text" },
+          { key: "qty", label: "On hand", type: "number" },
+          { key: "lastSold", label: "Last sold", type: "date" },
+          { key: "daysSince", label: "Days since", type: "number" },
+          { key: "soldRecent", label: `Sold in ${months} mo`, type: "number" },
+          { key: "nearestExpiry", label: "Earliest expiry", type: "date" },
+          { key: "value", label: "Value at price", type: "money" },
+          { key: "costValue", label: "Value at cost", type: "money" },
+          { key: "action", label: "What to do", type: "text" },
+        ],
+        rows: rows.map(({ priority, ...r }) => r),
+        totals: { qty: sum(rows, "qty"), value: sum(rows, "value"), costValue: sum(rows, "costValue") },
       });
     }
 

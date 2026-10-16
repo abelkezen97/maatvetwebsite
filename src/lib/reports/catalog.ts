@@ -15,7 +15,8 @@ export type ReportKey =
   | "cheques"
   | "expenses"
   | "stock-summary"
-  | "expiry";
+  | "expiry"
+  | "slow-moving";
 
 export type ReportFilter =
   | "period"
@@ -29,7 +30,9 @@ export type ReportFilter =
   /** Overdue: only invoices overdue by at least this many days. */
   | "overdueBy"
   /** Expiry: expired only, or expiring within this many months. */
-  | "expiryWithin";
+  | "expiryWithin"
+  /** Slow-moving: no sale for this many months. */
+  | "slowFor";
 
 export interface ReportDef {
   key: ReportKey;
@@ -120,6 +123,15 @@ export const REPORTS: ReportDef[] = [
     group: "Stock",
     audience: "all",
     filters: ["expiryWithin"],
+    landscape: true,
+  },
+  {
+    key: "slow-moving",
+    title: "Slow-moving & near-expiry: needs action",
+    description: "Stock that has not sold for 3, 6 or 12 months, or is expired or close to expiry, with what to do about it.",
+    group: "Stock",
+    audience: "office",
+    filters: ["slowFor"],
     landscape: true,
   },
   {

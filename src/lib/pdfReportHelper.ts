@@ -26,10 +26,8 @@ export function formatReportValue(value: unknown, type: ReportColumn["type"], co
 }
 
 /** One PDF layout for every report: title, period and filters, summary line, table with totals. */
-export function buildReportPDF(report: ReportResult, opts: { landscape?: boolean; preparedBy?: string } = {}): jsPDF {
-  const doc = new jsPDF({ orientation: opts.landscape ? "landscape" : "portrait", unit: "mm", format: "a4" });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
+function drawReport(doc: jsPDF, report: ReportResult, opts: { landscape?: boolean; preparedBy?: string }): void {
+  const pageWidth = opts.landscape ? 297 : 210;
   const currency = currencyFor(report.country);
   const margin = 14;
 
@@ -116,16 +114,78 @@ export function buildReportPDF(report: ReportResult, opts: { landscape?: boolean
       }
     },
   });
+}
 
-  // Page numbers
-  const pages = doc.getNumberOfPages();
-  for (let p = 1; p <= pages; p++) {
+function addFooters(doc: jsPDF, from: number, to: number, report: ReportResult, landscape: boolean | undefined, offset: number, total: number) {
+  const pageWidth = landscape ? 297 : 210;
+  const pageHeight = landscape ? 210 : 297;
+  for (let p = from; p <= to; p++) {
     doc.setPage(p);
     doc.setFontSize(7.5);
     doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
-    doc.text(`Page ${p} of ${pages}`, pageWidth - margin, pageHeight - 6, { align: "right" });
-    doc.text(`${report.title} · ${report.country}`, margin, pageHeight - 6);
+    doc.text(`Page ${p - offset} of ${total}`, pageWidth - 14, pageHeight - 6, { align: "right" });
+    doc.text(`${report.title} · ${report.country}`, 14, pageHeight - 6);
   }
+}
 
+export function buildReportPDF(report: ReportResult, opts: { landscape?: boolean; preparedBy?: string } = {}): jsPDF {
+  const doc = new jsPDF({ orientation: opts.landscape ? "landscape" : "portrait", unit: "mm", format: "a4" });
+  drawReport(doc, report, opts);
+  const pages = doc.getNumberOfPages();
+  addFooters(doc, 1, pages, report, opts.landscape, 0, pages);
+  return doc;
+}
+
+/**
+ * Several reports in one PDF: a contents page, then each report starting on
+ * its own page (landscape ones stay landscape).
+ */
+export function buildCombinedReportPDF(
+  items: { report: ReportResult; landscape?: boolean }[],
+  opts: { preparedBy?: string; country: string; asOf: string; periodLabel?: string }
+): jsPDF {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const toc: { title: string; page: number; rows: number }[] = [];
+  items.forEach((it, i) => {
+    doc.addPage("a4", it.landscape ? "landscape" : "portrait");
+    const first = doc.getNumberOfPages();
+    drawReport(doc, it.report, { landscape: it.landscape, preparedBy: opts.preparedBy });
+    const last = doc.getNumberOfPages();
+    addFooters(doc, first, last, it.report, it.landscape, first - 1, last - first + 1);
+    toc.push({ title: it.report.title, page: first, rows: it.report.rows.length });
+    void i;
+  });
+
+  // Contents page (page 1)
+  doc.setPage(1);
+  doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+  doc.rect(0, 0, 210, 40, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text("COMBINED REPORT", 14, 18);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`MAAT Veterinary Medicines · ${opts.country}`, 14, 26);
+  doc.text(`${opts.periodLabel ? `${opts.periodLabel} · ` : ""}Printed ${reportDate(opts.asOf)}${opts.preparedBy ? ` by ${opts.preparedBy}` : ""}`, 14, 32);
+  doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text("Contents", 14, 54);
+  let y = 63;
+  toc.forEach((t, i) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.setTextColor(NAVY[0], NAVY[1], NAVY[2]);
+    doc.text(`${i + 1}.  ${t.title}`, 14, y);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+    doc.text(`${t.rows} row${t.rows === 1 ? "" : "s"}`, 150, y, { align: "right" });
+    doc.text(`Page ${t.page}`, 196, y, { align: "right" });
+    doc.setDrawColor(226, 232, 240);
+    doc.line(14, y + 2.5, 196, y + 2.5);
+    y += 9;
+  });
   return doc;
 }
