@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
-import { Permissions } from "@/lib/auth/permissions";
+import { Permissions, isCountryStaff } from "@/lib/auth/permissions";
 import { mapProductFromDb, mapProductToDb } from "@/lib/db/mappers";
 import { createAdminClient } from "@/utils/supabase/admin";
 
@@ -37,7 +37,13 @@ export async function GET() {
       if (c.id && c.name) categoryMap.set(c.id, c.name);
     });
 
-    const products = (data || []).map((row: any) => mapProductFromDb(row, categoryMap, profile.country));
+    // Cost prices are for the admin and accountant only; salesmen never receive them.
+    const office = isCountryStaff(profile);
+    const products = (data || []).map((row: any) => {
+      const p = mapProductFromDb(row, categoryMap, profile.country);
+      if (!office) delete (p as any).costPrice;
+      return p;
+    });
     return NextResponse.json({ products, source: "supabase" });
   } catch (error: any) {
     if (error instanceof AuthError) {

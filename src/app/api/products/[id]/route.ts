@@ -37,6 +37,8 @@ export async function GET(
     }
 
     const product = mapProductFromDb(productRow, undefined, profile.country);
+    // Cost prices are for the admin and accountant only; salesmen never receive them.
+    if (!isCountryStaff(profile)) delete (product as any).costPrice;
 
     // 2. Fetch Inventory Transactions for this Product
     let movementsQuery = queryClient
