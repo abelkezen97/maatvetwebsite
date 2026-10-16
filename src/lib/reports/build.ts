@@ -659,7 +659,7 @@ export async function buildReport(
             status: e < today ? `Expired ${-days} days ago` : `${days} days left`,
             qty,
             value: round(qty * price),
-            costValue: round(qty * cost),
+            ...(office ? { costValue: round(qty * cost) } : { costValue: 0 }),
             check: l.needs_check ? "Confirm date" : "",
           };
         });
@@ -680,14 +680,15 @@ export async function buildReport(
           { key: "status", label: "Status", type: "text" },
           { key: "qty", label: "Qty left", type: "number" },
           { key: "value", label: "Value at price", type: "money" },
-          { key: "costValue", label: "Value at cost", type: "money" },
+          // Cost prices are for the office only.
+          ...(office ? [{ key: "costValue", label: "Value at cost", type: "money" as const }] : []),
           { key: "check", label: "Note", type: "text" },
         ],
         rows,
         totals: {
           qty: rows.reduce((s, r) => s + r.qty, 0),
           value: round(rows.reduce((s, r) => s + r.value, 0)),
-          costValue: round(rows.reduce((s, r) => s + r.costValue, 0)),
+          ...(office ? { costValue: round(rows.reduce((s, r) => s + r.costValue, 0)) } : {}),
         },
       });
     }
