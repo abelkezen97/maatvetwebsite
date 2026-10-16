@@ -65,6 +65,7 @@ export default function ReportViewPage() {
   const [overdueBy, setOverdueBy] = useState("1");
   const [expiryWithin, setExpiryWithin] = useState("6");
   const [slowFor, setSlowFor] = useState("6");
+  const [coverMonths, setCoverMonths] = useState("3");
 
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -99,6 +100,7 @@ export default function ReportViewPage() {
     if (has("overdueBy")) qs.set("overdueBy", overdueBy);
     if (has("expiryWithin")) qs.set("expiryWithin", expiryWithin);
     if (has("slowFor")) qs.set("slowFor", slowFor);
+    if (has("coverMonths")) qs.set("coverMonths", coverMonths);
     try {
       const res = await fetch(`/api/reports/${def.key}?${qs.toString()}`, { cache: "no-store" });
       const json = await res.json();
@@ -110,7 +112,7 @@ export default function ReportViewPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [def?.key, from, to, salesman, series, method, chequeStatus, expenseStatus, within, overdueBy, expiryWithin, slowFor]);
+  }, [def?.key, from, to, salesman, series, method, chequeStatus, expenseStatus, within, overdueBy, expiryWithin, slowFor, coverMonths]);
 
   useEffect(() => {
     if (profile && def) load();
@@ -287,6 +289,18 @@ export default function ReportViewPage() {
                 <option value="6">Expired or within 6 months</option>
                 <option value="12">Expired or within 12 months</option>
                 <option value="-1">All stock by expiry</option>
+              </select>
+            </label>
+          )}
+
+          {has("coverMonths") && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Order enough for</span>
+              <select className={selectClass} value={coverMonths} onChange={(e) => setCoverMonths(e.target.value)}>
+                <option value="2">2 months</option>
+                <option value="3">3 months</option>
+                <option value="4">4 months</option>
+                <option value="6">6 months</option>
               </select>
             </label>
           )}

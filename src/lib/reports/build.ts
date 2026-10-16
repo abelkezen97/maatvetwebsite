@@ -26,6 +26,8 @@ export interface ReportParams {
   expiryWithin?: number;
   /** Slow-moving: no sale for at least this many months (default 6). */
   slowFor?: number;
+  /** Reorder: months of sales the stock should cover (default 3). */
+  coverMonths?: number;
 }
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -43,6 +45,89 @@ async function fetchAll<T = any>(build: () => any, pageSize = 1000): Promise<T[]
     if (!data || data.length < pageSize) break;
   }
   return out;
+}
+
+interface SaleLine {
+  productId: string;
+  name: string;
+  company: string;
+  qty: number;
+  value: number;
+  list: number;
+  cost: number;
+  free: boolean;
+  date: string;
+}
+
+/** Every sold line in a date range (deleted invoices left out), with the product's list and cost price. */
+async function loadSaleLines(
+  client: SupabaseClient,
+  country: string,
+  range: { from: string; to: string },
+  opts: { salesmanId?: string; series?: string } = {}
+): Promise<SaleLine[]> {
+  const invoices = await fetchAll(() => {
+    let q = client
+      .from("invoices")
+      .select("id, invoice_date, is_deleted")
+      .eq("country", country)
+      .gte("invoice_date", range.from)
+      .lte("invoice_date", range.to);
+    if (opts.salesmanId) q = q.eq("salesman_id", opts.salesmanId);
+    if (opts.series) q = q.eq("billing_series", opts.series);
+    return q;
+  });
+  const dateOf = new Map<string, string>();
+  invoices.filter((i: any) => i.is_deleted !== true).forEach((i: any) => dateOf.set(i.id, String(i.invoice_date).slice(0, 10)));
+  const ids = Array.from(dateOf.keys());
+  const omr = country === "Oman";
+  const out: SaleLine[] = [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 150) chunks.push(ids.slice(i, i + 150));
+  for (let i = 0; i < chunks.length; i += 6) {
+    const group = await Promise.all(
+      chunks.slice(i, i + 6).map((chunk) =>
+        fetchAll(() =>
+          client
+            .from("invoice_items")
+            .select("invoice_id, product_id, quantity, unit_price, line_total, products(name, manufacturer, selling_price, selling_price_omr, cost_price, cost_price_omr)")
+            .in("invoice_id", chunk)
+        )
+      )
+    );
+    group.flat().forEach((it: any) => {
+      const qty = num(it.quantity);
+      if (!it.product_id || qty <= 0) return;
+      const p = Array.isArray(it.products) ? it.products[0] : it.products;
+      const value = num(it.line_total);
+      out.push({
+        productId: it.product_id,
+        name: p?.name || "Product",
+        company: p?.manufacturer || "—",
+        qty,
+        value,
+        list: num(omr ? p?.selling_price_omr : p?.selling_price) || num(it.unit_price),
+        cost: num(omr ? p?.cost_price_omr : p?.cost_price),
+        free: value <= 0.0005,
+        date: dateOf.get(it.invoice_id) || "",
+      });
+    });
+  }
+  return out;
+}
+
+/** Quantity on hand per product, from the stock movements. */
+async function stockOnHand(client: SupabaseClient, country: string): Promise<Map<string, number>> {
+  const movements = await fetchAll(() => client.from("inventory_transactions").select("product_id, quantity").eq("country", country));
+  const m = new Map<string, number>();
+  movements.forEach((x: any) => m.set(x.product_id, (m.get(x.product_id) || 0) + num(x.quantity)));
+  return m;
+}
+
+function addDays(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 function defaultPeriod(today: string): { from: string; to: string } {
@@ -834,6 +919,256 @@ export async function buildReport(
         ],
         rows: rows.map(({ priority, ...r }) => r),
         totals: { qty: sum(rows, "qty"), value: sum(rows, "value"), costValue: sum(rows, "costValue") },
+      });
+    }
+
+    case "reorder": {
+      const cover = [2, 3, 4, 6].includes(Number(params.coverMonths)) ? Number(params.coverMonths) : 3;
+      const windowDays = 90;
+      const lines = await loadSaleLines(client, country, { from: addDays(today, -windowDays + 1), to: today });
+      const onHand = await stockOnHand(client, country);
+      const sold = new Map<string, { qty: number; name: string; company: string; cost: number; list: number }>();
+      lines.forEach((l) => {
+        const c = sold.get(l.productId) || { qty: 0, name: l.name, company: l.company, cost: l.cost, list: l.list };
+        c.qty += l.qty;
+        sold.set(l.productId, c);
+      });
+      const products = await fetchAll(() =>
+        client.from("products").select("id, name, manufacturer, cost_price, cost_price_omr, is_active").order("name", { ascending: true })
+      );
+      const omr = country === "Oman";
+      type R = { product: string; company: string; onHand: number; sold90: number; perMonth: number; weeksLeft: number | null; status: string; order: number; orderCost: number; rank: number };
+      const rows: R[] = [];
+      products
+        .filter((p: any) => p.is_active !== false)
+        .forEach((p: any) => {
+          const have = Math.max(onHand.get(p.id) || 0, 0);
+          const s = sold.get(p.id);
+          const qty = s?.qty || 0;
+          if (qty === 0 && have === 0) return;
+          const perDay = qty / windowDays;
+          const weeksLeft = perDay > 0 ? have / perDay / 7 : null;
+          const need = Math.ceil(perDay * 30 * cover);
+          const order = Math.max(need - have, 0);
+          let status = "";
+          let rank = 9;
+          if (qty > 0 && have === 0) {
+            status = "Out of stock: order now";
+            rank = 0;
+          } else if (weeksLeft !== null && weeksLeft < 4) {
+            status = "Under 4 weeks left: order now";
+            rank = 1;
+          } else if (weeksLeft !== null && weeksLeft < 8) {
+            status = "Under 8 weeks left: order soon";
+            rank = 2;
+          } else if (weeksLeft === null) {
+            status = "Not sold in 90 days: do not order";
+            rank = 5;
+          } else if (weeksLeft > 26) {
+            status = "Over 6 months of stock: do not order";
+            rank = 4;
+          } else {
+            status = "Enough stock";
+            rank = 3;
+          }
+          const cost = num(omr ? p.cost_price_omr : p.cost_price);
+          rows.push({
+            product: p.name,
+            company: p.manufacturer || "—",
+            onHand: have,
+            sold90: qty,
+            perMonth: round((qty / windowDays) * 30),
+            weeksLeft: weeksLeft === null ? null : round(Math.round(weeksLeft * 10) / 10),
+            status,
+            order: rank <= 2 ? order : 0,
+            orderCost: rank <= 2 ? round(order * cost) : 0,
+            rank,
+          });
+        });
+      rows.sort((a, b) => a.rank - b.rank || (a.weeksLeft ?? 999) - (b.weeksLeft ?? 999));
+      filters.push(`Based on sales of the last ${windowDays} days · order enough for ${cover} months`);
+      const urgent = rows.filter((r) => r.rank <= 1);
+      const soon = rows.filter((r) => r.rank === 2);
+      const over = rows.filter((r) => r.rank === 4);
+      return base({
+        summary: [
+          { label: "Order now", value: urgent.length, type: "number" },
+          { label: "Order soon", value: soon.length, type: "number" },
+          { label: "Over 6 months of stock", value: over.length, type: "number" },
+          { label: "Cost of suggested orders", value: round(rows.reduce((s, r) => s + r.orderCost, 0)), type: "money" },
+        ],
+        columns: [
+          { key: "product", label: "Product", type: "text" },
+          { key: "company", label: "Company", type: "text" },
+          { key: "onHand", label: "On hand", type: "number" },
+          { key: "sold90", label: "Sold, 90 days", type: "number" },
+          { key: "perMonth", label: "Per month", type: "number" },
+          { key: "weeksLeft", label: "Weeks left", type: "number" },
+          { key: "status", label: "What to do", type: "text" },
+          { key: "order", label: "Suggested order", type: "number" },
+          { key: "orderCost", label: "Order cost", type: "money" },
+        ],
+        rows: rows.map(({ rank, ...r }) => r),
+        totals: { onHand: rows.reduce((s, r) => s + r.onHand, 0), order: rows.reduce((s, r) => s + r.order, 0), orderCost: round(rows.reduce((s, r) => s + r.orderCost, 0)) },
+      });
+    }
+
+    case "company-performance": {
+      const lines = await loadSaleLines(client, country, period!);
+      const onHand = await stockOnHand(client, country);
+      const products = await fetchAll(() =>
+        client.from("products").select("id, manufacturer, cost_price, cost_price_omr, is_active")
+      );
+      const omr = country === "Oman";
+      type C = { value: number; units: number; list: number; discount: number; focUnits: number; focValue: number; costKnownSales: number; costTotal: number; sold: Set<string>; range: number; stockUnits: number; stockValue: number };
+      const by = new Map<string, C>();
+      const get = (n: string) => {
+        let c = by.get(n);
+        if (!c) {
+          c = { value: 0, units: 0, list: 0, discount: 0, focUnits: 0, focValue: 0, costKnownSales: 0, costTotal: 0, sold: new Set(), range: 0, stockUnits: 0, stockValue: 0 };
+          by.set(n, c);
+        }
+        return c;
+      };
+      lines.forEach((l) => {
+        const c = get(l.company);
+        c.value += l.value;
+        c.units += l.qty;
+        c.sold.add(l.productId);
+        if (l.free) {
+          c.focUnits += l.qty;
+          c.focValue += l.list * l.qty;
+        } else if (l.list > 0 && l.value / l.qty < l.list - 0.0005) {
+          c.discount += l.list * l.qty - l.value;
+        }
+        if (l.cost > 0) {
+          c.costKnownSales += l.value;
+          c.costTotal += l.cost * l.qty;
+        }
+      });
+      products
+        .filter((p: any) => p.is_active !== false)
+        .forEach((p: any) => {
+          const c = get(p.manufacturer || "—");
+          c.range += 1;
+          const q = Math.max(onHand.get(p.id) || 0, 0);
+          c.stockUnits += q;
+          c.stockValue += q * num(omr ? p.cost_price_omr : p.cost_price);
+        });
+      const days = Math.max(daysBetween(period!.from, period!.to) + 1, 1);
+      const totalSales = Array.from(by.values()).reduce((s, c) => s + c.value, 0);
+      const rows = Array.from(by.entries())
+        .filter(([, c]) => c.value > 0 || c.stockUnits > 0)
+        .map(([name, c]) => ({
+          company: name,
+          value: round(c.value),
+          share: totalSales > 0 ? round((c.value / totalSales) * 100) : 0,
+          units: c.units,
+          margin: c.costKnownSales > 0 ? round(c.costKnownSales - c.costTotal) : null,
+          marginPct: c.costKnownSales > 0 ? round(((c.costKnownSales - c.costTotal) / c.costKnownSales) * 100) : null,
+          discount: round(c.discount),
+          focValue: round(c.focValue),
+          products: `${c.sold.size} of ${c.range}`,
+          stockValue: round(c.stockValue),
+          cover: c.units > 0 ? round(Math.round((c.stockUnits / (c.units / days)) / 7 * 10) / 10) : null,
+        }))
+        .sort((a, b) => b.value - a.value);
+      return base({
+        summary: [
+          { label: "Sales", value: round(totalSales), type: "money" },
+          { label: "Companies selling", value: rows.filter((r) => r.value > 0).length, type: "number" },
+          { label: "Stock value at cost", value: round(rows.reduce((s, r) => s + r.stockValue, 0)), type: "money" },
+          { label: "Discount + FOC given", value: round(rows.reduce((s, r) => s + r.discount + r.focValue, 0)), type: "money" },
+        ],
+        columns: [
+          { key: "company", label: "Company", type: "text" },
+          { key: "value", label: "Sales", type: "money" },
+          { key: "share", label: "Share %", type: "number" },
+          { key: "units", label: "Units", type: "number" },
+          { key: "margin", label: "Margin", type: "money" },
+          { key: "marginPct", label: "Margin %", type: "number" },
+          { key: "discount", label: "Discount given", type: "money" },
+          { key: "focValue", label: "FOC (at list)", type: "money" },
+          { key: "products", label: "Products sold", type: "text" },
+          { key: "stockValue", label: "Stock at cost", type: "money" },
+          { key: "cover", label: "Weeks of stock", type: "number" },
+        ],
+        rows,
+        totals: {
+          value: round(totalSales),
+          units: rows.reduce((s, r) => s + r.units, 0),
+          margin: round(rows.reduce((s, r) => s + (r.margin || 0), 0)),
+          discount: round(rows.reduce((s, r) => s + r.discount, 0)),
+          focValue: round(rows.reduce((s, r) => s + r.focValue, 0)),
+          stockValue: round(rows.reduce((s, r) => s + r.stockValue, 0)),
+        },
+      });
+    }
+
+    case "product-margin": {
+      const lines = await loadSaleLines(client, country, period!, { salesmanId, series });
+      type P = { name: string; company: string; units: number; value: number; list: number; discount: number; focUnits: number; costKnownSales: number; costTotal: number; noCost: boolean };
+      const by = new Map<string, P>();
+      lines.forEach((l) => {
+        const c = by.get(l.productId) || { name: l.name, company: l.company, units: 0, value: 0, list: 0, discount: 0, focUnits: 0, costKnownSales: 0, costTotal: 0, noCost: l.cost <= 0 };
+        c.units += l.qty;
+        c.value += l.value;
+        c.list += l.list * l.qty;
+        if (l.free) c.focUnits += l.qty;
+        else if (l.list > 0 && l.value / l.qty < l.list - 0.0005) c.discount += l.list * l.qty - l.value;
+        if (l.cost > 0) {
+          c.costKnownSales += l.value;
+          c.costTotal += l.cost * l.qty;
+        }
+        by.set(l.productId, c);
+      });
+      const rows = Array.from(by.values())
+        .map((c) => {
+          const margin = c.costKnownSales > 0 ? c.costKnownSales - c.costTotal : null;
+          const pct = c.costKnownSales > 0 ? ((c.costKnownSales - c.costTotal) / c.costKnownSales) * 100 : null;
+          let note = "";
+          if (c.noCost) note = "No cost price";
+          else if (pct !== null && pct < 0) note = "Selling below cost";
+          else if (pct !== null && pct < 10) note = "Low margin";
+          else if (c.list > 0 && c.discount / c.list > 0.08) note = "Heavy discounting";
+          return {
+            product: c.name,
+            company: c.company,
+            units: c.units,
+            value: round(c.value),
+            avgPrice: c.units > 0 ? round(c.value / c.units) : 0,
+            margin: margin === null ? null : round(margin),
+            marginPct: pct === null ? null : round(pct),
+            discount: round(c.discount),
+            focUnits: c.focUnits,
+            note,
+          };
+        })
+        .sort((a, b) => (b.margin ?? -Infinity) - (a.margin ?? -Infinity));
+      const withCost = rows.filter((r) => r.margin !== null);
+      const sales = rows.reduce((s, r) => s + r.value, 0);
+      const marginTotal = withCost.reduce((s, r) => s + (r.margin || 0), 0);
+      return base({
+        summary: [
+          { label: "Sales", value: round(sales), type: "money" },
+          { label: "Margin (products with cost)", value: round(marginTotal), type: "money" },
+          { label: "Low margin or below cost", value: rows.filter((r) => r.note === "Low margin" || r.note === "Selling below cost").length, type: "number" },
+          { label: "Without cost price", value: rows.filter((r) => r.note === "No cost price").length, type: "number" },
+        ],
+        columns: [
+          { key: "product", label: "Product", type: "text" },
+          { key: "company", label: "Company", type: "text" },
+          { key: "units", label: "Units", type: "number" },
+          { key: "value", label: "Sales", type: "money" },
+          { key: "avgPrice", label: "Avg price", type: "money" },
+          { key: "margin", label: "Margin", type: "money" },
+          { key: "marginPct", label: "Margin %", type: "number" },
+          { key: "discount", label: "Discount given", type: "money" },
+          { key: "focUnits", label: "FOC units", type: "number" },
+          { key: "note", label: "Note", type: "text" },
+        ],
+        rows,
+        totals: { units: rows.reduce((s, r) => s + r.units, 0), value: round(sales), margin: round(marginTotal), discount: round(rows.reduce((s, r) => s + r.discount, 0)), focUnits: rows.reduce((s, r) => s + r.focUnits, 0) },
       });
     }
 
