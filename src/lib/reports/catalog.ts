@@ -16,7 +16,10 @@ export type ReportKey =
   | "expenses"
   | "stock-summary"
   | "expiry"
-  | "slow-moving";
+  | "slow-moving"
+  | "reorder"
+  | "company-performance"
+  | "product-margin";
 
 export type ReportFilter =
   | "period"
@@ -32,7 +35,9 @@ export type ReportFilter =
   /** Expiry: expired only, or expiring within this many months. */
   | "expiryWithin"
   /** Slow-moving: no sale for this many months. */
-  | "slowFor";
+  | "slowFor"
+  /** Reorder: how many months of sales to cover. */
+  | "coverMonths";
 
 export interface ReportDef {
   key: ReportKey;
@@ -132,6 +137,33 @@ export const REPORTS: ReportDef[] = [
     group: "Stock",
     audience: "office",
     filters: ["slowFor"],
+    landscape: true,
+  },
+  {
+    key: "reorder",
+    title: "Reorder suggestions",
+    description: "How many weeks of stock are left for each product at its recent selling speed, and how much to order.",
+    group: "Stock",
+    audience: "office",
+    filters: ["coverMonths"],
+    landscape: true,
+  },
+  {
+    key: "company-performance",
+    title: "Company performance",
+    description: "Sales, margin, discounts, stock value and stock cover for each of your supplier companies.",
+    group: "Stock",
+    audience: "office",
+    filters: ["period"],
+    landscape: true,
+  },
+  {
+    key: "product-margin",
+    title: "Margin by product",
+    description: "Which products earn the most, which sell a lot for little, and where discounts eat the margin.",
+    group: "Stock",
+    audience: "office",
+    filters: ["period", "salesman", "series"],
     landscape: true,
   },
   {
