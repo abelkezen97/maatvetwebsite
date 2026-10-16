@@ -14,7 +14,8 @@ export type ReportKey =
   | "collections"
   | "cheques"
   | "expenses"
-  | "stock-summary";
+  | "stock-summary"
+  | "expiry";
 
 export type ReportFilter =
   | "period"
@@ -26,7 +27,9 @@ export type ReportFilter =
   /** Approaching 100 days: show invoices with at most this many days left. */
   | "within"
   /** Overdue: only invoices overdue by at least this many days. */
-  | "overdueBy";
+  | "overdueBy"
+  /** Expiry: expired only, or expiring within this many months. */
+  | "expiryWithin";
 
 export interface ReportDef {
   key: ReportKey;
@@ -108,6 +111,15 @@ export const REPORTS: ReportDef[] = [
     group: "Cash & expenses",
     audience: "all",
     filters: ["period", "salesman", "expenseStatus"],
+    landscape: true,
+  },
+  {
+    key: "expiry",
+    title: "Expiry: expired and near-expiry stock",
+    description: "Stock by expiry date. Within 6 months a salesman may give a discount or FOC.",
+    group: "Stock",
+    audience: "all",
+    filters: ["expiryWithin"],
     landscape: true,
   },
   {

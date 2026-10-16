@@ -15,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { UserCountry } from "@/types";
 import { PageHeader } from "@/components/PageHeader";
 import { ProductInsights } from "@/components/ProductInsights";
+import { ProductExpiryLots } from "@/components/ProductExpiryLots";
 import { currencyFor, decimalsFor } from "@/lib/currency";
 
 interface ProductDetailData {
@@ -303,6 +304,8 @@ export default function ProductDetailPage() {
             </button>
           </div>
         )}
+
+      <ProductExpiryLots productId={productId} canEdit={isSuperAdmin || isAccountant} />
 
       <ProductInsights productId={productId} />
 

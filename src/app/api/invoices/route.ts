@@ -7,6 +7,8 @@ import { generateNextDocumentNumber } from "@/lib/db/sequence";
 import { advanceSeriesPast, billingSeriesForProducts, cleanDocumentNumber, mixedSeriesError, nextReceiptNumber, nextSeriesNumber, peekSeriesNumber, seriesOfNumber } from "@/lib/db/documentSeries";
 import { BillingSeries, QuoteItem, UserCountry } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { checkExpiryRules } from "@/lib/db/expiry";
+import { todayInDubai } from "@/lib/db/commission";
 import { getProductStock, validateAndProcessInvoiceInventory, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
 
 export const dynamic = "force-dynamic";
@@ -315,7 +317,27 @@ export async function POST(request: Request) {
         unit_price: unitPrice,
         discount: discountPerUnit,
         line_total: lineTotal,
+        // The expiry lot this line was sold from (stock by expiry date).
+        batch_id: (item as any).batchId || null,
       });
+    }
+
+    // Expiry rules: the lot must belong to the product; a salesman may only sell
+    // below price or free (FOC) from stock expiring within 6 months, never expired stock.
+    {
+      const expiryError = await checkExpiryRules(createAdminClient() || supabase, {
+        country: (custRow?.country || invoiceData.country || payload.country || profile.country) === "Oman" ? "Oman" : "UAE",
+        isSalesman: profile.role === "salesperson",
+        today: todayInDubai(),
+        lines: items.map((item, i) => ({
+          productId: item.productId || null,
+          productName: item.productName || "Product",
+          quantity: validatedItemsPayload[i].quantity,
+          rate: validatedItemsPayload[i].quantity > 0 ? validatedItemsPayload[i].line_total / validatedItemsPayload[i].quantity : 0,
+          batchId: (item as any).batchId || null,
+        })),
+      });
+      if (expiryError) return NextResponse.json({ error: expiryError }, { status: 400 });
     }
 
     const rawSubtotal = Number(invoiceData.subtotal ?? payload.subtotal ?? 0);

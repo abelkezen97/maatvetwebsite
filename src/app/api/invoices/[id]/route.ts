@@ -5,6 +5,8 @@ import { mapInvoiceFromDb, mapInvoiceToDb } from "@/lib/db/mappers";
 import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { BillingSeries, QuoteItem } from "@/types";
 import { createAdminClient } from "@/utils/supabase/admin";
+import { checkExpiryRules } from "@/lib/db/expiry";
+import { todayInDubai } from "@/lib/db/commission";
 import { billingSeriesForProducts, mixedSeriesError, nextReceiptNumber } from "@/lib/db/documentSeries";
 import { reverseInvoiceInventoryOnCancel, reconcileInvoiceInventoryOnEdit } from "@/lib/db/inventory";
 
@@ -204,10 +206,10 @@ export async function PATCH(
     }
 
     if (payload.items && Array.isArray(payload.items)) {
-      await supabase.from("invoice_items").delete().eq("invoice_id", targetInvoiceId);
-
       const items: QuoteItem[] = payload.items;
-      if (items.length > 0) {
+      if (items.length === 0) {
+        await supabase.from("invoice_items").delete().eq("invoice_id", targetInvoiceId);
+      } else {
         const lineItemsPayload = items.map((item) => {
           const qty = Math.max(0, Number(item.quantity) || 0);
           const unitPrice = Math.max(0, Number(item.unitPrice ?? item.price) || 0);
@@ -235,9 +237,25 @@ export async function PATCH(
             unit_price: unitPrice,
             discount: discountPerUnit,
             line_total: lineTotal,
+            batch_id: (item as any).batchId || null,
           };
         });
 
+        const lotError = await checkExpiryRules(createAdminClient() || supabase, {
+          country: existing.country === "Oman" ? "Oman" : "UAE",
+          isSalesman: false,
+          today: todayInDubai(),
+          lines: items.map((item, i) => ({
+            productId: item.productId || null,
+            productName: item.productName || "Product",
+            quantity: lineItemsPayload[i].quantity,
+            rate: lineItemsPayload[i].quantity > 0 ? lineItemsPayload[i].line_total / lineItemsPayload[i].quantity : 0,
+            batchId: (item as any).batchId || null,
+          })),
+        });
+        if (lotError) return NextResponse.json({ error: lotError }, { status: 400 });
+
+        await supabase.from("invoice_items").delete().eq("invoice_id", targetInvoiceId);
         await supabase.from("invoice_items").insert(lineItemsPayload);
       }
     }

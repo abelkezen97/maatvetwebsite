@@ -63,6 +63,7 @@ export default function ReportViewPage() {
   const [expenseStatus, setExpenseStatus] = useState("");
   const [within, setWithin] = useState("30");
   const [overdueBy, setOverdueBy] = useState("1");
+  const [expiryWithin, setExpiryWithin] = useState("6");
 
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -95,6 +96,7 @@ export default function ReportViewPage() {
     if (expenseStatus) qs.set("expenseStatus", expenseStatus);
     if (has("within")) qs.set("within", within);
     if (has("overdueBy")) qs.set("overdueBy", overdueBy);
+    if (has("expiryWithin")) qs.set("expiryWithin", expiryWithin);
     try {
       const res = await fetch(`/api/reports/${def.key}?${qs.toString()}`, { cache: "no-store" });
       const json = await res.json();
@@ -106,7 +108,7 @@ export default function ReportViewPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [def?.key, from, to, salesman, series, method, chequeStatus, expenseStatus, within, overdueBy]);
+  }, [def?.key, from, to, salesman, series, method, chequeStatus, expenseStatus, within, overdueBy, expiryWithin]);
 
   useEffect(() => {
     if (profile && def) load();
@@ -270,6 +272,19 @@ export default function ReportViewPage() {
                 <option value="30">30 days or less</option>
                 <option value="45">45 days or less</option>
                 <option value="100">All open invoices under 100 days</option>
+              </select>
+            </label>
+          )}
+
+          {has("expiryWithin") && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Show</span>
+              <select className={selectClass} value={expiryWithin} onChange={(e) => setExpiryWithin(e.target.value)}>
+                <option value="0">Expired only</option>
+                <option value="3">Expired or within 3 months</option>
+                <option value="6">Expired or within 6 months</option>
+                <option value="12">Expired or within 12 months</option>
+                <option value="-1">All stock by expiry</option>
               </select>
             </label>
           )}

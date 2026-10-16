@@ -32,7 +32,8 @@ import { Avatar, ChoiceTile, ReviewSection, StepPanel, WizardBar, WizardStep, Wi
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { AccountSnapshot, SavedDocuments } from "@/components/CustomerAccountPanels";
-import { Product, Customer, QuoteItem, Quote, Invoice, Receipt } from "@/types";
+import { Product, Customer, QuoteItem, Quote, Invoice, Receipt, ExpiryLot } from "@/types";
+import { expiryState, NEAR_EXPIRY_MONTHS } from "@/lib/db/expiry";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { Permissions } from "@/lib/auth/permissions";
@@ -79,6 +80,8 @@ function NewInvoiceForm() {
   const [quotesList, setQuotesList] = useState<Quote[]>([]);
   const [invoicesList, setInvoicesList] = useState<Invoice[]>([]);
   const [stockMap, setStockMap] = useState<Map<string, { uae: number; oman: number; total: number }>>(new Map());
+  // Stock by expiry date per product, earliest first.
+  const [lotsByProduct, setLotsByProduct] = useState<Map<string, ExpiryLot[]>>(new Map());
   
   // UI states
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
@@ -177,6 +180,19 @@ function NewInvoiceForm() {
             map.set(String(s.productId), { uae: s.uaeStock, oman: s.omanStock, total: s.totalStock });
           });
           setStockMap(map);
+        }
+        try {
+          const lotRes = await fetch("/api/lots");
+          const lotData = await lotRes.json();
+          const lm = new Map<string, ExpiryLot[]>();
+          (lotData.lots || []).forEach((l: ExpiryLot) => {
+            const list = lm.get(l.productId) || [];
+            list.push(l);
+            lm.set(l.productId, list);
+          });
+          setLotsByProduct(lm);
+        } catch (e) {
+          console.error("Failed to load expiry dates:", e);
         }
       } catch (err) {
         console.error("Failed to load setup data:", err);
@@ -314,6 +330,7 @@ function NewInvoiceForm() {
             manualDiscount: discPriceVal,
             listPrice: unitPrice,
             rate: effectivePrice < unitPrice ? effectivePrice : "",
+            batchId: defaultLotFor(item.productId),
             total: (Number(item.quantity) || 0) * effectivePrice,
           };
         }));
@@ -447,6 +464,19 @@ function NewInvoiceForm() {
   const qtyRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const productSearchRef = useRef<HTMLInputElement>(null);
 
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
+  // First expiry first: the earliest lot that has stock and hasn't expired.
+  const defaultLotFor = (productId: string): string | undefined => {
+    const lots = lotsByProduct.get(String(productId)) || [];
+    const pick = lots.find((l) => l.qtyRemaining > 0 && expiryState(l.expiryDate, todayStr) !== "expired");
+    return pick?.id;
+  };
+  const setLineLot = (index: number, batchId: string) => {
+    const updated = [...invoiceItems];
+    updated[index] = { ...updated[index], batchId: batchId || undefined };
+    setInvoiceItems(updated);
+  };
+
   const handleAddProduct = (product: Product) => {
     const existingIndex = invoiceItems.findIndex((item) => item.productId === product.id);
     if (existingIndex > -1) {
@@ -460,7 +490,7 @@ function NewInvoiceForm() {
       setInvoiceItems([
         ...invoiceItems,
         lineWith(
-          { productId: product.id, productName: product.name, quantity: 1, price: product.price, discount: 0, total: product.price, tiered: true },
+          { productId: product.id, productName: product.name, quantity: 1, price: product.price, discount: 0, total: product.price, tiered: true, batchId: defaultLotFor(product.id) },
           product.price,
           "",
           1
@@ -762,7 +792,28 @@ function NewInvoiceForm() {
   const methodLabel = (m: string) => (m === "Bank Transfer" ? "Bank transfer" : m);
 
   const zeroLine = invoiceItems.find((it) => !(Number(it.quantity) > 0));
-  const productsBlocker = invoiceItems.length === 0 ? "Add at least one product" : zeroLine ? `Set a quantity for ${zeroLine.productName} or remove it` : null;
+  const isSalesmanUser = profile?.role === "salesperson";
+  const lotOf = (item: InvoiceItemWithManual) => (lotsByProduct.get(String(item.productId)) || []).find((l) => l.id === item.batchId);
+  const rateOf = (item: InvoiceItemWithManual) => Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
+  // Salesman: below price / FOC only from stock expiring within 6 months; never expired stock.
+  const expiryProblem = (item: InvoiceItemWithManual): string | null => {
+    if (!isSalesmanUser) return null;
+    const lot = lotOf(item);
+    const state = expiryState(lot?.expiryDate, todayStr);
+    if (state === "expired") return `${item.productName}: this stock has expired. Choose another expiry date.`;
+    const list = item.listPrice ?? item.price;
+    if (list > 0 && rateOf(item) < list - 0.0005 && state !== "near") {
+      return `${item.productName}: ${rateOf(item) <= 0.0005 ? "FOC" : "a price below list"} is only allowed on stock expiring within ${NEAR_EXPIRY_MONTHS} months.`;
+    }
+    return null;
+  };
+  const expiryBlock = invoiceItems.map(expiryProblem).find(Boolean) || null;
+  const productsBlocker =
+    invoiceItems.length === 0
+      ? "Add at least one product"
+      : zeroLine
+        ? `Set a quantity for ${zeroLine.productName} or remove it`
+        : expiryBlock;
   const paymentBlocker = (() => {
     if (cashOnly && status === "Credit") return "This customer is cash only. Choose Paid now.";
     if (cashOnly && status === "Paid" && paymentMethod === "Cheque") return "This customer is cash only. Cheques are not accepted.";
@@ -1117,13 +1168,74 @@ function NewInvoiceForm() {
                               <span className="text-lg font-semibold text-slate-900">{money(item.total)}</span>
                             </div>
                           </div>
+                          {(() => {
+                            const lots = lotsByProduct.get(String(item.productId)) || [];
+                            const chosen = lots.find((l) => l.id === item.batchId);
+                            const state = expiryState(chosen?.expiryDate, todayStr);
+                            const problem = expiryProblem(item);
+                            const fmt = (d: string | null) =>
+                              d ? new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "No date";
+                            return (
+                              <div className="mt-3 pt-3 border-t border-slate-100">
+                                {lots.length === 0 ? (
+                                  <p className="text-xs text-slate-400">
+                                    No expiry dates recorded for this product.
+                                    {isSalesmanUser && " It can only be sold at the list price."}
+                                  </p>
+                                ) : (
+                                  <label className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                    <span className="text-xs text-slate-500 shrink-0">Expiry</span>
+                                    <select
+                                      value={item.batchId || ""}
+                                      onChange={(e) => setLineLot(idx, e.target.value)}
+                                      className={`h-10 px-3 rounded-xl border text-sm bg-white flex-1 sm:max-w-sm ${
+                                        state === "expired" ? "border-rose-300 text-rose-800" : state === "near" ? "border-amber-300 text-amber-900" : "border-slate-200 text-slate-800"
+                                      }`}
+                                    >
+                                      <option value="">Not chosen</option>
+                                      {lots.map((l) => {
+                                        const st = expiryState(l.expiryDate, todayStr);
+                                        const blocked = isSalesmanUser && st === "expired";
+                                        return (
+                                          <option key={l.id} value={l.id} disabled={blocked}>
+                                            {fmt(l.expiryDate)} · {l.qtyRemaining} left
+                                            {st === "expired" ? " · expired" : st === "near" ? " · near expiry" : ""}
+                                            {l.needsCheck ? " · to confirm" : ""}
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                    {state === "near" && (
+                                      <span className="text-[11px] font-medium text-amber-900 bg-amber-100 rounded-full px-2 py-0.5 whitespace-nowrap">
+                                        Near expiry · discount / FOC allowed
+                                      </span>
+                                    )}
+                                    {chosen && Number(item.quantity) > chosen.qtyRemaining && (
+                                      <span className="text-[11px] text-rose-800 bg-rose-100 rounded-full px-2 py-0.5 whitespace-nowrap">Only {chosen.qtyRemaining} at this date</span>
+                                    )}
+                                  </label>
+                                )}
+                                {problem && (
+                                  <p className="wiz-in mt-2 flex items-start gap-1.5 text-xs text-rose-800">
+                                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                    {problem}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </li>
                       );
                     })}
                   </ul>
                 )}
 
-                {invoiceItems.length > 0 && <p className="text-xs text-slate-400 mt-4">Leave Rate empty to charge the list price. Enter 0 for a free unit.</p>}
+                {invoiceItems.length > 0 && (
+                  <p className="text-xs text-slate-400 mt-4">
+                    Leave Rate empty to charge the list price. Enter 0 for a free unit.
+                    {isSalesmanUser && ` Discounts and FOC only on stock expiring within ${NEAR_EXPIRY_MONTHS} months.`}
+                  </p>
+                )}
 
                 {seriesSplit && seriesSplit.omanCount > 0 && (
                   <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
@@ -1310,7 +1422,14 @@ function NewInvoiceForm() {
                             const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
                             return (
                               <tr key={item.productId}>
-                                <td className="py-3 px-1 text-slate-900">{item.productName}</td>
+                                <td className="py-3 px-1 text-slate-900">
+                                  {item.productName}
+                                  {lotOf(item)?.expiryDate && (
+                                    <span className={`block text-[11px] ${expiryState(lotOf(item)?.expiryDate, todayStr) === "near" ? "text-amber-800" : "text-slate-500"}`}>
+                                      Exp. {new Date(`${lotOf(item)!.expiryDate}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="py-3 px-1 text-right text-slate-700">{item.quantity}</td>
                                 <td className="py-3 px-1 text-right text-slate-700">{rateNum.toFixed(dp)}</td>
                                 <td className="py-3 px-1 text-right font-medium text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</td>
