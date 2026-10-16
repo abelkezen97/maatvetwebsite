@@ -89,17 +89,19 @@ export function ShareBar({
           ) : null
         )}
       </div>
-      <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+      <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-100">
         {parts.map((p, i) => (
-          <li key={p.label} className="flex items-center justify-between gap-3 text-sm">
-            <span className="flex items-center gap-2 min-w-0">
-              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: palette[i % palette.length] }} />
-              <span className="text-slate-700 truncate">{p.label}</span>
+          <li key={p.label} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-0.5 py-2 text-sm">
+            <span className="flex items-start gap-2.5 min-w-0 flex-1 basis-44">
+              <span className="w-2.5 h-2.5 rounded-sm shrink-0 mt-1.5" style={{ background: palette[i % palette.length] }} />
+              <span className="min-w-0">
+                <span className="block text-slate-800 leading-snug break-words">{p.label}</span>
+                {p.note && <span className="block text-[11px] text-slate-500">{p.note}</span>}
+              </span>
             </span>
-            <span className="text-right whitespace-nowrap">
-              <span className="font-semibold text-slate-900 tabular-nums">{fmtPct((p.value / total) * 100)}</span>
-              <span className="text-slate-500 tabular-nums"> · {showMoney ? fmtMoney(p.value, currency, dp) : p.value.toLocaleString("en-US")}</span>
-              {p.note && <span className="block text-[11px] text-slate-400">{p.note}</span>}
+            <span className="ml-auto flex items-baseline gap-3 whitespace-nowrap tabular-nums pl-5">
+              <span className="font-semibold text-slate-900 w-11 text-right">{fmtPct((p.value / total) * 100)}</span>
+              <span className="text-slate-500 text-right min-w-[5.5rem]">{showMoney ? fmtMoney(p.value, currency, dp) : p.value.toLocaleString("en-US")}</span>
             </span>
           </li>
         ))}
@@ -132,9 +134,9 @@ export function RankBars({
     <ul className="space-y-2.5">
       {shown.map((r, i) => (
         <li key={r.key || r.label} className="wiz-in" style={{ animationDelay: `${i * 40}ms` }}>
-          <div className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-slate-800 truncate">{r.label}</span>
-            <span className="whitespace-nowrap tabular-nums">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm">
+            <span className="text-slate-800 leading-snug break-words min-w-0 flex-1 basis-40">{r.label}</span>
+            <span className="whitespace-nowrap tabular-nums ml-auto">
               <span className="font-semibold text-slate-900">{valueLabel ? valueLabel(r.value) : currency ? fmtMoney(r.value, currency, dp) : r.value.toLocaleString("en-US")}</span>
               {total > 0 && <span className="text-slate-500"> · {fmtPct((r.value / total) * 100)}</span>}
             </span>
