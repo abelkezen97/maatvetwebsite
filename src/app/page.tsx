@@ -19,7 +19,7 @@ export default function RootPage() {
   }, [user, loading, router]);
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-[#F8FAFC]">
+    <div className="flex min-h-dvh w-full items-center justify-center bg-[#F8FAFC]">
       <div className="flex flex-col items-center gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1B2A4A] border-t-transparent" />
         <span className="text-sm font-semibold text-slate-500">Redirecting to MAAT Portal...</span>

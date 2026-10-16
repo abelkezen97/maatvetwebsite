@@ -35,7 +35,7 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#0B1528]">
+      <div className="flex min-h-dvh w-full items-center justify-center bg-[#0B1528]">
         <div className="flex flex-col items-center gap-3">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent" />
           <span className="text-sm font-semibold text-slate-300">{t("loadingSession")}</span>
@@ -63,7 +63,9 @@ export default function DashboardLayout({
         toggleMobileMenu: () => setIsMobileOpen((prev) => !prev),
       }}
     >
-      <div className="flex h-screen w-screen overflow-hidden bg-[#F8FAFC]">
+      {/* The page itself scrolls (not an inner box): iPad / iPhone Safari scroll
+          smoothly, the toolbar can hide, and nothing sits under it. */}
+      <div className="flex min-h-dvh w-full bg-[#F8FAFC]">
         {/* Responsive Left Sidebar */}
         <Sidebar
           isOpen={isMobileOpen}
@@ -73,9 +75,8 @@ export default function DashboardLayout({
         />
 
         {/* Main Content Area starting directly at y=0 */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          {/* View Scrollport - Starts at top of screen without white Navbar */}
-          <main className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+        <div className="flex flex-1 flex-col min-w-0 overflow-x-clip">
+          <main className="flex-1 min-w-0 bg-[#F8FAFC]">
             <PageGuard>
               {children}
             </PageGuard>

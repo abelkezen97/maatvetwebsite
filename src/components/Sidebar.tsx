@@ -191,7 +191,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       )}
 
       {/* Navigation items grouped by sections */}
-      <nav className="flex-1 px-3.5 py-4 space-y-6 overflow-y-auto">
+      <nav className="flex-1 min-h-0 px-3.5 py-4 space-y-6 overflow-y-auto overscroll-contain">
         {navigationSections.map((section) => {
           if (section.visible === false) return null;
           const activeItems = section.items.filter((item) => item.visible !== false);
@@ -283,7 +283,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
 
       {/* Tablet / Desktop Sidebar (Over 768px) */}
       <div
-        className={`hidden md:block h-screen shrink-0 transition-all duration-300 ${
+        className={`hidden md:block sticky top-0 self-start h-dvh shrink-0 transition-all duration-300 ${
           isRtl ? "border-l" : "border-r"
         } border-slate-900/80 bg-[#06101E] ${
           isCollapsed ? "w-20" : "w-64"

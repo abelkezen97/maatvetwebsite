@@ -233,7 +233,7 @@ export function FormActionBar({
   total?: string;
 }) {
   return (
-    <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 mt-8 border-t border-slate-200 bg-white/95 backdrop-blur px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-3">
+    <div className="sticky bottom-0 z-30 -mx-4 sm:-mx-6 lg:-mx-8 mt-8 border-t border-slate-200 bg-white/95 backdrop-blur px-4 sm:px-6 lg:px-8 pt-3 safe-bottom flex items-center gap-3">
       <button
         type="submit"
         disabled={disabled || saving}
