@@ -19,7 +19,8 @@ import {
   CreditCard,
   Percent,
   Globe2,
-  BarChart3
+  BarChart3,
+  TrendingUp
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/context/LanguageContext";
@@ -47,6 +48,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       items: [
         { name: t("dashboard"), href: "/dashboard", icon: LayoutDashboard, visible: permissions ? permissions.canViewDashboard : true },
         { name: "Reports", href: "/reports", icon: BarChart3, visible: !!profile },
+        { name: "Performance", href: "/performance", icon: TrendingUp, visible: isSuperAdmin },
       ]
     },
     {
