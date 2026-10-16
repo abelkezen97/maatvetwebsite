@@ -42,7 +42,18 @@ body {
   color: var(--foreground);
   font-family: var(--font-inter), ui-sans-serif, sans-serif;
   min-height: 100vh;
+  min-height: 100dvh;
+  -webkit-text-size-adjust: 100%;
 }
+
+/* Older iPads without dynamic viewport units: fall back to 100vh. */
+@supports not (height: 100dvh) {
+  .min-h-dvh { min-height: 100vh; }
+  .h-dvh { height: 100vh; }
+}
+
+/* Bottom action bars clear the iPhone / iPad home indicator. */
+.safe-bottom { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
 
 /* Wizard motion (invoice / receipt entry) */
 @keyframes wiz-in {
