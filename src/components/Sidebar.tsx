@@ -74,6 +74,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       items: [
         { name: t("products"), href: "/products", icon: Package, visible: permissions ? permissions.canViewProducts : true },
         { name: t("inventory"), href: "/inventory", icon: Package, visible: permissions ? permissions.canViewInventory : true },
+        { name: "Stock & prices", href: "/stock-prices", icon: Package, visible: isSuperAdmin || isAccountant },
       ]
     },
     {
