@@ -64,6 +64,7 @@ export default function ReportViewPage() {
   const [within, setWithin] = useState("30");
   const [overdueBy, setOverdueBy] = useState("1");
   const [expiryWithin, setExpiryWithin] = useState("6");
+  const [slowFor, setSlowFor] = useState("6");
 
   const [report, setReport] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -97,6 +98,7 @@ export default function ReportViewPage() {
     if (has("within")) qs.set("within", within);
     if (has("overdueBy")) qs.set("overdueBy", overdueBy);
     if (has("expiryWithin")) qs.set("expiryWithin", expiryWithin);
+    if (has("slowFor")) qs.set("slowFor", slowFor);
     try {
       const res = await fetch(`/api/reports/${def.key}?${qs.toString()}`, { cache: "no-store" });
       const json = await res.json();
@@ -108,7 +110,7 @@ export default function ReportViewPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [def?.key, from, to, salesman, series, method, chequeStatus, expenseStatus, within, overdueBy, expiryWithin]);
+  }, [def?.key, from, to, salesman, series, method, chequeStatus, expenseStatus, within, overdueBy, expiryWithin, slowFor]);
 
   useEffect(() => {
     if (profile && def) load();
@@ -285,6 +287,17 @@ export default function ReportViewPage() {
                 <option value="6">Expired or within 6 months</option>
                 <option value="12">Expired or within 12 months</option>
                 <option value="-1">All stock by expiry</option>
+              </select>
+            </label>
+          )}
+
+          {has("slowFor") && (
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Not sold for</span>
+              <select className={selectClass} value={slowFor} onChange={(e) => setSlowFor(e.target.value)}>
+                <option value="3">3 months or more</option>
+                <option value="6">6 months or more</option>
+                <option value="12">1 year or more</option>
               </select>
             </label>
           )}
