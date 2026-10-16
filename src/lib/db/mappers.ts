@@ -349,6 +349,7 @@ export function mapInvoiceFromDb(row: any, salesmanMap?: Map<string, string>): I
       discountPrice: discountAmount > 0 ? effectiveUnitPrice : undefined,
       manualDiscount: discountAmount > 0 ? effectiveUnitPrice : undefined,
       total: lineTotal,
+      batchId: ii.batch_id ? String(ii.batch_id) : undefined,
     };
   });
 

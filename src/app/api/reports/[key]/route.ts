@@ -32,6 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
       expenseStatus: sp.get("expenseStatus") || undefined,
       within: sp.get("within") ? Number(sp.get("within")) : undefined,
       overdueBy: sp.get("overdueBy") ? Number(sp.get("overdueBy")) : undefined,
+      expiryWithin: sp.get("expiryWithin") !== null ? Number(sp.get("expiryWithin")) : undefined,
     };
 
     const report = await buildReport(supabase, profile, def, query);

@@ -119,6 +119,8 @@ export interface QuoteItem {
   discountPrice?: number | string; // Negotiated final selling price per unit
   manualDiscount?: number | string; // Alias for discountPrice
   total: number;
+  /** Expiry lot the line is sold from (invoices). */
+  batchId?: string;
 }
 
 export type QuoteStatus = "Draft" | "Sent" | "Approved" | "Rejected";
@@ -499,4 +501,19 @@ export interface CreditNote {
   rejectedAt?: string;
   rejectionReason?: string;
   items?: CreditNoteItem[];
+}
+
+/** Stock of one product at one expiry date (view batch_stock). */
+export interface ExpiryLot {
+  id: string;
+  productId: string;
+  country: UserCountry;
+  expiryDate: string | null;
+  qtyReceived: number;
+  qtySold: number;
+  qtyRemaining: number;
+  daysToExpiry: number | null;
+  /** Expiry came from a batch shared by several products in the old system. */
+  needsCheck: boolean;
+  notes?: string;
 }

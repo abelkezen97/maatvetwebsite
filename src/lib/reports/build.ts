@@ -22,6 +22,8 @@ export interface ReportParams {
   within?: number;
   /** Overdue: overdue by at least this many days (default 1). */
   overdueBy?: number;
+  /** Expiry: 0 = expired only, n = expired or expiring within n months, -1 = everything. */
+  expiryWithin?: number;
 }
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -610,6 +612,86 @@ export async function buildReport(
     }
 
     /* ------------------------------------------------------------ stock */
+    case "expiry": {
+      const months = params.expiryWithin === undefined || isNaN(params.expiryWithin) ? 6 : params.expiryWithin;
+      const limit = (() => {
+        const d = new Date(`${today}T00:00:00Z`);
+        d.setUTCMonth(d.getUTCMonth() + Math.max(months, 0));
+        return d.toISOString().slice(0, 10);
+      })();
+      const lots = await fetchAll(() =>
+        client
+          .from("batch_stock")
+          .select("product_id, expiry_date, qty_remaining, days_to_expiry, needs_check, is_active")
+          .eq("country", country)
+          .gt("qty_remaining", 0)
+          .order("expiry_date", { ascending: true })
+      );
+      const prodIds = Array.from(new Set(lots.map((l: any) => l.product_id)));
+      const prods = new Map<string, any>();
+      for (let i = 0; i < prodIds.length; i += 150) {
+        const { data } = await client
+          .from("products")
+          .select("id, name, manufacturer, cost_price, selling_price, cost_price_omr, selling_price_omr")
+          .in("id", prodIds.slice(i, i + 150));
+        (data || []).forEach((p: any) => prods.set(p.id, p));
+      }
+      const omr = country === "Oman";
+      const rows = lots
+        .filter((l: any) => l.is_active !== false && l.expiry_date)
+        .filter((l: any) => {
+          const e = String(l.expiry_date).slice(0, 10);
+          if (months < 0) return true;
+          if (months === 0) return e < today;
+          return e <= limit;
+        })
+        .map((l: any) => {
+          const p = prods.get(l.product_id) || {};
+          const e = String(l.expiry_date).slice(0, 10);
+          const days = num(l.days_to_expiry);
+          const qty = num(l.qty_remaining);
+          const cost = num(omr ? p.cost_price_omr : p.cost_price);
+          const price = num(omr ? p.selling_price_omr : p.selling_price);
+          return {
+            product: p.name || "Product",
+            company: p.manufacturer || "—",
+            expiry: e,
+            status: e < today ? `Expired ${-days} days ago` : `${days} days left`,
+            qty,
+            value: round(qty * price),
+            costValue: round(qty * cost),
+            check: l.needs_check ? "Confirm date" : "",
+          };
+        });
+      if (months === 0) filters.push("Expired stock only");
+      else if (months > 0) filters.push(`Expired or expiring by ${limit}`);
+      const expired = rows.filter((r) => r.expiry < today);
+      return base({
+        summary: [
+          { label: "Expired units", value: expired.reduce((s, r) => s + r.qty, 0), type: "number" },
+          { label: "Expired, at price", value: round(expired.reduce((s, r) => s + r.value, 0)), type: "money" },
+          { label: "Units in the list", value: rows.reduce((s, r) => s + r.qty, 0), type: "number" },
+          { label: "Value at price", value: round(rows.reduce((s, r) => s + r.value, 0)), type: "money" },
+        ],
+        columns: [
+          { key: "product", label: "Product", type: "text" },
+          { key: "company", label: "Company", type: "text" },
+          { key: "expiry", label: "Expiry", type: "date" },
+          { key: "status", label: "Status", type: "text" },
+          { key: "qty", label: "Qty left", type: "number" },
+          { key: "value", label: "Value at price", type: "money" },
+          { key: "costValue", label: "Value at cost", type: "money" },
+          { key: "check", label: "Note", type: "text" },
+        ],
+        rows,
+        totals: {
+          qty: rows.reduce((s, r) => s + r.qty, 0),
+          value: round(rows.reduce((s, r) => s + r.value, 0)),
+          costValue: round(rows.reduce((s, r) => s + r.costValue, 0)),
+        },
+      });
+    }
+
     case "stock-summary": {
       const movements = await fetchAll(() =>
         client.from("inventory_transactions").select("product_id, quantity").eq("country", country)
