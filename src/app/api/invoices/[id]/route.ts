@@ -463,6 +463,36 @@ export async function DELETE(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // The payment receipt made automatically with this invoice goes with it,
+    // so the cash book does not keep money for a sale that no longer exists.
+    try {
+      const { data: apps } = await supabase.from("receipt_applications").select("receipt_id").eq("invoice_id", id);
+      const receiptIds = Array.from(new Set((apps || []).map((a: any) => a.receipt_id)));
+      if (receiptIds.length > 0) {
+        const { data: autos } = await supabase
+          .from("receipts")
+          .select("id, notes, is_deleted")
+          .in("id", receiptIds)
+          .eq("is_deleted", false)
+          .ilike("notes", "Automatic payment receipt for Invoice%");
+        const autoIds: string[] = [];
+        for (const r of autos || []) {
+          // Only when that receipt paid this invoice alone.
+          const { count } = await supabase.from("receipt_applications").select("receipt_id", { count: "exact", head: true }).eq("receipt_id", r.id);
+          if ((count || 0) <= 1) autoIds.push(r.id);
+        }
+        if (autoIds.length > 0) {
+          await supabase
+            .from("receipts")
+            .update({ is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: profile.id, updated_by: profile.id })
+            .in("id", autoIds)
+            .eq("country", profile.country);
+        }
+      }
+    } catch (recErr: any) {
+      console.error("Failed to remove the automatic receipt of a deleted invoice:", recErr);
+    }
+
     // Reverse inventory deduction for deleted invoice
     try {
       await reverseInvoiceInventoryOnCancel(
