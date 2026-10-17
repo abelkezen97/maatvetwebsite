@@ -43,7 +43,7 @@ export function buildPerformancePDF(r: PerformanceReport, preparedBy = ""): jsPD
   doc.setFontSize(10);
   doc.text(`${r.salesman.name}  ·  ${r.period.label}  ·  ${r.country}`, M, 20);
   doc.setFontSize(8.5);
-  doc.text(`Compared with ${r.period.prevLabel}${r.period.to > r.today ? `  ·  running, ${r.period.daysElapsed} days so far` : ""}`, M, 25.5);
+  doc.text(`Compared with ${r.period.prevLabel}${r.period.to > r.today ? `  ·  running, ${r.period.daysElapsed} working days so far` : ""}`, M, 25.5);
   doc.text("MAAT GROUP", W - M, 13, { align: "right" });
   y = 38;
 
@@ -431,7 +431,7 @@ export function buildPerformancePDF(r: PerformanceReport, preparedBy = ""): jsPD
     { label: "Collected vs sold", value: r.efficiency.collectionRate, good: 90, warn: 60 },
     { label: "Collections on time", value: r.efficiency.onTimeRate, good: 80, warn: 50 },
     { label: "Collected within 100 days", value: r.efficiency.within100Rate, good: 90, warn: 70 },
-    ...(r.period.kind !== "day" ? [{ label: `Days with sales (${r.sales.activeDays} of ${r.period.daysElapsed})`, value: r.efficiency.activeDayRate, good: 70, warn: 45 }] : []),
+    ...(r.period.kind !== "day" ? [{ label: `Working days with sales (${r.sales.activeDays} of ${r.period.daysElapsed})`, value: r.efficiency.activeDayRate, good: 70, warn: 45 }] : []),
     { label: "Discount given (of list value)", value: r.efficiency.discountRate, good: 3, warn: 8, invert: true },
     { label: "FOC given (of list value)", value: r.efficiency.focRate, good: 3, warn: 8, invert: true },
     { label: "Expenses (of sales)", value: r.efficiency.expenseRate, good: 5, warn: 10, invert: true },

@@ -244,7 +244,7 @@ export default function PerformancePage() {
               </h1>
               <p className="text-sm text-slate-500">
                 Compared with {r.period.prevLabel}
-                {r.period.to > r.today ? ` · period still running, ${r.period.daysElapsed} days so far` : ""}
+                {r.period.to > r.today ? ` · period still running, ${r.period.daysElapsed} working days so far` : ""}
               </p>
             </div>
 
@@ -337,7 +337,7 @@ export default function PerformancePage() {
                       <dt className="text-xs text-slate-500">Selling days</dt>
                       <dd className="font-semibold text-slate-900">
                         {r.sales.activeDays}
-                        {r.period.kind !== "day" && <span className="font-normal text-slate-500"> of {r.period.daysElapsed}</span>}
+                        {r.period.kind !== "day" && <span className="font-normal text-slate-500"> of {r.period.daysElapsed} working days</span>}
                       </dd>
                     </div>
                     <div>
@@ -549,7 +549,7 @@ export default function PerformancePage() {
                 <Meter label="Collected vs sold" value={r.efficiency.collectionRate} good={90} warn={60} />
                 <Meter label="Collections on time" value={r.efficiency.onTimeRate} good={80} warn={50} />
                 <Meter label="Collected within 100 days" value={r.efficiency.within100Rate} good={90} warn={70} />
-                {r.period.kind !== "day" && <Meter label="Days with sales" value={r.efficiency.activeDayRate} good={70} warn={45} note={`${r.sales.activeDays} of ${r.period.daysElapsed} days`} />}
+                {r.period.kind !== "day" && <Meter label="Days with sales" value={r.efficiency.activeDayRate} good={70} warn={45} note={`${r.sales.activeDays} of ${r.period.daysElapsed} working days`} />}
                 <Meter label="Discount given (of list value)" value={r.efficiency.discountRate} good={3} warn={8} invert />
                 <Meter label="FOC given (of list value)" value={r.efficiency.focRate} good={3} warn={8} invert />
                 <Meter label="Expenses (of sales)" value={r.efficiency.expenseRate} good={5} warn={10} invert />

@@ -2,6 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { Profile } from "@/types";
 import { todayInDubai, COMMISSION_WINDOW_DAYS, daysBetween } from "@/lib/db/commission";
 import { currencyFor } from "@/lib/currency";
+import { countWorkingDays, isWorkingDay, loadWorkSchedule, describeSchedule } from "@/lib/db/workSchedule";
 import { PerfInsight, PerfPeriod, PerfPeriodKind, PerfShare, PerformanceReport } from "./types";
 
 /**
@@ -105,6 +106,9 @@ export async function buildPerformance(
   const currency = currencyFor(country);
   const today = todayInDubai();
   const period = resolvePeriod(params.kind, params.date || today, today);
+  // Only working days count: the weekly day off (Friday by default) and holidays are left out.
+  const schedule = await loadWorkSchedule(client, country);
+  period.daysElapsed = countWorkingDays(period.from, period.to < today ? period.to : today, schedule);
   const sid = params.salesmanId || null;
 
   // People
@@ -163,7 +167,9 @@ export async function buildPerformance(
     value: r3(v.value),
     invoices: v.invoices,
   }));
-  const activeDays = byDay.filter((d) => d.invoices > 0).length;
+  const soldDays = byDay.filter((d) => d.invoices > 0).length;
+  // Working days with sales, for the "days with sales" rate (selling on a day off is a bonus, not counted).
+  const activeDays = byDay.filter((d) => d.invoices > 0 && isWorkingDay(d.day, schedule)).length;
 
   // ---------- Items: products, companies, pricing ----------
   const invoiceIds = invoices.map((i: any) => i.id);
@@ -424,9 +430,9 @@ export async function buildPerformance(
     focRate: pct(pricing.foc.listValue, pricing.listValue),
     discountRate: pct(pricing.below.given, pricing.listValue),
     expenseRate: pct(expTotal, salesValue),
-    salesPerActiveDay: activeDays > 0 ? salesValue / activeDays : 0,
-    invoicesPerActiveDay: activeDays > 0 ? invoices.length / activeDays : 0,
-    activeDayRate: period.kind === "day" ? null : pct(activeDays, period.daysElapsed),
+    salesPerActiveDay: soldDays > 0 ? salesValue / soldDays : 0,
+    invoicesPerActiveDay: soldDays > 0 ? invoices.length / soldDays : 0,
+    activeDayRate: period.kind === "day" ? null : pct(Math.min(activeDays, period.daysElapsed), period.daysElapsed),
   };
 
   // ---------- Insights ----------
@@ -502,9 +508,13 @@ export async function buildPerformance(
   if (period.kind !== "day" && period.daysElapsed > 0) {
     insights.push({
       tone: (efficiency.activeDayRate || 0) >= 70 ? "good" : (efficiency.activeDayRate || 0) >= 45 ? "warn" : "bad",
-      title: `Sold on ${activeDays} of ${period.daysElapsed} days`,
+      title: `Sold on ${activeDays} of ${period.daysElapsed} working days`,
       detail: `${money(efficiency.salesPerActiveDay)} and ${efficiency.invoicesPerActiveDay.toFixed(1)} invoices per selling day; ${customerIds.length} customers, ${newCustomerIds.size} new.`,
     });
+  }
+
+  if (period.kind === "day" && !isWorkingDay(period.from, schedule)) {
+    insights.unshift({ tone: "info", title: "Day off", detail: `This is a non-working day (${describeSchedule(schedule)}).` });
   }
 
   return {
