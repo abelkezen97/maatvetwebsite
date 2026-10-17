@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
+import { WorkingWeekCard } from "@/components/WorkingWeekCard";
 import { User, Shield, Info, Users, Save, CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
 
 export default function SettingsPage() {
@@ -73,6 +74,8 @@ export default function SettingsPage() {
           <span className="font-semibold">{successMsg}</span>
         </div>
       )}
+
+      {isSuperAdmin && <WorkingWeekCard country={user?.country || "UAE"} />}
 
       {/* Structured Administration Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

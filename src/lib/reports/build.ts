@@ -3,6 +3,7 @@ import { Profile } from "@/types";
 import { isCountryStaff } from "@/lib/auth/permissions";
 import { todayInDubai, COMMISSION_WINDOW_DAYS, daysBetween } from "@/lib/db/commission";
 import { ReportColumn, ReportDef, ReportResult } from "./catalog";
+import { countWorkingDays, describeSchedule, loadWorkSchedule } from "@/lib/db/workSchedule";
 
 /**
  * Builds a report for the user's active country. Salesmen only ever get their
@@ -924,8 +925,12 @@ export async function buildReport(
 
     case "reorder": {
       const cover = [2, 3, 4, 6].includes(Number(params.coverMonths)) ? Number(params.coverMonths) : 3;
-      const windowDays = 90;
-      const lines = await loadSaleLines(client, country, { from: addDays(today, -windowDays + 1), to: today });
+      const calendarDays = 90;
+      const schedule = await loadWorkSchedule(client, country);
+      const windowFrom = addDays(today, -calendarDays + 1);
+      // Selling speed per working day, then scaled to a 26-day month.
+      const windowDays = Math.max(countWorkingDays(windowFrom, today, schedule), 1);
+      const lines = await loadSaleLines(client, country, { from: windowFrom, to: today });
       const onHand = await stockOnHand(client, country);
       const sold = new Map<string, { qty: number; name: string; company: string; cost: number; list: number }>();
       lines.forEach((l) => {
@@ -947,8 +952,9 @@ export async function buildReport(
           const qty = s?.qty || 0;
           if (qty === 0 && have === 0) return;
           const perDay = qty / windowDays;
-          const weeksLeft = perDay > 0 ? have / perDay / 7 : null;
-          const need = Math.ceil(perDay * 30 * cover);
+          const workDaysPerWeek = 7 - schedule.weeklyOff.length;
+          const weeksLeft = perDay > 0 ? have / perDay / workDaysPerWeek : null;
+          const need = Math.ceil(perDay * (workDaysPerWeek * 52 / 12) * cover);
           const order = Math.max(need - have, 0);
           let status = "";
           let rank = 9;
@@ -977,7 +983,7 @@ export async function buildReport(
             company: p.manufacturer || "—",
             onHand: have,
             sold90: qty,
-            perMonth: round((qty / windowDays) * 30),
+            perMonth: round((qty / windowDays) * ((7 - schedule.weeklyOff.length) * 52 / 12)),
             weeksLeft: weeksLeft === null ? null : round(Math.round(weeksLeft * 10) / 10),
             status,
             order: rank <= 2 ? order : 0,
@@ -986,7 +992,7 @@ export async function buildReport(
           });
         });
       rows.sort((a, b) => a.rank - b.rank || (a.weeksLeft ?? 999) - (b.weeksLeft ?? 999));
-      filters.push(`Based on sales of the last ${windowDays} days · order enough for ${cover} months`);
+      filters.push(`Based on sales of the last ${calendarDays} days · order enough for ${cover} months · ${describeSchedule(schedule)}`);
       const urgent = rows.filter((r) => r.rank <= 1);
       const soon = rows.filter((r) => r.rank === 2);
       const over = rows.filter((r) => r.rank === 4);
@@ -1055,7 +1061,9 @@ export async function buildReport(
           c.stockUnits += q;
           c.stockValue += q * num(omr ? p.cost_price_omr : p.cost_price);
         });
-      const days = Math.max(daysBetween(period!.from, period!.to) + 1, 1);
+      const schedule = await loadWorkSchedule(client, country);
+      const days = Math.max(countWorkingDays(period!.from, period!.to, schedule), 1);
+      filters.push(describeSchedule(schedule));
       const totalSales = Array.from(by.values()).reduce((s, c) => s + c.value, 0);
       const rows = Array.from(by.entries())
         .filter(([, c]) => c.value > 0 || c.stockUnits > 0)
@@ -1070,7 +1078,7 @@ export async function buildReport(
           focValue: round(c.focValue),
           products: `${c.sold.size} of ${c.range}`,
           stockValue: round(c.stockValue),
-          cover: c.units > 0 ? round(Math.round((c.stockUnits / (c.units / days)) / 7 * 10) / 10) : null,
+          cover: c.units > 0 ? round(Math.round((c.stockUnits / (c.units / days)) / (7 - schedule.weeklyOff.length) * 10) / 10) : null,
         }))
         .sort((a, b) => b.value - a.value);
       return base({
