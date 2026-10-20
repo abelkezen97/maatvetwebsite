@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, AuthError } from "@/lib/auth/guard";
 import { todayInDubai } from "@/lib/db/commission";
+import { minimumPrice } from "@/lib/db/expiry";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,7 @@ export async function GET() {
       all(() =>
         supabase
           .from("invoices")
-          .select("invoice_date, grand_total, salesman_id, is_deleted")
+          .select("id, invoice_date, grand_total, salesman_id, is_deleted")
           .eq("country", country)
           .gte("invoice_date", rangeFrom)
           .lte("invoice_date", today)
@@ -204,6 +205,62 @@ export async function GET() {
       .sort((a, b) => b.sales - a.sales)
       .slice(0, 6);
 
+    // Price alert: lines salesmen sold below the price they should charge
+    // (list, or the 10/50/100 quantity price), or free. Salesmen may do this;
+    // the admin is warned.
+    const salesmanIds = new Set<string>(((people as any).data || []).filter((p: any) => p.role === "salesperson").map((p: any) => p.id));
+    const sevenAgo = addDays(today, -6);
+    const salesInvoices = liveInv.filter((i: any) => day(i.invoice_date) >= monthStart && salesmanIds.has(i.salesman_id));
+    const invMeta = new Map<string, { sm: string; date: string }>(salesInvoices.map((i: any) => [i.id, { sm: i.salesman_id, date: day(i.invoice_date) }]));
+    const alertAgg = { lines: 0, given: 0, focLines: 0, focUnits: 0, focValue: 0, last7Lines: 0, invoices: new Set<string>() };
+    const alertBySm = new Map<string, { given: number; lines: number }>();
+    const invIds = Array.from(invMeta.keys());
+    const omr = country === "Oman";
+    for (let i = 0; i < invIds.length; i += 150) {
+      const chunk = invIds.slice(i, i + 150);
+      const items = await all(() =>
+        supabase
+          .from("invoice_items")
+          .select("invoice_id, quantity, line_total, products(selling_price, selling_price_omr, price_10, price_50, price_100, price_10_omr, price_50_omr, price_100_omr)")
+          .in("invoice_id", chunk)
+      );
+      items.forEach((it: any) => {
+        const qty = num(it.quantity);
+        const p = Array.isArray(it.products) ? it.products[0] : it.products;
+        if (qty <= 0 || !p) return;
+        const min = minimumPrice(p, qty, omr);
+        const rate = num(it.line_total) / qty;
+        if (!(min > 0) || rate >= min - 0.0005) return;
+        const meta = invMeta.get(it.invoice_id)!;
+        const given = (min - rate) * qty;
+        alertAgg.lines += 1;
+        alertAgg.given += given;
+        alertAgg.invoices.add(it.invoice_id);
+        if (rate <= 0.0005) {
+          alertAgg.focLines += 1;
+          alertAgg.focUnits += qty;
+          alertAgg.focValue += min * qty;
+        }
+        if (meta.date >= sevenAgo) alertAgg.last7Lines += 1;
+        const cur = alertBySm.get(meta.sm) || { given: 0, lines: 0 };
+        cur.given += given;
+        cur.lines += 1;
+        alertBySm.set(meta.sm, cur);
+      });
+    }
+    const priceAlert = {
+      lines: alertAgg.lines,
+      invoices: alertAgg.invoices.size,
+      given: r2(alertAgg.given),
+      focUnits: alertAgg.focUnits,
+      focValue: r2(alertAgg.focValue),
+      last7Lines: alertAgg.last7Lines,
+      bySalesman: Array.from(alertBySm.entries())
+        .map(([id, v]) => ({ name: names.get(id) || "—", given: r2(v.given), lines: v.lines }))
+        .sort((a, b) => b.given - a.given)
+        .slice(0, 3),
+    };
+
     return NextResponse.json({
       country,
       today,
@@ -226,6 +283,7 @@ export async function GET() {
       expiry: { expiredUnits, expiredValue: r2(expiredValue), nearUnits, nearValue: r2(nearValue), nearLots: nearLots.length, expiredLots: expiredLots.length },
       expenses: { month: expMonth, pendingCount: expPending.length, pendingAmount: r2(expPending.reduce((s: number, e: any) => s + num(e.amount), 0)) },
       salesmen,
+      priceAlert,
     });
   } catch (error: any) {
     if (error instanceof AuthError) {

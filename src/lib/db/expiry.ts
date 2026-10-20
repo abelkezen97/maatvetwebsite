@@ -6,9 +6,9 @@ import { SupabaseClient } from "@supabase/supabase-js";
  * Each product's stock is kept in lots by expiry date (table product_batches,
  * view batch_stock). Invoice lines record the lot they were sold from.
  *
- * Pricing rule for salesmen: below the price (discount) or free (FOC) is only
- * allowed on stock expiring within 6 months. Expired stock can't be sold by a
- * salesman. The admin and accountant are not limited.
+ * Salesmen may set any price, including below list or free (FOC). The admin is
+ * warned about it on the dashboard instead. Expired stock still can't be sold
+ * by a salesman.
  */
 
 export const NEAR_EXPIRY_MONTHS = 6;
@@ -40,7 +40,7 @@ export interface LineForRule {
 }
 
 /** Lowest price allowed without a discount: the quantity tier price, else the list price. */
-function minimumPrice(p: any, qty: number, omr: boolean): number {
+export function minimumPrice(p: any, qty: number, omr: boolean): number {
   const n = (v: any) => (v === null || v === undefined || v === "" ? null : Number(v));
   const list = n(omr ? p.selling_price_omr : p.selling_price) ?? 0;
   const t100 = n(omr ? p.price_100_omr : p.price_100);
@@ -55,7 +55,7 @@ function minimumPrice(p: any, qty: number, omr: boolean): number {
 /**
  * Checks the lines of a sale. Returns an error message, or null when fine.
  * - every lot given must belong to the product and the country;
- * - salesman: no expired lots, and discount / FOC only from lots expiring within 6 months.
+ * - salesman: no expired lots (any price is allowed).
  */
 export async function checkExpiryRules(
   client: SupabaseClient,
@@ -63,7 +63,6 @@ export async function checkExpiryRules(
 ): Promise<string | null> {
   const lines = opts.lines.filter((l) => l.productId && l.quantity > 0);
   if (lines.length === 0) return null;
-  const omr = opts.country === "Oman";
 
   const batchIds = Array.from(new Set(lines.map((l) => l.batchId).filter(Boolean))) as string[];
   const lots = new Map<string, any>();
@@ -85,27 +84,10 @@ export async function checkExpiryRules(
 
   if (!opts.isSalesman) return null;
 
-  const productIds = Array.from(new Set(lines.map((l) => l.productId))) as string[];
-  const { data: products, error: pErr } = await client
-    .from("products")
-    .select("id, name, selling_price, selling_price_omr, price_10, price_50, price_100, price_10_omr, price_50_omr, price_100_omr")
-    .in("id", productIds);
-  if (pErr) throw new Error(`Could not read product prices: ${pErr.message}`);
-  const byId = new Map((products || []).map((p: any) => [p.id, p]));
-
   for (const l of lines) {
     const lot = l.batchId ? lots.get(l.batchId) : null;
-    const state = expiryState(lot?.expiry_date, opts.today);
-    if (state === "expired") {
+    if (expiryState(lot?.expiry_date, opts.today) === "expired") {
       return `${l.productName}: this stock expired on ${String(lot.expiry_date).slice(0, 10)} and can't be sold. Ask the office.`;
-    }
-    const p = byId.get(l.productId);
-    if (!p) continue;
-    const min = minimumPrice(p, l.quantity, omr);
-    const belowPrice = min > 0 && l.rate < min - 0.0005;
-    if (belowPrice && state !== "near") {
-      const what = l.rate <= 0.0005 ? "Free (FOC)" : "A price below list";
-      return `${l.productName}: ${what} is only allowed on stock expiring within ${NEAR_EXPIRY_MONTHS} months. Charge at least ${min} or choose near-expiry stock.`;
     }
   }
   return null;
