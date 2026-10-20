@@ -33,7 +33,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { AccountSnapshot, SavedDocuments } from "@/components/CustomerAccountPanels";
 import { Product, Customer, QuoteItem, Quote, Invoice, Receipt, ExpiryLot } from "@/types";
-import { expiryState, NEAR_EXPIRY_MONTHS } from "@/lib/db/expiry";
+import { expiryState } from "@/lib/db/expiry";
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { Permissions } from "@/lib/auth/permissions";
@@ -795,15 +795,19 @@ function NewInvoiceForm() {
   const isSalesmanUser = profile?.role === "salesperson";
   const lotOf = (item: InvoiceItemWithManual) => (lotsByProduct.get(String(item.productId)) || []).find((l) => l.id === item.batchId);
   const rateOf = (item: InvoiceItemWithManual) => Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
-  // Salesman: below price / FOC only from stock expiring within 6 months; never expired stock.
+  // Salesman: never expired stock. Any price is allowed; the admin is told about prices below list.
   const expiryProblem = (item: InvoiceItemWithManual): string | null => {
     if (!isSalesmanUser) return null;
     const lot = lotOf(item);
     const state = expiryState(lot?.expiryDate, todayStr);
     if (state === "expired") return `${item.productName}: this stock has expired. Choose another expiry date.`;
+    return null;
+  };
+  const belowListNote = (item: InvoiceItemWithManual): string | null => {
+    if (!isSalesmanUser) return null;
     const list = item.listPrice ?? item.price;
-    if (list > 0 && rateOf(item) < list - 0.0005 && state !== "near") {
-      return `${item.productName}: ${rateOf(item) <= 0.0005 ? "FOC" : "a price below list"} is only allowed on stock expiring within ${NEAR_EXPIRY_MONTHS} months.`;
+    if (list > 0 && rateOf(item) < list - 0.0005) {
+      return rateOf(item) <= 0.0005 ? "Free (FOC) line. The admin is told about this." : "Below the list price. The admin is told about this.";
     }
     return null;
   };
@@ -1180,7 +1184,6 @@ function NewInvoiceForm() {
                                 {lots.length === 0 ? (
                                   <p className="text-xs text-slate-400">
                                     No expiry dates recorded for this product.
-                                    {isSalesmanUser && " It can only be sold at the list price."}
                                   </p>
                                 ) : (
                                   <label className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -1207,13 +1210,19 @@ function NewInvoiceForm() {
                                     </select>
                                     {state === "near" && (
                                       <span className="text-[11px] font-medium text-amber-900 bg-amber-100 rounded-full px-2 py-0.5 whitespace-nowrap">
-                                        Near expiry · discount / FOC allowed
+                                        Near expiry
                                       </span>
                                     )}
                                     {chosen && Number(item.quantity) > chosen.qtyRemaining && (
                                       <span className="text-[11px] text-rose-800 bg-rose-100 rounded-full px-2 py-0.5 whitespace-nowrap">Only {chosen.qtyRemaining} at this date</span>
                                     )}
                                   </label>
+                                )}
+                                {!problem && belowListNote(item) && (
+                                  <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-800">
+                                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                                    {belowListNote(item)}
+                                  </p>
                                 )}
                                 {problem && (
                                   <p className="wiz-in mt-2 flex items-start gap-1.5 text-xs text-rose-800">
@@ -1233,7 +1242,6 @@ function NewInvoiceForm() {
                 {invoiceItems.length > 0 && (
                   <p className="text-xs text-slate-400 mt-4">
                     Leave Rate empty to charge the list price. Enter 0 for a free unit.
-                    {isSalesmanUser && ` Discounts and FOC only on stock expiring within ${NEAR_EXPIRY_MONTHS} months.`}
                   </p>
                 )}
 

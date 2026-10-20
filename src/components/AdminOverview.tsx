@@ -22,6 +22,7 @@ interface Overview {
   expiry: { expiredUnits: number; expiredValue: number; nearUnits: number; nearValue: number; nearLots: number; expiredLots: number };
   expenses: { month: number; pendingCount: number; pendingAmount: number };
   salesmen: { name: string; sales: number; invoices: number; collected: number }[];
+  priceAlert?: { lines: number; invoices: number; given: number; focUnits: number; focValue: number; last7Lines: number; bySalesman: { name: string; given: number; lines: number }[] };
 }
 
 function Trend({ series, currency }: { series: Overview["series"]; currency: string }) {
@@ -144,6 +145,17 @@ export function AdminOverview({ name }: { name: string }) {
   const collectedRate = d.sales.month.value > 0 ? Math.round((d.collections.month / d.sales.month.value) * 100) : null;
 
   const attention: React.ReactNode[] = [];
+  if (d.priceAlert && d.priceAlert.lines > 0)
+    attention.push(
+      <Attention
+        key="price"
+        tone="warn"
+        icon={AlertTriangle}
+        title={`Salesmen sold below price on ${d.priceAlert.lines} lines this month (${m(d.priceAlert.given)} given away)`}
+        detail={`${d.priceAlert.invoices} invoices${d.priceAlert.focUnits > 0 ? `, ${d.priceAlert.focUnits} free units (${m(d.priceAlert.focValue)})` : ""}${d.priceAlert.last7Lines > 0 ? `, ${d.priceAlert.last7Lines} lines in the last 7 days` : ""}. ${d.priceAlert.bySalesman.map((s) => `${s.name} ${m(s.given)}`).join(" · ")}`}
+        href="/performance"
+      />
+    );
   if (d.receivables.over60 > 0)
     attention.push(
       <Attention key="o60" tone="bad" icon={AlertTriangle} title={`${m(d.receivables.over60)} is more than 60 days overdue`} detail="Collect before it passes 100 days and the salesman loses commission." href="/reports/approaching-100" />
