@@ -2,33 +2,8 @@
 
 import React, { useState, useMemo, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  AlertTriangle,
-  Calendar,
-  CheckCircle,
-  ClipboardCheck,
-  Clock,
-  CreditCard,
-  FileText,
-  Hash,
-  Info,
-  Landmark,
-  MapPin,
-  MessageSquare,
-  Minus,
-  Package,
-  Plus,
-  Search,
-  ShieldAlert,
-  ShoppingBag,
-  Trash2,
-  User,
-  UserPlus,
-  Users,
-  Wallet,
-  X,
-} from "lucide-react";
-import { Avatar, ChoiceTile, ReviewSection, StepPanel, WizardBar, WizardStep, WizardStepper } from "@/components/wizard/WizardUI";
+import { AlertTriangle, CheckCircle, CreditCard, FileText, Info, Landmark, Search, ShieldAlert, Wallet, X } from "lucide-react";
+import { CustomerBalanceStrip, CustomerCombobox, FieldRow, FormActionBar, StaticValue, fieldInput, useWide } from "@/components/form/EntryForm";
 import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { AccountSnapshot, SavedDocuments } from "@/components/CustomerAccountPanels";
@@ -61,6 +36,7 @@ function NewInvoiceForm() {
   const { user, profile, isStaff } = useAuth();
   const currencyCode = currencyFor(profile?.country);
   const dp = decimalsFor(profile?.country);
+  const wide = useWide();
   
   // Form states
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -93,7 +69,6 @@ function NewInvoiceForm() {
   const [showNotes, setShowNotes] = useState(false);
   // Wizard: 0 customer, 1 products, 2 payment, 3 review.
   const [saved, setSaved] = useState<{ title: string; invoiceIds: string[]; paid: boolean } | null>(null);
-  const [step, setStep] = useState(editInvoiceNumber ? 3 : fromQuoteNumber ? 1 : 0);
   // Payment details (cheque / bank transfer paid at invoice time).
   const [chequeNumber, setChequeNumber] = useState("");
   const [chequeDate, setChequeDate] = useState(() => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date()));
@@ -275,15 +250,13 @@ function NewInvoiceForm() {
       const existing = invoicesList.find((i) => i.invoiceNumber === editInvoiceNumber || i.id === editInvoiceNumber);
       if (existing && existing.items && existing.items.length > 0) {
         populateFormWithInvoice(existing);
-        setStep(3);
       } else {
         fetch(`/api/invoices/${encodeURIComponent(editInvoiceNumber)}`)
           .then((res) => res.json())
           .then((data) => {
             if (data && !data.error) {
               populateFormWithInvoice(data);
-              setStep(3);
-            }
+                  }
           })
           .catch((err) => console.error("Failed to fetch invoice for editing:", err));
       }
@@ -309,7 +282,6 @@ function NewInvoiceForm() {
           setCustomerSearchQuery(quote.companyName);
         }
 
-        setStep(1);
         setInvoiceItems(quote.items.map(item => {
           const unitPrice = Number(item.price) || 0;
           const discPerUnit = Number(item.discount) || 0;
@@ -532,19 +504,11 @@ function NewInvoiceForm() {
   };
 
   const topRef = useRef<HTMLDivElement>(null);
-  const goTo = (s: number) => {
-    setStep(s);
-    setTimeout(() => {
-      topRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-      if (s === 1) productSearchRef.current?.focus({ preventScroll: true });
-    }, 30);
-  };
-
   const pickCustomer = (c: Customer) => {
     setSelectedCustomerId(c.id);
     setCustomerSearchQuery(`${c.company} ${c.name ? `(${c.name})` : ""}`);
     setShowCustomerDropdown(false);
-    goTo(1);
+    setTimeout(() => productSearchRef.current?.focus({ preventScroll: true }), 30);
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -741,7 +705,6 @@ function NewInvoiceForm() {
         setSelectedCustomerId(added.id);
         setCustomerSearchQuery(`${added.company} ${added.name ? `(${added.name})` : ""}`);
         setFormCustSuccess(true);
-        goTo(1);
         setTimeout(() => {
           setIsCustModalOpen(false);
           setFormCustSuccess(false);
@@ -825,14 +788,6 @@ function NewInvoiceForm() {
     if (askDetails && paymentMethod === "Bank Transfer" && !transferRef.trim()) return "Enter the transfer reference";
     return null;
   })();
-  const maxStep = !selectedCustomerId ? 0 : productsBlocker ? 1 : paymentBlocker ? 2 : 3;
-  const STEPS: WizardStep[] = [
-    { label: "Customer", icon: Users },
-    { label: "Products", icon: Package },
-    { label: "Payment", icon: CreditCard },
-    { label: "Review", icon: ClipboardCheck },
-  ];
-  const stepHint = step === 0 ? "Choose a customer" : step === 1 ? productsBlocker : step === 2 ? paymentBlocker : null;
   const METHODS = [
     { key: "Cash", icon: Wallet, hint: "Adds to your cash in hand" },
     { key: "Bank Transfer", icon: Landmark, hint: "Reference needed" },
@@ -840,9 +795,193 @@ function NewInvoiceForm() {
     { key: "Other", icon: CreditCard, hint: "Card or anything else" },
   ] as const;
 
-  const input =
-    "w-full px-3.5 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:border-accent focus:ring-4 focus:ring-accent/10";
-  const label = "block text-sm font-medium text-slate-700 mb-1.5";
+
+  const blocker = !selectedCustomerId ? "Choose a customer" : productsBlocker || paymentBlocker;
+  const todayLabel = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Dubai", day: "2-digit", month: "short", year: "numeric" }).format(new Date());
+  const pill = (on: boolean) =>
+    `h-10 px-4 text-sm transition-colors ${on ? "bg-accent text-white font-semibold" : "bg-white text-slate-700 hover:bg-slate-50"} disabled:opacity-40 disabled:cursor-not-allowed`;
+
+  const lineExtras = (item: InvoiceItemWithManual) => {
+    const lots = lotsByProduct.get(String(item.productId)) || [];
+    const chosen = lots.find((l) => l.id === item.batchId);
+    const state = expiryState(chosen?.expiryDate, todayStr);
+    const problem = expiryProblem(item);
+    const fmt = (d: string | null) =>
+      d ? new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "No date";
+    const stock = stockFor(String(item.productId));
+    const qty = Number(item.quantity) || 0;
+    const list = item.listPrice ?? item.price;
+    const rateNum = rateOf(item);
+    const off = Math.max(0, list - rateNum);
+    return (
+      <>
+        <div className="text-xs text-slate-500 mt-0.5">
+          List {money(list)}
+          {off > 0 && rateNum > 0 && <span className="text-emerald-700"> · {money(off)} off each</span>}
+          {rateNum === 0 && <span className="text-emerald-700"> · free</span>}
+          <span className={qty > stock ? "text-rose-700 font-medium" : ""}> · {qty > stock ? `only ${stock} in stock` : `${stock} in stock`}</span>
+        </div>
+        {lots.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <select
+              value={item.batchId || ""}
+              onChange={(e) => setLineLot(invoiceItems.indexOf(item), e.target.value)}
+              aria-label={`Expiry date of ${item.productName}`}
+              className={`h-8 px-2 rounded-md border text-xs bg-white max-w-full ${
+                state === "expired" ? "border-rose-300 text-rose-800" : state === "near" ? "border-amber-300 text-amber-900" : "border-slate-300 text-slate-700"
+              }`}
+            >
+              <option value="">Expiry: not chosen</option>
+              {lots.map((l) => {
+                const st = expiryState(l.expiryDate, todayStr);
+                const blockedLot = isSalesmanUser && st === "expired";
+                return (
+                  <option key={l.id} value={l.id} disabled={blockedLot}>
+                    {fmt(l.expiryDate)} · {l.qtyRemaining} left{st === "expired" ? " · expired" : st === "near" ? " · near expiry" : ""}
+                    {l.needsCheck ? " · to confirm" : ""}
+                  </option>
+                );
+              })}
+            </select>
+            {state === "near" && <span className="text-[11px] font-medium text-amber-900 bg-amber-100 rounded-full px-2 py-0.5">Near expiry</span>}
+            {chosen && qty > chosen.qtyRemaining && (
+              <span className="text-[11px] text-rose-800 bg-rose-100 rounded-full px-2 py-0.5">Only {chosen.qtyRemaining} at this date</span>
+            )}
+          </div>
+        )}
+        {!problem && belowListNote(item) && (
+          <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-800">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            {belowListNote(item)}
+          </p>
+        )}
+        {problem && (
+          <p className="mt-1.5 flex items-start gap-1.5 text-xs text-rose-800">
+            <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            {problem}
+          </p>
+        )}
+      </>
+    );
+  };
+
+  const itemSearch = (
+    <div className="relative max-w-xl">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+      <input
+        ref={productSearchRef}
+        type="text"
+        autoFocus={!!editInvoiceNumber || !!fromQuoteNumber}
+        placeholder="Type or click to select an item"
+        value={searchQuery}
+        onChange={(e) => {
+          setSearchQuery(e.target.value);
+          setShowProductDropdown(true);
+          setActiveProduct(0);
+        }}
+        onFocus={() => setShowProductDropdown(true)}
+        onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
+        onKeyDown={(e) => {
+          const list = filteredProducts.slice(0, 30);
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActiveProduct((i) => Math.min(i + 1, list.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActiveProduct((i) => Math.max(i - 1, 0));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            const p = list[activeProduct];
+            if (p && p.isAvailable !== false) handleAddProduct(p);
+          } else if (e.key === "Escape") {
+            setShowProductDropdown(false);
+          }
+        }}
+        className={`${fieldInput} pl-9 border-dashed`}
+      />
+      {showProductDropdown && searchQuery && (
+        <div className="wiz-in absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-72 overflow-y-auto">
+          {filteredProducts.length === 0 ? (
+            <div className="px-3 py-3 text-sm text-slate-500">No item matches “{searchQuery}”.</div>
+          ) : (
+            filteredProducts.slice(0, 30).map((p, i) => {
+              const off = p.isAvailable === false;
+              const inList = invoiceItems.find((it) => it.productId === p.id);
+              const on = i === activeProduct && !off;
+              const stock = stockFor(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={off}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => !off && handleAddProduct(p)}
+                  onMouseEnter={() => setActiveProduct(i)}
+                  className={`w-full text-left px-3 py-2 flex items-center justify-between gap-3 ${off ? "opacity-50 cursor-not-allowed" : on ? "bg-accent text-white" : "text-slate-900"}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm truncate">{p.name}</span>
+                    <span className={`block text-xs ${on ? "text-white/80" : stock <= 0 ? "text-rose-700" : "text-slate-500"}`}>
+                      {off ? "Not available" : `${stock} in stock`}
+                      {inList ? ` · ${inList.quantity} on this invoice` : ""}
+                    </span>
+                  </span>
+                  <span className={`text-sm shrink-0 ${on ? "text-white" : "text-slate-700"}`}>{money(p.price)}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const qtyInput = (item: InvoiceItemWithManual, idx: number, cls: string) => {
+    const zero = !(Number(item.quantity) > 0);
+    const short = (Number(item.quantity) || 0) > stockFor(String(item.productId));
+    return (
+      <input
+        ref={(el) => {
+          if (el) qtyRefs.current.set(String(item.productId), el);
+          else qtyRefs.current.delete(String(item.productId));
+        }}
+        type="number"
+        min="0"
+        inputMode="numeric"
+        value={item.quantity ?? ""}
+        onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
+        onFocus={(e) => e.target.select()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            productSearchRef.current?.focus();
+          }
+        }}
+        className={`${fieldInput} ${cls} text-right ${zero || short ? "border-rose-400 bg-rose-50" : ""}`}
+        aria-label={`Quantity of ${item.productName}`}
+      />
+    );
+  };
+  const rateInput = (item: InvoiceItemWithManual, idx: number, cls: string) => (
+    <input
+      type="number"
+      min="0"
+      step="any"
+      inputMode="decimal"
+      placeholder={(item.listPrice ?? item.price).toFixed(dp)}
+      value={item.rate ?? ""}
+      onChange={(e) => handleUpdateRate(idx, e.target.value)}
+      onFocus={(e) => e.target.select()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          productSearchRef.current?.focus();
+        }
+      }}
+      className={`${fieldInput} ${cls} text-right`}
+      aria-label={`Rate of ${item.productName}`}
+    />
+  );
 
   return (
     <div className="w-full">
@@ -857,17 +996,13 @@ function NewInvoiceForm() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (step < 3) {
-            if (step < maxStep) goTo(step + 1);
-          } else {
-            handleSubmit();
-          }
+          if (!blocker) handleSubmit();
         }}
-        className="px-4 sm:px-6 lg:px-8 pt-6 md:pt-8 pb-4 max-w-5xl mx-auto text-start"
+        className="px-4 sm:px-6 lg:px-8 pt-6 max-w-6xl mx-auto text-start"
       >
         <div ref={topRef} className="scroll-mt-24" />
 
-        {saved && (
+        {saved ? (
           <SavedDocuments
             title={saved.title}
             customerId={selectedCustomerId}
@@ -878,14 +1013,10 @@ function NewInvoiceForm() {
             listHref="/invoices"
             listLabel="Go to invoices"
           />
-        )}
-
-        {!saved && (
+        ) : (
           <>
-            <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onGo={goTo} />
-
             {errorMessage && (
-              <div className="wiz-in flex items-start justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 mb-5 text-sm text-rose-800">
+              <div className="wiz-in flex items-start justify-between gap-3 rounded-md bg-rose-50 border border-rose-200 px-4 py-3 mb-5 text-sm text-rose-800">
                 <span className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                   {errorMessage}
@@ -896,471 +1027,146 @@ function NewInvoiceForm() {
               </div>
             )}
 
-            {/* STEP 1: CUSTOMER */}
-            {step === 0 && (
-              <StepPanel
-                stepKey="customer"
-                icon={Users}
-                title="Who is this invoice for?"
-                subtitle="Search and tap a customer to continue."
-                action={
-                  <button
-                    type="button"
-                    onClick={() => setIsCustModalOpen(true)}
-                    className="flex items-center gap-1.5 text-sm font-semibold text-accent bg-accent-light hover:bg-accent hover:text-white rounded-xl px-3.5 py-2.5 transition"
-                  >
-                    <UserPlus className="w-4 h-4" /> New customer
-                  </button>
-                }
-              >
-                <div className="relative mb-4">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="Search clinic, farm or doctor"
-                    value={selectedCustomer && customerSearchQuery.startsWith(selectedCustomer.company) ? "" : customerSearchQuery}
-                    onChange={(e) => {
-                      setCustomerSearchQuery(e.target.value);
-                      setActiveCustomer(0);
+            <div className="wiz-in bg-white border border-slate-200 rounded-lg shadow-sm">
+              {/* Header fields */}
+              <div className="p-5 md:p-8 space-y-5 max-w-3xl">
+                <FieldRow label="Customer name" required>
+                  <CustomerCombobox
+                    customers={customers}
+                    selectedId={selectedCustomerId}
+                    onPick={pickCustomer}
+                    onClear={() => {
+                      setSelectedCustomerId("");
+                      setCustomerSearchQuery("");
                     }}
-                    onKeyDown={(e) => {
-                      const list = filteredCustomers.slice(0, 40);
-                      if (e.key === "ArrowDown") {
-                        e.preventDefault();
-                        setActiveCustomer((i) => Math.min(i + 1, list.length - 1));
-                      } else if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        setActiveCustomer((i) => Math.max(i - 1, 0));
-                      } else if (e.key === "Enter") {
-                        e.preventDefault();
-                        if (list[activeCustomer]) pickCustomer(list[activeCustomer]);
-                      }
-                    }}
-                    className={`${input} pl-12 py-3.5 text-base`}
+                    onNew={() => setIsCustModalOpen(true)}
+                    money={money}
+                    disabled={!!editInvoiceNumber}
+                    autoFocus={!selectedCustomerId && !editInvoiceNumber && !fromQuoteNumber}
                   />
-                </div>
-                {filteredCustomers.length === 0 ? (
-                  <div className="text-center py-10">
-                    <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                    <p className="text-sm text-slate-500">No customer matches.</p>
-                    <button type="button" onClick={() => setIsCustModalOpen(true)} className="mt-2 text-sm font-semibold text-accent hover:underline">
-                      Add a new customer
+                  {selectedCustomer && (
+                    <CustomerBalanceStrip
+                      items={[
+                        { label: "Owes", value: money(owed), tone: owed > 0 ? "bad" : "ok" },
+                        ...(selectedCustomer.address ? [{ label: "Location", value: selectedCustomer.address }] : []),
+                        ...(cashOnly ? [{ label: "Status", value: "Cash only", tone: "warn" as const }] : []),
+                      ]}
+                    />
+                  )}
+                </FieldRow>
+
+                <FieldRow
+                  label="Invoice#"
+                  hint={
+                    canEditNumber
+                      ? isCustomInvoiceNumber
+                        ? "New numbers will continue after this one."
+                        : editInvoiceNumber
+                          ? "You can change the number."
+                          : "Next in the series. Type to use another."
+                      : undefined
+                  }
+                >
+                  {canEditNumber ? (
+                    <input
+                      value={invoiceNumber}
+                      onChange={(e) => {
+                        setInvoiceNumber(e.target.value);
+                        setIsCustomInvoiceNumber(true);
+                      }}
+                      className={`${fieldInput} max-w-[12rem]`}
+                      aria-label="Invoice number"
+                    />
+                  ) : (
+                    <StaticValue muted={!editInvoiceNumber}>{editInvoiceNumber || "Given automatically on save"}</StaticValue>
+                  )}
+                </FieldRow>
+
+                <FieldRow label="Invoice date">
+                  <StaticValue>{todayLabel}</StaticValue>
+                </FieldRow>
+
+                <FieldRow label="Payment" required>
+                  <div className="inline-flex flex-wrap rounded-md border border-slate-300 overflow-hidden" role="radiogroup" aria-label="Payment">
+                    <button type="button" role="radio" aria-checked={status === "Paid"} onClick={() => setStatus("Paid")} className={pill(status === "Paid")}>
+                      Paid now
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={status === "Credit"}
+                      disabled={cashOnly}
+                      onClick={() => setStatus("Credit")}
+                      className={`border-l border-slate-300 ${pill(status === "Credit")}`}
+                    >
+                      On credit
                     </button>
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto -mx-1 px-1 py-1">
-                    {filteredCustomers.slice(0, 40).map((c, i) => {
-                      const chosen = c.id === selectedCustomerId;
-                      const active = i === activeCustomer;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => pickCustomer(c)}
-                          onMouseEnter={() => setActiveCustomer(i)}
-                          className={`wiz-in flex items-center gap-3 text-left rounded-xl border p-3 transition-all duration-150 ${
-                            chosen
-                              ? "border-accent bg-accent-light/60 ring-2 ring-accent/20"
-                              : active
-                                ? "border-slate-300 bg-slate-50 shadow-sm"
-                                : "border-slate-200 bg-white hover:border-slate-300"
-                          }`}
-                          style={{ animationDelay: `${Math.min(i, 12) * 20}ms` }}
-                        >
-                          <Avatar name={c.company} />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-semibold text-slate-900 truncate">{c.company}</div>
-                            <div className="text-xs text-slate-500 truncate flex items-center gap-1">
-                              {c.address && <MapPin className="w-3 h-3 shrink-0" />}
-                              {[c.name, c.address].filter(Boolean).join(" · ") || "—"}
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            {(c.pendingBillwiseAmount || 0) > 0 ? (
-                              <span className="inline-block text-xs font-medium text-rose-700 bg-rose-50 rounded-full px-2 py-0.5">{money(c.pendingBillwiseAmount || 0)}</span>
-                            ) : (
-                              <span className="inline-block text-xs text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">Clear</span>
-                            )}
-                            {c.cashOnly && <div className="text-[11px] text-amber-700 mt-1">Cash only</div>}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </StepPanel>
-            )}
-
-            {/* STEP 2: PRODUCTS */}
-            {step === 1 && (
-              <StepPanel
-                stepKey="products"
-                icon={Package}
-                title="What are they buying?"
-                subtitle={selectedCustomer ? <>for <span className="font-medium text-slate-700">{selectedCustomer.company}</span></> : undefined}
-              >
-                <div className="relative mb-5">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 pointer-events-none" />
-                  <input
-                    ref={productSearchRef}
-                    type="text"
-                    placeholder="Search product name or code, then press Enter"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setShowProductDropdown(true);
-                      setActiveProduct(0);
-                    }}
-                    onFocus={() => setShowProductDropdown(true)}
-                    onBlur={() => setTimeout(() => setShowProductDropdown(false), 150)}
-                    onKeyDown={(e) => {
-                      const list = filteredProducts.slice(0, 30);
-                      if (e.key === "ArrowDown") {
-                        e.preventDefault();
-                        setActiveProduct((i) => Math.min(i + 1, list.length - 1));
-                      } else if (e.key === "ArrowUp") {
-                        e.preventDefault();
-                        setActiveProduct((i) => Math.max(i - 1, 0));
-                      } else if (e.key === "Enter") {
-                        e.preventDefault();
-                        const p = list[activeProduct];
-                        if (p && p.isAvailable !== false) handleAddProduct(p);
-                      } else if (e.key === "Escape") {
-                        setShowProductDropdown(false);
-                      }
-                    }}
-                    className={`${input} pl-12 py-3.5 text-base`}
-                  />
-                  {showProductDropdown && searchQuery && (
-                    <div className="wiz-in absolute left-0 right-0 z-30 mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl shadow-slate-900/10 max-h-80 overflow-y-auto p-1.5">
-                      {filteredProducts.length === 0 ? (
-                        <div className="px-3 py-4 text-sm text-slate-500">No product matches “{searchQuery}”.</div>
-                      ) : (
-                        filteredProducts.slice(0, 30).map((p, i) => {
-                          const off = p.isAvailable === false;
-                          const inList = invoiceItems.find((it) => it.productId === p.id);
-                          const stock = stockFor(p.id);
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              disabled={off}
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => !off && handleAddProduct(p)}
-                              onMouseEnter={() => setActiveProduct(i)}
-                              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 ${
-                                off ? "opacity-50 cursor-not-allowed" : i === activeProduct ? "bg-slate-100" : ""
-                              }`}
-                            >
-                              <span className="w-9 h-9 rounded-lg bg-slate-100 text-slate-500 grid place-items-center shrink-0">
-                                <Package className="w-4 h-4" />
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium text-slate-900 truncate">{p.name}</div>
-                                <div className={`text-xs ${stock <= 0 ? "text-rose-700" : "text-slate-500"}`}>
-                                  {off ? "Not available" : `${stock} in stock`}
-                                  {inList ? ` · ${inList.quantity} on this invoice` : ""}
-                                </div>
-                              </div>
-                              <span className="text-sm font-semibold text-slate-800 shrink-0">{money(p.price)}</span>
-                              {!off && <Plus className="w-4 h-4 text-accent shrink-0" />}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
+                  {cashOnly && (
+                    <p className="mt-2 flex items-start gap-2 text-sm text-amber-900">
+                      <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+                      {selectedCustomer?.cashOnlyReason || "A cheque from this customer bounced."} Cash only: no credit and no cheques.
+                    </p>
                   )}
-                </div>
-
-                {invoiceItems.length === 0 ? (
-                  <div className="text-center py-12 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50">
-                    <ShoppingBag className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                    <p className="text-sm font-medium text-slate-600">No products yet</p>
-                    <p className="text-xs text-slate-400 mt-1">Search above and press Enter to add.</p>
-                  </div>
-                ) : (
-                  <ul className="space-y-3">
-                    {invoiceItems.map((item, idx) => {
-                      const stock = stockFor(String(item.productId));
-                      const qty = Number(item.quantity) || 0;
-                      const short = qty > stock;
-                      const zero = qty <= 0;
-                      const list = item.listPrice ?? item.price;
-                      const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
-                      const off = Math.max(0, list - rateNum);
-                      const backToSearch = (e: React.KeyboardEvent) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          productSearchRef.current?.focus();
-                        }
-                      };
-                      return (
-                        <li
-                          key={item.productId}
-                          className={`wiz-in rounded-xl border p-4 transition ${zero || short ? "border-rose-200 bg-rose-50/40" : "border-slate-200 bg-white hover:border-slate-300"}`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <span className="w-10 h-10 rounded-lg bg-accent-light text-accent grid place-items-center shrink-0">
-                              <Package className="w-5 h-5" />
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-sm font-semibold text-slate-900">{item.productName}</div>
-                              <div className="flex flex-wrap gap-1.5 mt-1">
-                                <span className="text-[11px] text-slate-600 bg-slate-100 rounded-full px-2 py-0.5">List {money(list)}</span>
-                                {off > 0 && rateNum > 0 && <span className="text-[11px] text-emerald-800 bg-emerald-50 rounded-full px-2 py-0.5">{money(off)} off each</span>}
-                                {rateNum === 0 && <span className="text-[11px] text-emerald-800 bg-emerald-50 rounded-full px-2 py-0.5">Free</span>}
-                                <span className={`text-[11px] rounded-full px-2 py-0.5 ${short ? "text-rose-800 bg-rose-100" : "text-slate-600 bg-slate-100"}`}>
-                                  {short ? `Only ${stock} in stock` : `${stock} in stock`}
-                                </span>
-                                {zero && <span className="text-[11px] text-rose-800 bg-rose-100 rounded-full px-2 py-0.5">Quantity is 0</span>}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(idx)}
-                              className="p-2 -m-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                              aria-label={`Remove ${item.productName}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                          <div className="mt-4 grid grid-cols-2 sm:grid-cols-[auto_auto_1fr] gap-3 sm:gap-5 items-end">
-                            <div>
-                              <span className="block text-xs text-slate-500 mb-1.5">Quantity</span>
-                              <div className={`inline-flex items-center rounded-xl border bg-white ${zero || short ? "border-rose-300" : "border-slate-200"}`}>
-                                <button type="button" onClick={() => handleUpdateQuantity(idx, String(Math.max(0, qty - 1)))} className="w-11 h-11 grid place-items-center text-slate-600 hover:bg-slate-100 rounded-l-xl transition" aria-label="One less">
-                                  <Minus className="w-4 h-4" />
-                                </button>
-                                <input
-                                  ref={(el) => {
-                                    if (el) qtyRefs.current.set(String(item.productId), el);
-                                    else qtyRefs.current.delete(String(item.productId));
-                                  }}
-                                  type="number"
-                                  min="0"
-                                  inputMode="numeric"
-                                  value={item.quantity ?? ""}
-                                  onChange={(e) => handleUpdateQuantity(idx, e.target.value)}
-                                  onFocus={(e) => e.target.select()}
-                                  onKeyDown={backToSearch}
-                                  className="w-14 h-11 text-center text-base font-semibold text-slate-900 border-x border-slate-200 focus:outline-none"
-                                  aria-label={`Quantity of ${item.productName}`}
-                                />
-                                <button type="button" onClick={() => handleUpdateQuantity(idx, String(qty + 1))} className="w-11 h-11 grid place-items-center text-slate-600 hover:bg-slate-100 rounded-r-xl transition" aria-label="One more">
-                                  <Plus className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                            <label className="block">
-                              <span className="block text-xs text-slate-500 mb-1.5">Rate ({currencyCode})</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                inputMode="decimal"
-                                placeholder={list.toFixed(dp)}
-                                value={item.rate ?? ""}
-                                onChange={(e) => handleUpdateRate(idx, e.target.value)}
-                                onFocus={(e) => e.target.select()}
-                                onKeyDown={backToSearch}
-                                className={`${input} w-full sm:w-32 h-11 py-0 text-right font-semibold`}
-                              />
-                            </label>
-                            <div className="col-span-2 sm:col-span-1 text-right">
-                              <span className="block text-xs text-slate-500 mb-1">Amount</span>
-                              <span className="text-lg font-semibold text-slate-900">{money(item.total)}</span>
-                            </div>
-                          </div>
-                          {(() => {
-                            const lots = lotsByProduct.get(String(item.productId)) || [];
-                            const chosen = lots.find((l) => l.id === item.batchId);
-                            const state = expiryState(chosen?.expiryDate, todayStr);
-                            const problem = expiryProblem(item);
-                            const fmt = (d: string | null) =>
-                              d ? new Date(`${d}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "No date";
-                            return (
-                              <div className="mt-3 pt-3 border-t border-slate-100">
-                                {lots.length === 0 ? (
-                                  <p className="text-xs text-slate-400">
-                                    No expiry dates recorded for this product.
-                                  </p>
-                                ) : (
-                                  <label className="flex flex-col sm:flex-row sm:items-center gap-2">
-                                    <span className="text-xs text-slate-500 shrink-0">Expiry</span>
-                                    <select
-                                      value={item.batchId || ""}
-                                      onChange={(e) => setLineLot(idx, e.target.value)}
-                                      className={`h-10 px-3 rounded-xl border text-sm bg-white flex-1 sm:max-w-sm ${
-                                        state === "expired" ? "border-rose-300 text-rose-800" : state === "near" ? "border-amber-300 text-amber-900" : "border-slate-200 text-slate-800"
-                                      }`}
-                                    >
-                                      <option value="">Not chosen</option>
-                                      {lots.map((l) => {
-                                        const st = expiryState(l.expiryDate, todayStr);
-                                        const blocked = isSalesmanUser && st === "expired";
-                                        return (
-                                          <option key={l.id} value={l.id} disabled={blocked}>
-                                            {fmt(l.expiryDate)} · {l.qtyRemaining} left
-                                            {st === "expired" ? " · expired" : st === "near" ? " · near expiry" : ""}
-                                            {l.needsCheck ? " · to confirm" : ""}
-                                          </option>
-                                        );
-                                      })}
-                                    </select>
-                                    {state === "near" && (
-                                      <span className="text-[11px] font-medium text-amber-900 bg-amber-100 rounded-full px-2 py-0.5 whitespace-nowrap">
-                                        Near expiry
-                                      </span>
-                                    )}
-                                    {chosen && Number(item.quantity) > chosen.qtyRemaining && (
-                                      <span className="text-[11px] text-rose-800 bg-rose-100 rounded-full px-2 py-0.5 whitespace-nowrap">Only {chosen.qtyRemaining} at this date</span>
-                                    )}
-                                  </label>
-                                )}
-                                {!problem && belowListNote(item) && (
-                                  <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-800">
-                                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                                    {belowListNote(item)}
-                                  </p>
-                                )}
-                                {problem && (
-                                  <p className="wiz-in mt-2 flex items-start gap-1.5 text-xs text-rose-800">
-                                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                                    {problem}
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-
-                {invoiceItems.length > 0 && (
-                  <p className="text-xs text-slate-400 mt-4">
-                    Leave Rate empty to charge the list price. Enter 0 for a free unit.
-                  </p>
-                )}
-
-                {seriesSplit && seriesSplit.omanCount > 0 && (
-                  <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
-                    <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                    {seriesSplit.uaeCount > 0
-                      ? editInvoiceNumber
-                        ? "UAE- and Oman-registered products can't share one invoice. Move one kind to a separate invoice."
-                        : `This will save as two invoices: UAE-registered ${money(seriesSplit.uaeTotal)} and Oman-registered ${money(seriesSplit.omanTotal)}.`
-                      : "Oman-registered products only: saved with its own number and printed without the company header."}
-                  </p>
-                )}
-              </StepPanel>
-            )}
-
-            {/* STEP 3: PAYMENT */}
-            {step === 2 && (
-              <StepPanel stepKey="payment" icon={CreditCard} title="How are they paying?" subtitle={<>Invoice total <span className="font-semibold text-slate-800">{money(grandTotal)}</span></>}>
-                {cashOnly && (
-                  <p className="mb-5 flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
-                    <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
-                    {selectedCustomer?.cashOnlyReason || "A cheque from this customer bounced."} Cash only: no credit and no cheques.
-                  </p>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <ChoiceTile selected={status === "Paid"} icon={CheckCircle} title="Paid now" hint="A receipt is made with the invoice" onClick={() => setStatus("Paid")} />
-                  <ChoiceTile
-                    selected={status === "Credit"}
-                    disabled={cashOnly}
-                    icon={Clock}
-                    title="On credit"
-                    hint={cashOnly ? "Not allowed for this customer" : "Customer pays later"}
-                    onClick={() => setStatus("Credit")}
-                  />
-                </div>
+                </FieldRow>
 
                 {status === "Paid" ? (
-                  <div key="paid" className="wiz-in mt-7">
-                    <span className={label}>Paid by</span>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                      {METHODS.map((m) => {
-                        const blocked = cashOnly && m.key === "Cheque";
-                        return (
-                          <ChoiceTile
-                            key={m.key}
-                            selected={paymentMethod === m.key}
-                            disabled={blocked}
-                            icon={m.icon}
-                            title={methodLabel(m.key)}
-                            hint={blocked ? "Not accepted" : m.hint}
-                            onClick={() => setPaymentMethod(m.key)}
-                          />
-                        );
-                      })}
-                    </div>
-
+                  <>
+                    <FieldRow label="Paid by">
+                      <div className="inline-flex flex-wrap rounded-md border border-slate-300 overflow-hidden" role="radiogroup" aria-label="Paid by">
+                        {METHODS.map((m, i) => {
+                          const blockedM = cashOnly && m.key === "Cheque";
+                          return (
+                            <button
+                              key={m.key}
+                              type="button"
+                              role="radio"
+                              aria-checked={paymentMethod === m.key}
+                              disabled={blockedM}
+                              onClick={() => setPaymentMethod(m.key)}
+                              className={`${i > 0 ? "border-l border-slate-300" : ""} ${pill(paymentMethod === m.key)}`}
+                            >
+                              {methodLabel(m.key)}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {paymentMethod === "Cash" && <p className="mt-1.5 text-xs text-slate-500">Adds to your cash in hand.</p>}
+                    </FieldRow>
                     {askDetails && paymentMethod === "Cheque" && (
-                      <div key="cheque" className="wiz-in mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 md:p-5">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-4">
-                          <FileText className="w-4 h-4 text-accent" /> Cheque details
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          <label className="block">
-                            <span className={label}>Cheque no.</span>
-                            <input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} className={input} inputMode="numeric" placeholder="e.g. 000123" />
-                          </label>
-                          <label className="block">
-                            <span className={label}>Cheque date</span>
-                            <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className={input} />
-                          </label>
-                          <label className="block">
-                            <span className={label}>
-                              Bank <span className="font-normal text-slate-400">(optional)</span>
-                            </span>
-                            <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={input} placeholder="e.g. Emirates NBD" />
-                          </label>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-3">The invoice counts as paid once the office marks the cheque cleared.</p>
-                      </div>
+                      <>
+                        <FieldRow label="Cheque no." required>
+                          <input value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} className={`${fieldInput} max-w-xs`} inputMode="numeric" placeholder="e.g. 000123" />
+                        </FieldRow>
+                        <FieldRow label="Cheque date" required hint="The invoice counts as paid once the office marks the cheque cleared.">
+                          <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className={`${fieldInput} max-w-xs`} />
+                        </FieldRow>
+                        <FieldRow label="Bank">
+                          <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={`${fieldInput} max-w-xs`} placeholder="Optional, e.g. Emirates NBD" />
+                        </FieldRow>
+                      </>
                     )}
-
                     {askDetails && paymentMethod === "Bank Transfer" && (
-                      <div key="transfer" className="wiz-in mt-5 rounded-2xl bg-slate-50 border border-slate-200 p-4 md:p-5">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-4">
-                          <Landmark className="w-4 h-4 text-accent" /> Transfer details
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <label className="block">
-                            <span className={label}>Transfer reference</span>
-                            <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} className={input} placeholder="Ref. no. on the transfer slip" />
-                          </label>
-                          <label className="block">
-                            <span className={label}>
-                              From bank <span className="font-normal text-slate-400">(optional)</span>
-                            </span>
-                            <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={input} placeholder="e.g. ADCB" />
-                          </label>
-                        </div>
-                      </div>
+                      <>
+                        <FieldRow label="Transfer ref." required>
+                          <input value={transferRef} onChange={(e) => setTransferRef(e.target.value)} className={`${fieldInput} max-w-xs`} placeholder="Ref. no. on the transfer slip" />
+                        </FieldRow>
+                        <FieldRow label="From bank">
+                          <input value={payBank} onChange={(e) => setPayBank(e.target.value)} className={`${fieldInput} max-w-xs`} placeholder="Optional, e.g. ADCB" />
+                        </FieldRow>
+                      </>
                     )}
-                  </div>
+                  </>
                 ) : (
-                  <div key="credit" className="wiz-in mt-7">
-                    <span className={label}>Due in</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {[30, 60, 90].map((d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() => setCreditDays(d)}
-                          className={`px-5 py-3 min-h-[48px] rounded-xl text-sm font-semibold border-2 transition ${
-                            creditDaysNum === d ? "border-accent bg-accent-light/60 text-accent" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                          }`}
-                        >
-                          {d} days
-                        </button>
-                      ))}
+                  <FieldRow label="Due in" hint={`Due on ${dueDateLabel}`}>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="inline-flex flex-wrap rounded-md border border-slate-300 overflow-hidden" role="radiogroup" aria-label="Due in">
+                        {[30, 60, 90].map((d, i) => (
+                          <button key={d} type="button" role="radio" aria-checked={creditDaysNum === d} onClick={() => setCreditDays(d)} className={`${i > 0 ? "border-l border-slate-300" : ""} ${pill(creditDaysNum === d)}`}>
+                            {d} days
+                          </button>
+                        ))}
+                      </div>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -1371,200 +1177,158 @@ function NewInvoiceForm() {
                           onBlur={() => {
                             if (creditDays === "") setCreditDays(30);
                           }}
-                          className={`${input} w-24 h-12 text-center font-semibold`}
+                          className={`${fieldInput} w-20 text-center`}
                           aria-label="Credit days"
                         />
                         <span className="text-sm text-slate-500">days</span>
                       </div>
                     </div>
-                    <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
-                      <Calendar className="w-4 h-4 text-accent" /> Due on <span className="font-semibold text-slate-900">{dueDateLabel}</span>
-                    </p>
+                  </FieldRow>
+                )}
+              </div>
+
+              {/* Item table */}
+              <div className="border-t border-slate-200">
+                <div className="px-5 md:px-8 pt-5 pb-3">
+                  <h2 className="text-sm font-semibold text-slate-900">Item table</h2>
+                </div>
+                {wide ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[680px]">
+                      <thead>
+                        <tr className="bg-slate-50 border-y border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                          <th className="text-left font-semibold px-5 md:px-8 py-2.5">Item details</th>
+                          <th className="text-right font-semibold px-3 py-2.5 w-32">Quantity</th>
+                          <th className="text-right font-semibold px-3 py-2.5 w-36">Rate</th>
+                          <th className="text-right font-semibold px-3 py-2.5 w-36">Amount</th>
+                          <th className="w-12 pr-5 md:pr-8" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {invoiceItems.map((item, idx) => (
+                          <tr key={item.productId} className="wiz-in align-top hover:bg-slate-50/60 transition-colors">
+                            <td className="px-5 md:px-8 py-3">
+                              <div className="text-slate-900 font-medium">{item.productName}</div>
+                              {lineExtras(item)}
+                            </td>
+                            <td className="px-3 py-2">{qtyInput(item, idx, "h-9")}</td>
+                            <td className="px-3 py-2">{rateInput(item, idx, "h-9")}</td>
+                            <td className="px-3 py-3 text-right font-medium text-slate-900 whitespace-nowrap">{(Number(item.total) || 0).toFixed(dp)}</td>
+                            <td className="pr-5 md:pr-8 py-2.5 text-right">
+                              <button type="button" onClick={() => handleRemoveItem(idx)} className="p-1.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition" aria-label={`Remove ${item.productName}`}>
+                                <X className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr>
+                          <td className="px-5 md:px-8 py-3" colSpan={5}>
+                            {itemSearch}
+                            {invoiceItems.length === 0 && <p className="text-xs text-slate-500 mt-2">Add the first item. Press Enter to add, type the quantity, then Enter again for the next item.</p>}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
+                ) : (
+                  <ul className="divide-y divide-slate-100 border-t border-slate-200">
+                    {invoiceItems.map((item, idx) => (
+                      <li key={item.productId} className="wiz-in px-5 py-3.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-slate-900">{item.productName}</div>
+                            {lineExtras(item)}
+                          </div>
+                          <button type="button" onClick={() => handleRemoveItem(idx)} className="p-1.5 -m-1 rounded text-slate-400 hover:text-rose-600" aria-label={`Remove ${item.productName}`}>
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mt-2.5 items-end">
+                          <label className="block">
+                            <span className="block text-[11px] text-slate-500 mb-1">Qty</span>
+                            {qtyInput(item, idx, "")}
+                          </label>
+                          <label className="block">
+                            <span className="block text-[11px] text-slate-500 mb-1">Rate</span>
+                            {rateInput(item, idx, "")}
+                          </label>
+                          <div className="text-right">
+                            <span className="block text-[11px] text-slate-500 mb-1">Amount</span>
+                            <span className="h-10 flex items-center justify-end text-sm font-semibold text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</span>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                    <li className="px-5 py-3.5">
+                      {itemSearch}
+                      {invoiceItems.length === 0 && <p className="text-xs text-slate-500 mt-2">Add the first item, type the quantity, then press Enter for the next one.</p>}
+                    </li>
+                  </ul>
                 )}
 
-                <div className="mt-7 pt-6 border-t border-slate-100">
-                  {showNotes ? (
-                    <label className="block wiz-in">
-                      <span className={label}>Note on the invoice</span>
-                      <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={input} />
+                {invoiceItems.length > 0 && <p className="px-5 md:px-8 pb-3 text-xs text-slate-500">Leave Rate empty to charge the list price. Enter 0 for a free unit.</p>}
+
+                {seriesSplit && seriesSplit.omanCount > 0 && (
+                  <p className="mx-5 md:mx-8 mb-4 flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+                    <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                    {seriesSplit.uaeCount > 0
+                      ? editInvoiceNumber
+                        ? "UAE- and Oman-registered products can't share one invoice. Move one kind to a separate invoice."
+                        : `This will save as two invoices: UAE-registered ${money(seriesSplit.uaeTotal)} and Oman-registered ${money(seriesSplit.omanTotal)}.`
+                      : "Oman-registered products only: saved with its own number and printed without the company header."}
+                  </p>
+                )}
+
+                {/* Notes and totals */}
+                <div className="px-5 md:px-8 py-5 flex flex-col md:flex-row gap-6 md:justify-between border-t border-slate-200">
+                  <div className="w-full md:max-w-md space-y-4">
+                    <label className="block">
+                      <span className="block text-sm text-slate-600 mb-1.5">Customer notes</span>
+                      <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} className={`${fieldInput} h-auto py-2`} placeholder="Note printed on the invoice" />
                     </label>
-                  ) : (
-                    <button type="button" onClick={() => setShowNotes(true)} className="flex items-center gap-1.5 text-sm font-semibold text-accent hover:bg-accent-light rounded-lg px-2.5 py-1.5 -mx-2.5 transition">
-                      <MessageSquare className="w-4 h-4" /> Add a note
-                    </button>
-                  )}
-                </div>
-              </StepPanel>
-            )}
-
-            {/* STEP 4: REVIEW */}
-            {step === 3 && (
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 items-start">
-                <div className="space-y-5 min-w-0">
-                  <ReviewSection icon={User} title="Customer" onEdit={editInvoiceNumber ? undefined : () => goTo(0)}>
-                    <div className="flex items-center gap-3">
-                      <Avatar name={selectedCustomer?.company || customerSearchQuery} size="lg" />
-                      <div className="min-w-0">
-                        <div className="font-semibold text-slate-900 truncate">{selectedCustomer?.company || customerSearchQuery}</div>
-                        {(selectedCustomer?.name || selectedCustomer?.address) && (
-                          <div className="text-sm text-slate-500 truncate">{[selectedCustomer?.name, selectedCustomer?.address].filter(Boolean).join(" · ")}</div>
-                        )}
+                  </div>
+                  <dl className="w-full md:w-80 bg-slate-50 rounded-md border border-slate-200 p-4 text-sm space-y-2 self-start">
+                    <div className="flex justify-between text-slate-600">
+                      <dt>Sub total</dt>
+                      <dd className="font-medium text-slate-900">{money(subtotal)}</dd>
+                    </div>
+                    {discountTotal > 0 && (
+                      <div className="flex justify-between text-emerald-700">
+                        <dt>Discount</dt>
+                        <dd className="font-medium">−{money(discountTotal)}</dd>
                       </div>
-                    </div>
-                  </ReviewSection>
-
-                  <ReviewSection icon={Package} title={`Products · ${invoiceItems.length} ${invoiceItems.length === 1 ? "line" : "lines"}, ${unitsTotal} units`} onEdit={() => goTo(1)} delay={60}>
-                    <div className="overflow-x-auto -mx-1">
-                      <table className="w-full text-sm min-w-[420px]">
-                        <thead>
-                          <tr className="text-xs text-slate-500 border-b border-slate-100">
-                            <th className="text-left font-medium pb-2.5 px-1">Product</th>
-                            <th className="text-right font-medium pb-2.5 px-1 w-14">Qty</th>
-                            <th className="text-right font-medium pb-2.5 px-1 w-24">Rate</th>
-                            <th className="text-right font-medium pb-2.5 px-1 w-28">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {invoiceItems.map((item) => {
-                            const rateNum = Number(item.discountPrice !== "" && item.discountPrice !== undefined ? item.discountPrice : item.price);
-                            return (
-                              <tr key={item.productId}>
-                                <td className="py-3 px-1 text-slate-900">
-                                  {item.productName}
-                                  {lotOf(item)?.expiryDate && (
-                                    <span className={`block text-[11px] ${expiryState(lotOf(item)?.expiryDate, todayStr) === "near" ? "text-amber-800" : "text-slate-500"}`}>
-                                      Exp. {new Date(`${lotOf(item)!.expiryDate}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="py-3 px-1 text-right text-slate-700">{item.quantity}</td>
-                                <td className="py-3 px-1 text-right text-slate-700">{rateNum.toFixed(dp)}</td>
-                                <td className="py-3 px-1 text-right font-medium text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    {seriesSplit && seriesSplit.omanCount > 0 && seriesSplit.uaeCount > 0 && !editInvoiceNumber && (
-                      <p className="mt-4 flex items-start gap-2 text-xs text-amber-900 bg-amber-50 rounded-lg px-3 py-2">
-                        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                        Saves as two invoices: UAE-registered {money(seriesSplit.uaeTotal)} and Oman-registered {money(seriesSplit.omanTotal)}.
-                      </p>
                     )}
-                  </ReviewSection>
-
-                  <ReviewSection icon={CreditCard} title="Payment" onEdit={() => goTo(2)} delay={120}>
-                    <div className="flex items-center gap-3">
-                      <span className={`w-10 h-10 rounded-xl grid place-items-center ${status === "Paid" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                        {status === "Paid" ? <CheckCircle className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
-                      </span>
-                      <div>
-                        {status === "Paid" ? (
-                          <>
-                            <div className="font-semibold text-slate-900">Paid now · {methodLabel(paymentMethod)}</div>
-                            {askDetails && paymentMethod === "Cheque" && (
-                              <div className="text-sm text-slate-500">
-                                Cheque {chequeNumber} dated {fmtDate(chequeDate)}
-                                {payBank ? ` · ${payBank}` : ""}
-                              </div>
-                            )}
-                            {askDetails && paymentMethod === "Bank Transfer" && (
-                              <div className="text-sm text-slate-500">
-                                Ref. {transferRef}
-                                {payBank ? ` · ${payBank}` : ""}
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            <div className="font-semibold text-slate-900">On credit · {creditDaysNum} days</div>
-                            <div className="text-sm text-slate-500">Due {dueDateLabel}</div>
-                          </>
-                        )}
-                      </div>
+                    <div className="flex justify-between text-slate-500 text-xs">
+                      <dt>Items</dt>
+                      <dd>
+                        {invoiceItems.length} lines · {unitsTotal} units
+                      </dd>
                     </div>
-                    {notes && <p className="text-sm text-slate-600 mt-3 bg-slate-50 rounded-lg px-3 py-2">{notes}</p>}
-                  </ReviewSection>
-                </div>
-
-                <div className="space-y-5 lg:sticky lg:top-6">
-                  <section className="wiz-in rounded-2xl overflow-hidden shadow-lg shadow-primary/10" style={{ animationDelay: "80ms" }}>
-                    <div className="bg-gradient-to-br from-primary to-accent text-white px-6 py-6">
-                      <div className="text-xs uppercase tracking-wide text-white/70">Invoice total</div>
-                      <div className="text-3xl font-semibold mt-1">{money(grandTotal)}</div>
-                      <div className="text-sm text-white/80 mt-1">
-                        {unitsTotal} units · {status === "Paid" ? `paid by ${methodLabel(paymentMethod).toLowerCase()}` : `due ${dueDateLabel}`}
-                      </div>
+                    <div className="flex justify-between pt-2 border-t border-slate-200 text-base">
+                      <dt className="font-semibold text-slate-900">Total ({currencyCode})</dt>
+                      <dd key={grandTotal} className="wiz-in font-semibold text-slate-900">{grandTotal.toFixed(dp)}</dd>
                     </div>
-                    <dl className="bg-white border-x border-b border-slate-200 rounded-b-2xl px-6 py-4 space-y-2 text-sm">
-                      {discountTotal > 0 && (
-                        <>
-                          <div className="flex justify-between text-slate-500">
-                            <dt>At list price</dt>
-                            <dd>{money(subtotal)}</dd>
-                          </div>
-                          <div className="flex justify-between text-emerald-700">
-                            <dt>Discount</dt>
-                            <dd>−{money(discountTotal)}</dd>
-                          </div>
-                        </>
-                      )}
-                      <div className="flex justify-between items-center text-slate-500">
-                        <dt className="flex items-center gap-1.5">
-                          <Hash className="w-3.5 h-3.5" /> Invoice no.
-                        </dt>
-                        <dd>
-                          {canEditNumber ? (
-                            <input
-                              value={invoiceNumber}
-                              onChange={(e) => {
-                                setInvoiceNumber(e.target.value);
-                                setIsCustomInvoiceNumber(true);
-                              }}
-                              className="w-28 px-2 py-1 border border-slate-200 focus:border-accent rounded-lg font-semibold text-right text-slate-900 bg-white focus:outline-none"
-                            />
-                          ) : (
-                            <span className="font-semibold text-slate-900">{editInvoiceNumber || invoiceNumber || "—"}</span>
-                          )}
-                        </dd>
-                      </div>
-                      <p className="text-[11px] text-slate-400 text-right">
-                        {canEditNumber
-                          ? isCustomInvoiceNumber
-                            ? "New numbers will continue after this one"
-                            : editInvoiceNumber
-                              ? "You can change the number"
-                              : "Next in the series. Type to use another"
-                          : editInvoiceNumber
-                            ? ""
-                            : "Final number is given on save"}
-                      </p>
-                    </dl>
-                  </section>
-
-                  {selectedCustomerId && !editInvoiceNumber && (
-                    <AccountSnapshot
-                      customerId={selectedCustomerId}
-                      change={{ kind: "invoice", amount: grandTotal, credit: status === "Credit", cheque: status === "Paid" && paymentMethod === "Cheque" }}
-                    />
-                  )}
+                  </dl>
                 </div>
+              </div>
+            </div>
+
+            {selectedCustomerId && !editInvoiceNumber && (
+              <div className="mt-5">
+                <AccountSnapshot
+                  customerId={selectedCustomerId}
+                  change={{ kind: "invoice", amount: grandTotal, credit: status === "Credit", cheque: status === "Paid" && paymentMethod === "Cheque" }}
+                />
               </div>
             )}
 
-            <WizardBar
-              step={step}
-              onBack={() => goTo(step - 1)}
+            <FormActionBar
+              saveLabel={editInvoiceNumber ? "Save changes" : "Save invoice"}
+              saving={isSaving}
+              disabled={!!blocker}
               cancelHref="/invoices"
-              summaryLabel={step >= 1 && invoiceItems.length > 0 ? `${unitsTotal} units` : undefined}
-              summaryValue={step >= 1 && invoiceItems.length > 0 ? money(grandTotal) : undefined}
-              next={
-                step < 3
-                  ? { label: step === 2 ? "Review" : "Next", disabled: step >= maxStep, onClick: () => goTo(step + 1), hint: stepHint }
-                  : { label: isSaving ? "Saving…" : editInvoiceNumber ? "Save changes" : "Save invoice", disabled: isSaving || maxStep < 3, submit: true, tone: "accent" }
-              }
+              hint={blocker}
+              total={invoiceItems.length > 0 ? money(grandTotal) : undefined}
             />
           </>
         )}
