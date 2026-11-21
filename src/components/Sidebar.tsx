@@ -53,6 +53,14 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       ]
     },
     {
+      title: "Dashboards",
+      items: [
+        { name: "Sales dashboard", href: "/sales-dashboard", icon: TrendingUp, visible: isSuperAdmin || isAccountant },
+        { name: "Collection dashboard", href: "/collection-dashboard", icon: Wallet, visible: isSuperAdmin || isAccountant },
+        { name: "Credit control", href: "/credit-control", icon: ShieldAlert, visible: isSuperAdmin || isAccountant },
+      ]
+    },
+    {
       title: t("navSales"),
       items: [
         { name: t("customers"), href: "/customers", icon: Users, visible: permissions ? permissions.canViewCustomers : true },
@@ -65,7 +73,6 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       title: t("navFinancialControl"),
       items: [
         { name: t("collectionLedger"), href: "/collection-ledger", icon: Wallet, visible: permissions ? permissions.canViewCollectionLedger : true },
-        { name: "Credit control", href: "/credit-control", icon: ShieldAlert, visible: isSuperAdmin || isAccountant },
         { name: "Credit Notes", href: "/credit-notes", icon: CreditCard, visible: permissions ? permissions.canViewInvoices : true },
         { name: "Commission", href: "/commission", icon: Percent, visible: profile?.country === "UAE" },
         { name: t("expenses"), href: "/expenses", icon: CreditCard, visible: permissions ? permissions.canViewExpenses : true },
