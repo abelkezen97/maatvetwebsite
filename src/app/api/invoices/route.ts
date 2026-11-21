@@ -6,6 +6,7 @@ import { recalculateCustomerBalance } from "@/lib/db/balances";
 import { generateNextDocumentNumber } from "@/lib/db/sequence";
 import { advanceSeriesPast, billingSeriesForProducts, cleanDocumentNumber, mixedSeriesError, nextReceiptNumber, nextSeriesNumber, peekSeriesNumber, seriesOfNumber } from "@/lib/db/documentSeries";
 import { BillingSeries, QuoteItem, UserCountry } from "@/types";
+import { creditBlockFor } from "@/lib/db/creditControl";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { checkExpiryRules } from "@/lib/db/expiry";
 import { todayInDubai } from "@/lib/db/commission";
@@ -206,7 +207,7 @@ export async function POST(request: Request) {
     if (customerId) {
       let { data: fetchedCust, error: custErr } = await supabase
         .from("customers")
-        .select("id, country, assigned_salesman_id, cash_only")
+        .select("id, country, assigned_salesman_id, cash_only, credit_released")
         .eq("id", customerId)
         .maybeSingle();
 
@@ -215,7 +216,7 @@ export async function POST(request: Request) {
         if (adminClient) {
           const { data: adminCust } = await adminClient
             .from("customers")
-            .select("id, country, assigned_salesman_id, cash_only")
+            .select("id, country, assigned_salesman_id, cash_only, credit_released")
             .eq("id", customerId)
             .maybeSingle();
           fetchedCust = adminCust;
@@ -252,6 +253,21 @@ export async function POST(request: Request) {
             { error: "This customer is cash only after a bounced cheque: credit invoices and cheque payments are blocked until an admin removes the flag." },
             { status: 400 }
           );
+        }
+      }
+
+      // Overdue past the policy limit (100 days by default): a salesman cannot sell on
+      // credit. Paid-now invoices are fine; admin and accountant are never blocked.
+      if (profile.role === "salesperson" && !isEditMode) {
+        const requestedStatus = invoiceData.status || payload.status || "Paid";
+        if (requestedStatus === "Credit") {
+          const gate = await creditBlockFor(supabase, customerId, custRow.country, !!custRow.credit_released);
+          if (gate.blocked) {
+            return NextResponse.json(
+              { error: `This customer is blocked for credit: an invoice is ${gate.status.maxDaysOverdue} days overdue (limit ${gate.policy.blockAfterDays}). Collect the payment, sell for cash, or ask the office to release the customer.` },
+              { status: 400 }
+            );
+          }
         }
       }
     }
