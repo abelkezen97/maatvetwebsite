@@ -121,6 +121,8 @@ export default function StockAdjustmentPage() {
     }
   };
 
+  if (!profile) return <LoadingSkeleton type="form" />;
+
   if (!isStaff) {
     return (
       <div className="max-w-2xl mx-auto my-12 p-8 bg-white rounded-2xl border border-slate-100 shadow-sm text-center">

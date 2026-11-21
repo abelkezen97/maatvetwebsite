@@ -377,7 +377,7 @@ export function mapInvoiceFromDb(row: any, salesmanMap?: Map<string, string>): I
     salesmanId: row.salesman_id || "",
     salesmanName: salesmanName,
     country: countryVal,
-    date: row.created_at ? String(row.created_at).split("T")[0] : new Date().toISOString().split("T")[0],
+    date: row.invoice_date ? String(row.invoice_date).split("T")[0] : row.created_at ? String(row.created_at).split("T")[0] : new Date().toISOString().split("T")[0],
     items,
     subtotal: Number(row.subtotal) || grandTotal,
     discountTotal: Number(row.discount_total) || 0,
