@@ -15,6 +15,7 @@ import { Permissions } from "@/lib/auth/permissions";
 import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { currencyFor, decimalsFor } from "@/lib/currency";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 interface InvoiceItemWithManual extends QuoteItem {
   manualDiscount?: number | string;
@@ -723,10 +724,7 @@ function NewInvoiceForm() {
 
   if (isPageLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#61989B] mb-2" />
-        <p className="text-sm font-semibold text-slate-500 animate-pulse">Loading…</p>
-      </div>
+      <div className="px-4 sm:px-6 lg:px-8 pt-8"><LoadingSkeleton type="form" /></div>
     );
   }
 
@@ -1480,10 +1478,7 @@ function NewInvoiceForm() {
 export default function NewInvoicePage() {
   return (
     <Suspense fallback={
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#61989B] mb-2" />
-        <p className="text-sm font-semibold text-slate-500 animate-pulse">Loading…</p>
-      </div>
+      <div className="px-4 sm:px-6 lg:px-8 pt-8"><LoadingSkeleton type="form" /></div>
     }>
       <NewInvoiceForm />
     </Suspense>

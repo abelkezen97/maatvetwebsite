@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { currencyFor, decimalsFor } from "@/lib/currency";
 import { Delta, KpiTile, RankBars, ShareBar, fmtMoney } from "@/components/charts/PerfCharts";
 import { Bars, Card, PeriodBar, TableWrap, Td, Th, presets } from "@/components/charts/DashCharts";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 export default function SalesDashboardPage() {
   const { profile, isStaff, loading } = useAuth();
@@ -57,7 +58,7 @@ export default function SalesDashboardPage() {
       <div className="px-6 py-5 md:py-6 max-w-[1400px] mx-auto space-y-5 text-start">
         <PeriodBar from={from} to={to} onChange={(f, t) => (setFrom(f), setTo(t))} />
         {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
-        {busy && !data && <p className="text-sm font-semibold text-slate-500">Loading…</p>}
+        {busy && !data && <LoadingSkeleton type="dashboard" />}
 
         {data && k && (
           <div className={busy ? "opacity-60 transition-opacity" : "transition-opacity"}>

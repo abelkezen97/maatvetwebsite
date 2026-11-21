@@ -12,6 +12,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { buildPDF } from "@/lib/pdfHelper";
 import { currencyFor, decimalsFor } from "@/lib/currency";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 interface QuoteItemWithManual extends QuoteItem {
   manualUnitPrice?: number;
@@ -414,12 +415,7 @@ function NewQuoteForm() {
 
   if (isPageLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#61989B] mb-2" />
-        <p className="text-sm font-semibold text-slate-500 animate-pulse">
-          Loading, Please Wait
-        </p>
-      </div>
+      <div className="px-4 sm:px-6 lg:px-8 pt-8"><LoadingSkeleton type="form" /></div>
     );
   }
 
@@ -977,7 +973,7 @@ function NewQuoteForm() {
 
 export default function NewQuotePage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-slate-500 font-bold">Loading Quote Builder...</div>}>
+    <Suspense fallback={<div className="px-4 sm:px-6 lg:px-8 pt-8"><LoadingSkeleton type="form" /></div>}>
       <NewQuoteForm />
     </Suspense>
   );

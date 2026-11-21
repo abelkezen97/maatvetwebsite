@@ -205,9 +205,15 @@ export default function CreditControlPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {fetching && (
-                <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-slate-500">Loading…</td>
-                </tr>
+                <>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td colSpan={11} className="px-4 py-4">
+                        <div className="h-4 w-full bg-slate-100 rounded-lg" />
+                      </td>
+                    </tr>
+                  ))}
+                </>
               )}
               {!fetching && shown.length === 0 && (
                 <tr>

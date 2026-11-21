@@ -161,11 +161,15 @@ export default function UsersManagementPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
               {loading ? (
-                <tr>
-                  <td colSpan={10} className="text-center py-12 text-slate-400">
-                    Loading team operations directory...
-                  </td>
-                </tr>
+                <>
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td colSpan={10} className="px-4 py-4">
+                        <div className="h-4 w-full bg-slate-100 rounded-lg" />
+                      </td>
+                    </tr>
+                  ))}
+                </>
               ) : filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="text-center py-12 text-slate-400">
