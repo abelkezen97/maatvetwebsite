@@ -39,7 +39,7 @@ export function PageHeader({
 
   return (
     <div 
-      className={`w-full relative overflow-hidden bg-[#0B1528] text-white shadow-sm border-b border-slate-800/60 min-h-[160px] md:min-h-[190px] flex flex-col justify-between px-6 md:px-8 lg:px-10 py-5 md:py-6 ${className}`}
+      className={`w-full relative overflow-hidden bg-[#0B1528] text-white shadow-sm border-b border-slate-800/60 min-h-[120px] md:min-h-[190px] flex flex-col justify-between px-6 md:px-8 lg:px-10 py-5 md:py-6 ${className}`}
     >
       {/* Edge-to-Edge flowing background image starting at y=0 */}
       <div 
