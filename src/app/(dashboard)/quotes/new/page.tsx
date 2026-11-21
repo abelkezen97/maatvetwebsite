@@ -69,6 +69,26 @@ function NewQuoteForm() {
   const topRef = useRef<HTMLDivElement>(null);
   const wide = useWide();
   const productSearchRef = useRef<HTMLInputElement>(null);
+  // The list is drawn fixed under the search box so the table's scroll area cannot clip it.
+  const [, setDropTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setDropTick((n) => n + 1);
+    window.addEventListener("scroll", bump, true);
+    window.addEventListener("resize", bump);
+    return () => {
+      window.removeEventListener("scroll", bump, true);
+      window.removeEventListener("resize", bump);
+    };
+  }, []);
+  const dropStyle = (): React.CSSProperties => {
+    const r = productSearchRef.current?.getBoundingClientRect();
+    if (!r) return { position: "absolute", left: 0, right: 0, top: "100%" };
+    const below = window.innerHeight - r.bottom;
+    const h = 288;
+    return below < h && r.top > below
+      ? { position: "fixed", left: r.left, width: r.width, bottom: window.innerHeight - r.top + 4 }
+      : { position: "fixed", left: r.left, width: r.width, top: r.bottom + 4 };
+  };
   const qtyRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   // Load products, customers, and quotes on mount
@@ -490,7 +510,7 @@ function NewQuoteForm() {
         className={`${fieldInput} pl-9 border-dashed`}
       />
       {showProductDropdown && searchQuery && (
-        <div className="wiz-in absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-72 overflow-y-auto">
+        <div className="wiz-in z-50 bg-white border border-slate-200 rounded-md shadow-xl max-h-72 overflow-y-auto" style={dropStyle()}>
           {filteredProducts.length === 0 ? (
             <div className="px-3 py-3 text-sm text-slate-500">No item matches “{searchQuery}”.</div>
           ) : (
