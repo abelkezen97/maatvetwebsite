@@ -59,7 +59,7 @@ export function DataTable<T>({
             {others.map((col, i) => (
               <div key={i} className="min-w-0">
                 <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">{translateBusinessText(col.header)}</dt>
-                <dd className="mt-0.5 break-words text-sm font-medium text-slate-700">{render(col, row)}</dd>
+                <dd className="mt-0.5 break-words text-start text-sm font-medium text-slate-700 [&>*]:!items-start [&>*]:!justify-start [&>*]:!text-start">{render(col, row)}</dd>
               </div>
             ))}
           </dl>
