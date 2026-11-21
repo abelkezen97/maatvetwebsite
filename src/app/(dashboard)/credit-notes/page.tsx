@@ -143,7 +143,7 @@ export default function CreditNotesPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={9} className="p-6 text-center text-slate-500 font-semibold">Loading...</td></tr>
+                <>{[0, 1, 2, 3].map((i) => (<tr key={i} className="animate-pulse"><td colSpan={9} className="px-4 py-4"><div className="h-4 w-full bg-slate-100 rounded-lg" /></td></tr>))}</>
               ) : shown.length === 0 ? (
                 <tr><td colSpan={9} className="p-6 text-center text-slate-500 font-semibold">No credit notes.</td></tr>
               ) : (

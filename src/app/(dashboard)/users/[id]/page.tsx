@@ -21,6 +21,7 @@ import {
 import { Profile, Customer, Quote, Invoice, Receipt } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { DataTable } from "@/components/DataTable";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 export default function SalespersonProfilePage() {
   const params = useParams();
@@ -150,9 +151,8 @@ export default function SalespersonProfilePage() {
 
   if (authLoading || loading) {
     return (
-      <div className="p-12 text-center text-slate-400">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-4" />
-        <p className="text-sm font-semibold">Loading salesperson profile details...</p>
+      <div className="p-6 max-w-5xl mx-auto">
+        <LoadingSkeleton type="card" count={4} />
       </div>
     );
   }

@@ -16,6 +16,7 @@ import { ActionDropdown, ActionOption } from "@/components/ActionDropdown";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 import { useLanguage } from "@/context/LanguageContext";
 import { InvoiceDetailModal } from "@/components/InvoiceDetailModal";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 export default function InvoicesPage() {
   const router = useRouter();
@@ -325,10 +326,7 @@ export default function InvoicesPage() {
 
         {/* Invoices Table */}
         {isLoading ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent mx-auto mb-4" />
-            <p className="text-sm font-semibold text-slate-500">{t("loadingData")}</p>
-          </div>
+          <LoadingSkeleton type="table" count={7} />
         ) : (
           <DataTable
             data={filteredInvoices}
