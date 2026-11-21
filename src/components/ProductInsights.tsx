@@ -251,7 +251,7 @@ function InsightsView({ data }: { data: Insights }) {
 function Figure({ label, value, note, tone }: { label: string; value: string; note?: string; tone?: "warn" | "bad" }) {
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white p-4">
-      <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{label}</div>
+      <div className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{label}</div>
       <div className="mt-1.5 text-xl font-extrabold tabular-nums tracking-tight text-slate-900">{value}</div>
       {note && (
         <div
@@ -290,9 +290,9 @@ function Empty({ children }: { children: React.ReactNode }) {
 function Table({ head, rows, numeric }: { head: string[]; rows: React.ReactNode[][]; numeric: number[] }) {
   return (
     <div className="max-h-[420px] overflow-auto">
-      <table className="w-full min-w-[480px] text-left text-sm">
+      <div className="overflow-x-auto"><table className="w-full min-w-[480px] text-left text-sm">
         <thead className="sticky top-0 bg-white">
-          <tr className="border-b border-slate-200 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+          <tr className="border-b border-slate-200 text-xs font-extrabold uppercase tracking-wider text-slate-500">
             {head.map((h, i) => (
               <th key={h} className={`py-2 pe-3 ${numeric.includes(i) ? "text-right" : ""}`}>
                 {h}
@@ -314,7 +314,7 @@ function Table({ head, rows, numeric }: { head: string[]; rows: React.ReactNode[
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

@@ -70,3 +70,27 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .wiz-in, .wiz-pop { animation: none; }
 }
+
+/* ---- Modern polish, applied app-wide ---- */
+html { scroll-behavior: smooth; }
+/* Numbers line up in columns */
+table, .tabular { font-variant-numeric: tabular-nums; }
+/* Clear, consistent keyboard focus */
+:where(a, button, [role="button"], input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--color-primary, #1B2A4A);
+  outline-offset: 2px;
+}
+/* Buttons feel responsive */
+button:not(:disabled), a[href] { transition: background-color .15s, color .15s, box-shadow .15s, transform .1s, opacity .15s; }
+button:not(:disabled):active { transform: scale(0.98); }
+button:disabled { cursor: not-allowed; }
+/* Comfortable touch targets for form fields on phones, and no iOS zoom on focus */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px; }
+}
+/* Slim, quiet scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  button:not(:disabled):active { transform: none; }
+}

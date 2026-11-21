@@ -134,7 +134,7 @@ export function PageHeader({
                   <span className="block text-sm font-bold text-white leading-tight">
                     {translateBusinessText(user.name)}
                   </span>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#38BDF8] uppercase tracking-wider">
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-[#38BDF8] uppercase tracking-wider">
                     <ShieldCheck className="w-3 h-3" />
                     {user.role === "salesperson" ? t("bdmRole") : user.role === "accountant" ? t("accountantRole") : t("adminRole")}
                   </span>

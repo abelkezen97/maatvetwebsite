@@ -17,12 +17,14 @@ import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 import { useLanguage } from "@/context/LanguageContext";
 import { InvoiceDetailModal } from "@/components/InvoiceDetailModal";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { useDialog } from "@/components/DialogProvider";
 
 export default function InvoicesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const customerIdParam = searchParams.get("customerId");
   const { user, profile, isStaff } = useAuth();
+  const dialog = useDialog();
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [seriesFilter, setSeriesFilter] = useState<"all" | "standard" | "oman_reg">("all");
@@ -53,7 +55,7 @@ export default function InvoicesPage() {
   }, [customerIdParam]);
 
   const handleDelete = async (invoice: Invoice) => {
-    if (!confirm(`Are you sure you want to delete invoice ${invoice.invoiceNumber}?`)) return;
+    if (!(await dialog.confirm({ title: `Delete invoice ${invoice.invoiceNumber}?`, message: "This cannot be undone.", confirmText: "Delete", tone: "danger" }))) return;
     try {
       const res = await fetch(`/api/invoices/${invoice.id}`, { method: "DELETE" });
       if (res.ok) {
@@ -61,7 +63,7 @@ export default function InvoicesPage() {
         if (selectedInvoice?.id === invoice.id) setSelectedInvoice(null);
       } else {
         const errData = await res.json();
-        alert(errData.error || "Failed to delete invoice");
+        dialog.toast(errData.error || "Failed to delete invoice");
       }
     } catch (err) {
       console.error("Error deleting invoice:", err);
@@ -139,13 +141,13 @@ export default function InvoicesPage() {
           <span className="font-bold text-[#1B2A4A]">
             {row.invoiceNumber}
             {row.billingSeries === "oman_reg" && (
-              <span className="ms-1.5 align-middle inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+              <span className="ms-1.5 align-middle inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
                 Oman-reg
               </span>
             )}
           </span>
           {row.quoteNumber && (
-            <span className="text-[10px] text-slate-400 font-semibold">From Quote: {row.quoteNumber}</span>
+            <span className="text-xs text-slate-400 font-semibold">From Quote: {row.quoteNumber}</span>
           )}
         </div>
       ),
@@ -192,10 +194,10 @@ export default function InvoicesPage() {
               {translateBusinessText(state)}
             </span>
             {row.isOverdue && (
-              <span className="text-[10px] font-bold text-rose-600">{row.daysOverdue}d overdue</span>
+              <span className="text-xs font-bold text-rose-600">{row.daysOverdue}d overdue</span>
             )}
             {state !== "Paid" && (row.outstandingAmount ?? 0) > 0 && (
-              <span className="text-[10px] font-semibold text-slate-500">Open {formatCurrency(row.outstandingAmount)}</span>
+              <span className="text-xs font-semibold text-slate-500">Open {formatCurrency(row.outstandingAmount)}</span>
             )}
           </div>
         );

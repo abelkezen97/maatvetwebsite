@@ -61,7 +61,7 @@ export function WorkingWeekCard({ country }: { country: string }) {
         </div>
         <div>
           <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Working week · {country}</h3>
-          <p className="text-[11px] text-slate-500 font-semibold">{7 - off.length} working days a week. Reports and averages count only working days.</p>
+          <p className="text-xs text-slate-500 font-semibold">{7 - off.length} working days a week. Reports and averages count only working days.</p>
         </div>
       </div>
       <div>
@@ -80,7 +80,7 @@ export function WorkingWeekCard({ country }: { country: string }) {
                 }`}
               >
                 {WEEKDAYS[i]}
-                <span className="block text-[10px] font-medium">{isOff ? "Day off" : "Working"}</span>
+                <span className="block text-xs font-medium">{isOff ? "Day off" : "Working"}</span>
               </button>
             );
           })}

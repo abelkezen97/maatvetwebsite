@@ -11,6 +11,7 @@ import { Customer, Receipt, Invoice, InvoiceBalance } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { currencyFor, decimalsFor } from "@/lib/currency";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 export default function NewReceiptPage() {
   const router = useRouter();
@@ -474,10 +475,7 @@ export default function NewReceiptPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#61989B] mb-2" />
-        <p className="text-sm font-semibold text-slate-500 animate-pulse">Loading setup...</p>
-      </div>
+      <div className="px-4 sm:px-6 lg:px-8 pt-6 max-w-6xl mx-auto"><LoadingSkeleton type="form" /></div>
     );
   }
 
@@ -757,16 +755,16 @@ export default function NewReceiptPage() {
                             <tr key={inv.invoiceId} className={`wiz-in transition-colors ${amt > 0 ? "bg-accent-light/30" : "hover:bg-slate-50/60"}`} style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}>
                               <td className="px-5 md:px-8 py-2.5 text-slate-700 whitespace-nowrap">
                                 {fmtDate(String(inv.invoiceDate).slice(0, 10))}
-                                {inv.isOverdue && <div className="text-[11px] text-rose-700">{inv.daysOverdue} days overdue</div>}
+                                {inv.isOverdue && <div className="text-xs text-rose-700">{inv.daysOverdue} days overdue</div>}
                               </td>
                               <td className="px-3 py-2.5">
                                 <span className="font-medium text-slate-900 whitespace-nowrap">{inv.invoiceNumber}</span>
-                                {mixedSeries && <span className="ml-2 text-[11px] text-slate-500 whitespace-nowrap">{inv.billingSeries === "oman_reg" ? "Oman-reg" : "UAE-reg"}</span>}
+                                {mixedSeries && <span className="ml-2 text-xs text-slate-500 whitespace-nowrap">{inv.billingSeries === "oman_reg" ? "Oman-reg" : "UAE-reg"}</span>}
                               </td>
                               <td className="px-3 py-2.5 text-right text-slate-700">{inv.grandTotal.toFixed(dp)}</td>
                               <td className="px-3 py-2.5 text-right text-slate-900">
                                 {inv.availableToAllocate.toFixed(dp)}
-                                {inv.pendingCheques > 0 && <div className="text-[11px] text-amber-700">{inv.pendingCheques.toFixed(dp)} cheque pending</div>}
+                                {inv.pendingCheques > 0 && <div className="text-xs text-amber-700">{inv.pendingCheques.toFixed(dp)} cheque pending</div>}
                               </td>
                               <td className="px-5 md:px-8 py-2">
                                 <div className="flex items-center justify-end gap-2">
@@ -806,7 +804,7 @@ export default function NewReceiptPage() {
                           <div className="flex items-baseline justify-between gap-3">
                             <span className="font-medium text-slate-900 whitespace-nowrap">
                               {inv.invoiceNumber}
-                              {mixedSeries && <span className="ml-2 text-[11px] font-normal text-slate-500">{inv.billingSeries === "oman_reg" ? "Oman-reg" : "UAE-reg"}</span>}
+                              {mixedSeries && <span className="ml-2 text-xs font-normal text-slate-500">{inv.billingSeries === "oman_reg" ? "Oman-reg" : "UAE-reg"}</span>}
                             </span>
                             <span className="text-xs text-slate-500 whitespace-nowrap">{fmtDate(String(inv.invoiceDate).slice(0, 10))}</span>
                           </div>
@@ -816,7 +814,7 @@ export default function NewReceiptPage() {
                             </span>
                             {inv.isOverdue && <span className="text-rose-700">{inv.daysOverdue} days overdue</span>}
                           </div>
-                          {inv.pendingCheques > 0 && <div className="text-[11px] text-amber-700 mt-0.5">{inv.pendingCheques.toFixed(dp)} cheque pending</div>}
+                          {inv.pendingCheques > 0 && <div className="text-xs text-amber-700 mt-0.5">{inv.pendingCheques.toFixed(dp)} cheque pending</div>}
                           <div className="flex items-center gap-3 mt-2.5">
                             <input
                               type="number"

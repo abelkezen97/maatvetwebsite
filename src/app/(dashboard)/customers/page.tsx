@@ -14,6 +14,7 @@ import { ActionDropdown } from "@/components/ActionDropdown";
 import { useAuth } from "@/hooks/useAuth";
 import { formatMoney } from "@/lib/currency";
 import { SuperAdminCustomersView } from "@/components/SuperAdminCustomersView";
+import { useDialog } from "@/components/DialogProvider";
 
 const COUNTRY_OPTIONS: UserCountry[] = ["UAE", "Oman"];
 
@@ -27,6 +28,7 @@ interface SalespersonOption {
 export default function CustomersPage() {
   const router = useRouter();
   const { user, profile, loading: authLoading } = useAuth();
+  const dialog = useDialog();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -232,10 +234,10 @@ export default function CustomersPage() {
         setDeletingCustomer(null);
         loadCustomers();
       } else {
-        alert(data.error || "Failed to deactivate customer");
+        dialog.toast(data.error || "Failed to deactivate customer");
       }
     } catch (err: any) {
-      alert(err.message || "Failed to deactivate customer");
+      dialog.toast(err.message || "Failed to deactivate customer");
     } finally {
       setIsDeleting(false);
     }
@@ -255,7 +257,7 @@ export default function CustomersPage() {
             </Link>
 
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+              className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
                 row.is_active !== false
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                   : "bg-slate-100 text-slate-500 border-slate-200"
@@ -518,7 +520,7 @@ export default function CustomersPage() {
                     {user?.role === "salesperson" || editingCustomer ? (
                       <div className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 text-sm font-bold flex items-center justify-between">
                         <span>{formCountry}</span>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-slate-200 px-2 py-0.5 rounded">
+                        <span className="text-xs text-slate-400 font-bold uppercase tracking-wider bg-slate-200 px-2 py-0.5 rounded">
                           {editingCustomer ? "Immutable" : "Locked"}
                         </span>
                       </div>

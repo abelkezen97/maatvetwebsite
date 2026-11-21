@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { SlidersHorizontal, ArrowLeft, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { ProductStockSummary, UserCountry } from "@/types";
+import { PageHeader } from "@/components/PageHeader";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 
 export default function StockAdjustmentPage() {
   const router = useRouter();
@@ -141,27 +143,13 @@ export default function StockAdjustmentPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex items-center justify-between bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/inventory"
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <SlidersHorizontal className="w-6 h-6 text-indigo-600" />
-              Stock Adjustment Form
-            </h1>
-            <p className="text-slate-500 text-xs mt-0.5">
-              Record physical stock corrections, damage, expiry, or manual inventory additions.
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="w-full">
+      <PageHeader
+        title="Stock Adjustment"
+        description="Record physical stock corrections, damage, expiry, or manual inventory additions."
+        breadcrumbs={[{ label: "Inventory", href: "/inventory" }, { label: "Adjustment" }]}
+      />
+      <div className="px-6 py-5 md:py-6 max-w-3xl mx-auto space-y-6 pb-12 text-start">
 
       {/* Adjustment Form Card */}
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
@@ -180,10 +168,7 @@ export default function StockAdjustmentPage() {
         )}
 
         {loadingProducts ? (
-          <div className="py-12 text-center text-slate-400 text-xs">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
-            Loading product catalog...
-          </div>
+          <LoadingSkeleton type="form" />
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5 text-xs">
             {/* Product selection & stock indicator */}
@@ -216,7 +201,7 @@ export default function StockAdjustmentPage() {
               </div>
 
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-center">
-                <span className="text-[11px] font-semibold text-slate-500">Current Available Stock ({location}):</span>
+                <span className="text-xs font-semibold text-slate-500">Current Available Stock ({location}):</span>
                 <span className="text-xl font-extrabold text-indigo-900 mt-0.5">
                   {availableStock} <span className="text-xs font-normal text-slate-500">{selectedProductObj?.unit || "units"}</span>
                 </span>
@@ -237,7 +222,7 @@ export default function StockAdjustmentPage() {
                   }`}
                 >
                   <span>Deduct Stock</span>
-                  <span className="text-[10px] font-normal opacity-70">(-qty)</span>
+                  <span className="text-xs font-normal opacity-70">(-qty)</span>
                 </button>
 
                 <button
@@ -250,7 +235,7 @@ export default function StockAdjustmentPage() {
                   }`}
                 >
                   <span>Add Stock</span>
-                  <span className="text-[10px] font-normal opacity-70">(+qty)</span>
+                  <span className="text-xs font-normal opacity-70">(+qty)</span>
                 </button>
 
                 <button
@@ -263,7 +248,7 @@ export default function StockAdjustmentPage() {
                   }`}
                 >
                   <span>Damaged Stock</span>
-                  <span className="text-[10px] font-normal opacity-70">(-qty)</span>
+                  <span className="text-xs font-normal opacity-70">(-qty)</span>
                 </button>
 
                 <button
@@ -276,7 +261,7 @@ export default function StockAdjustmentPage() {
                   }`}
                 >
                   <span>Expired Stock</span>
-                  <span className="text-[10px] font-normal opacity-70">(-qty)</span>
+                  <span className="text-xs font-normal opacity-70">(-qty)</span>
                 </button>
               </div>
             </div>
@@ -336,6 +321,7 @@ export default function StockAdjustmentPage() {
             </div>
           </form>
         )}
+      </div>
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ import {
 import { useLanguage } from "@/context/LanguageContext";
 import { useAuth } from "@/hooks/useAuth";
 import { formatMoney } from "@/lib/currency";
+import { useDialog } from "@/components/DialogProvider";
 
 const COUNTRY_OPTIONS: UserCountry[] = ["UAE", "Oman"];
 
@@ -77,6 +78,7 @@ export function SuperAdminCustomersView({
   const [formCity, setFormCity] = useState("");
   // Each admin works in their own country only.
   const { profile: viewerProfile } = useAuth();
+  const dialog = useDialog();
   const ownCountry: UserCountry = viewerProfile?.country === "Oman" ? "Oman" : "UAE";
   const [formCountry, setFormCountry] = useState<UserCountry>(ownCountry);
   useEffect(() => {
@@ -334,10 +336,10 @@ export function SuperAdminCustomersView({
         setDeletingCustomer(null);
         onCustomerUpdated();
       } else {
-        alert(data.error || "Failed to deactivate customer");
+        dialog.toast(data.error || "Failed to deactivate customer");
       }
     } catch (err: any) {
-      alert(err.message || "Failed to deactivate customer");
+      dialog.toast(err.message || "Failed to deactivate customer");
     } finally {
       setIsDeleting(false);
     }
@@ -470,7 +472,7 @@ export function SuperAdminCustomersView({
             <div className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <span>🇦🇪 UAE</span>
-                <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full">
+                <span className="text-xs font-bold bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full">
                   {kpis.uaeCount}
                 </span>
               </div>
@@ -482,7 +484,7 @@ export function SuperAdminCustomersView({
             <div className="flex items-center justify-between p-2 bg-slate-50 rounded-xl border border-slate-100">
               <div className="flex items-center gap-1.5 font-bold text-slate-800">
                 <span>🇴🇲 Oman</span>
-                <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full">
+                <span className="text-xs font-bold bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full">
                   {kpis.omanCount}
                 </span>
               </div>
@@ -512,7 +514,7 @@ export function SuperAdminCustomersView({
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Status Filter */}
             <div className="flex items-center gap-1 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700">
-              <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider mr-1">
+              <span className="text-slate-400 font-bold uppercase text-xs tracking-wider mr-1">
                 Status:
               </span>
               <button
@@ -620,7 +622,7 @@ export function SuperAdminCustomersView({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-xs font-extrabold text-slate-400 uppercase tracking-wider">
                     <th className="py-3.5 px-4">Customer</th>
                     <th className="py-3.5 px-4">Customer Code</th>
                     <th className="py-3.5 px-4">Doctor / Contact</th>
@@ -822,7 +824,7 @@ export function SuperAdminCustomersView({
                   {/* Details Grid */}
                   <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-100">
                     <div>
-                      <span className="text-slate-400 font-bold uppercase text-[10px]">
+                      <span className="text-slate-400 font-bold uppercase text-xs">
                         Country & City
                       </span>
                       <p className="font-bold text-slate-800 mt-0.5">
@@ -832,7 +834,7 @@ export function SuperAdminCustomersView({
                     </div>
 
                     <div>
-                      <span className="text-slate-400 font-bold uppercase text-[10px]">
+                      <span className="text-slate-400 font-bold uppercase text-xs">
                         Salesperson
                       </span>
                       <p className="font-bold text-slate-800 mt-0.5">
@@ -841,7 +843,7 @@ export function SuperAdminCustomersView({
                     </div>
 
                     <div>
-                      <span className="text-slate-400 font-bold uppercase text-[10px]">
+                      <span className="text-slate-400 font-bold uppercase text-xs">
                         Credit Limit
                       </span>
                       <p className="font-bold text-slate-700 mt-0.5">
@@ -850,7 +852,7 @@ export function SuperAdminCustomersView({
                     </div>
 
                     <div>
-                      <span className="text-slate-400 font-bold uppercase text-[10px]">
+                      <span className="text-slate-400 font-bold uppercase text-xs">
                         Outstanding
                       </span>
                       <div className="mt-0.5">
@@ -998,7 +1000,7 @@ export function SuperAdminCustomersView({
                         </option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                    <p className="text-xs text-slate-400 mt-1 font-medium">
                       Only active salespeople in {formCountry} are shown.
                     </p>
                   </div>
@@ -1074,7 +1076,7 @@ export function SuperAdminCustomersView({
                             formCountry
                           )}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-slate-200 px-1.5 py-0.5 rounded">
+                        <span className="text-xs text-slate-400 font-bold uppercase tracking-wider bg-slate-200 px-1.5 py-0.5 rounded">
                           Auto-Calculated
                         </span>
                       </div>

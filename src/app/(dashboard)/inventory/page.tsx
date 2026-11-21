@@ -22,6 +22,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { ProductStockSummary, InventoryDashboardMetrics, UserCountry } from "@/types";
 import { PageHeader } from "@/components/PageHeader";
 import { generateProductsPdf } from "@/lib/utils/exportProductsPdf";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function InventoryDashboardPage() {
   const { profile, permissions } = useAuth();
@@ -341,21 +343,16 @@ export default function InventoryDashboardPage() {
       {/* Stock Master Table */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-slate-400">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-500" />
-            Loading live stock calculation engine...
-          </div>
+          <div className="p-4"><LoadingSkeleton type="table" /></div>
         ) : error ? (
           <div className="p-8 text-center text-rose-500 font-medium">{error}</div>
         ) : filteredSummaries.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">
-            No products found matching filters.
-          </div>
+          <EmptyState compact title="No products found" description="Change the filters to see more." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <tr className="bg-slate-50/80 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3.5 px-4">Product Name</th>
                   <th className="py-3.5 px-4">Category</th>
                   <th className="py-3.5 px-4 text-right">Master Price</th>
@@ -387,22 +384,22 @@ export default function InventoryDashboardPage() {
                     )}
                     {canViewGlobal && (
                       <td className="py-3 px-4 text-right font-extrabold text-indigo-900 text-sm">
-                        {item.totalStock} <span className="text-[10px] font-normal text-slate-400">{item.unit}s</span>
+                        {item.totalStock} <span className="text-xs font-normal text-slate-400">{item.unit}s</span>
                       </td>
                     )}
                     <td className="py-3 px-4 text-center">
                       {item.status === "IN STOCK" && (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
                           IN STOCK
                         </span>
                       )}
                       {item.status === "LOW STOCK" && (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/60">
                           LOW STOCK
                         </span>
                       )}
                       {item.status === "OUT OF STOCK" && (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200/60">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200/60">
                           OUT OF STOCK
                         </span>
                       )}

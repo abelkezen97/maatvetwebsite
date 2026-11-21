@@ -111,7 +111,7 @@ export function InvoiceDetailModal({
           {/* Status banner */}
           <div className="flex items-center justify-between bg-slate-50 p-3.5 rounded-xl border border-slate-100">
             <div>
-              <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide">
+              <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">
                 {t("statusCol") || "STATUS"}
               </span>
               <div className="mt-1 flex items-center gap-2">
@@ -131,7 +131,7 @@ export function InvoiceDetailModal({
           {/* Customer & Date metadata grid */}
           <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3.5 sm:p-4 rounded-xl text-sm border border-slate-100">
             <div>
-              <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide">
+              <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">
                 {t("clientCompany") || "CLIENT / COMPANY"}
               </span>
               <span className="block font-bold text-slate-800 mt-0.5">
@@ -142,7 +142,7 @@ export function InvoiceDetailModal({
               </span>
             </div>
             <div>
-              <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wide">
+              <span className="block text-xs font-bold text-slate-400 uppercase tracking-wide">
                 {t("dateCol") || "DATE"} & {t("salespersonCol") || "SALESPERSON"}
               </span>
               <span className="block font-bold text-slate-800 mt-0.5">
@@ -156,7 +156,7 @@ export function InvoiceDetailModal({
 
           {/* Products / Line Items Section */}
           <div className="space-y-2">
-            <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
               {t("itemsProductsHeader") || "ITEMS / PRODUCTS"}
             </span>
 

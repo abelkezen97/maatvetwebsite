@@ -142,7 +142,7 @@ export default function PerformancePage() {
     <div className="w-full">
       <PageHeader title="Salesman performance" breadcrumbs={[{ label: "Reports", href: "/reports" }, { label: "Performance" }]} />
 
-      <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto space-y-6 text-start">
+      <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1600px] mx-auto space-y-6 text-start">
         {/* Controls */}
         <div className="wiz-in flex flex-col lg:flex-row lg:items-end gap-3 lg:gap-4 bg-white border border-slate-200 rounded-2xl p-4">
           <div>
@@ -288,7 +288,7 @@ export default function PerformancePage() {
                       {r.sales.invoiceList.length === 0 ? (
                         <p className="text-sm text-slate-400">No invoices on this day.</p>
                       ) : (
-                        <table className="w-full text-sm">
+                        <div className="overflow-x-auto"><table className="w-full text-sm">
                           <thead>
                             <tr className="text-xs text-slate-500 border-b border-slate-100">
                               <th className="text-left font-medium pb-2">Invoice</th>
@@ -307,7 +307,7 @@ export default function PerformancePage() {
                               </tr>
                             ))}
                           </tbody>
-                        </table>
+                        </table></div>
                       )}
                     </Sub>
                   )}

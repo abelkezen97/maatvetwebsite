@@ -43,11 +43,11 @@ export function PeriodBar({ from, to, onChange }: { from: string; to: string; on
         ))}
       </div>
       <label className="flex flex-col gap-0.5">
-        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">From</span>
+        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">From</span>
         <input type="date" value={from} max={to} onChange={(e) => e.target.value && onChange(e.target.value, to)} className={input} />
       </label>
       <label className="flex flex-col gap-0.5">
-        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">To</span>
+        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">To</span>
         <input type="date" value={to} min={from} onChange={(e) => e.target.value && onChange(from, e.target.value)} className={input} />
       </label>
     </div>
@@ -118,7 +118,7 @@ export function Bars({
       </div>
       <div className="mt-1.5 flex gap-2">
         {items.map((it, i) => (
-          <div key={it.label + i} className="flex-1 text-center text-[11px] text-slate-500 truncate">
+          <div key={it.label + i} className="flex-1 text-center text-xs text-slate-500 truncate">
             {it.label}
           </div>
         ))}
@@ -128,7 +128,7 @@ export function Bars({
 }
 
 export const Th = ({ children, right }: { children?: React.ReactNode; right?: boolean }) => (
-  <th className={`px-3 py-2.5 text-[11px] font-bold uppercase tracking-wide text-slate-500 ${right ? "text-right" : "text-left"}`}>{children}</th>
+  <th className={`px-3 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-500 ${right ? "text-right" : "text-left"}`}>{children}</th>
 );
 export const Td = ({ children, right, strong, className = "" }: { children?: React.ReactNode; right?: boolean; strong?: boolean; className?: string }) => (
   <td className={`px-3 py-2.5 text-sm tabular-nums ${right ? "text-right" : ""} ${strong ? "font-semibold text-slate-900" : "text-slate-700"} ${className}`}>{children}</td>

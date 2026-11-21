@@ -14,10 +14,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { ActionDropdown } from "@/components/ActionDropdown";
 import { useLanguage } from "@/context/LanguageContext";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { useDialog } from "@/components/DialogProvider";
 
 export default function QuotesPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const dialog = useDialog();
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
@@ -39,7 +41,7 @@ export default function QuotesPage() {
   };
 
   const handleDeleteQuote = async (quote: Quote) => {
-    if (!confirm(`Are you sure you want to delete quotation ${quote.quoteNumber}?`)) return;
+    if (!(await dialog.confirm({ title: `Delete quotation ${quote.quoteNumber}?`, message: "This cannot be undone.", confirmText: "Delete", tone: "danger" }))) return;
     try {
       const res = await fetch(`/api/quotes/${quote.id}`, { method: "DELETE" });
       if (res.ok) {
@@ -47,7 +49,7 @@ export default function QuotesPage() {
         if (selectedQuote?.id === quote.id) setSelectedQuote(null);
       } else {
         const errData = await res.json();
-        alert(errData.error || "Failed to delete quotation");
+        dialog.toast(errData.error || "Failed to delete quotation");
       }
     } catch (err) {
       console.error("Error deleting quotation:", err);
@@ -281,7 +283,7 @@ export default function QuotesPage() {
               <div className="space-y-2">
                 <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest">{t("itemsHeader")}</span>
                 <div className="border border-slate-100 rounded-xl overflow-hidden">
-                  <table className="w-full text-start text-sm">
+                  <div className="overflow-x-auto"><table className="w-full text-start text-sm">
                     <thead className="bg-slate-50 border-b border-slate-100">
                       <tr>
                         <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-start">{t("medName")}</th>
@@ -302,7 +304,7 @@ export default function QuotesPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 </div>
               </div>
 

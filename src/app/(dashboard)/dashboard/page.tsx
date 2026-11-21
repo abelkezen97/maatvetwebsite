@@ -268,7 +268,7 @@ export default function DashboardPage() {
         <div className="flex flex-col">
           <span className="font-bold text-[#1B2A4A]">{row.invoiceNumber}</span>
           {row.country && (
-            <span className="text-[10px] text-slate-400 font-semibold">{row.country}</span>
+            <span className="text-xs text-slate-400 font-semibold">{row.country}</span>
           )}
         </div>
       ),
@@ -502,28 +502,28 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <DashboardCard
               title={t("todaysSales")}
-              value={loading ? "..." : formatCurrency(metrics.todaySalesSum)}
+              value={loading ? "—" : formatCurrency(metrics.todaySalesSum)}
               description={t("currentMonthSalesDesc")}
               icon={TrendingUp}
               theme="teal"
             />
             <DashboardCard
               title={t("thisMonthSales")}
-              value={loading ? "..." : formatCurrency(metrics.monthlySalesSum)}
+              value={loading ? "—" : formatCurrency(metrics.monthlySalesSum)}
               description={t("currentMonthSalesDesc")}
               icon={Activity}
               theme="indigo"
             />
             <DashboardCard
               title={t("todaysCollections")}
-              value={loading ? "..." : formatCurrency(metrics.totalPaymentsReceived)}
+              value={loading ? "—" : formatCurrency(metrics.totalPaymentsReceived)}
               description={t("totalPendingBalanceDesc")}
               icon={DollarSign}
               theme="emerald"
             />
             <DashboardCard
               title={t("pendingCreditAmount")}
-              value={loading ? "..." : formatCurrency(metrics.outstandingSum)}
+              value={loading ? "—" : formatCurrency(metrics.outstandingSum)}
               description={t("totalPendingBalanceDesc")}
               icon={CreditCard}
               theme="rose"
@@ -533,28 +533,28 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <DashboardCard
               title={t("todaysSales")}
-              value={loading ? "..." : formatCurrency(metrics.todaySalesSum)}
+              value={loading ? "—" : formatCurrency(metrics.todaySalesSum)}
               description={t("currentMonthSalesDesc")}
               icon={TrendingUp}
               theme="teal"
             />
             <DashboardCard
               title={t("todaysCollections")}
-              value={loading ? "..." : formatCurrency(metrics.todayCollectionSum)}
+              value={loading ? "—" : formatCurrency(metrics.todayCollectionSum)}
               description={t("totalPendingBalanceDesc")}
               icon={DollarSign}
               theme="emerald"
             />
             <DashboardCard
               title={t("thisMonthSales")}
-              value={loading ? "..." : formatCurrency(metrics.monthlySalesSum)}
+              value={loading ? "—" : formatCurrency(metrics.monthlySalesSum)}
               description={t("currentMonthSalesDesc")}
               icon={Activity}
               theme="indigo"
             />
             <DashboardCard
               title={t("pendingCreditAmount")}
-              value={loading ? "..." : formatCurrency(metrics.outstandingSum)}
+              value={loading ? "—" : formatCurrency(metrics.outstandingSum)}
               description={t("totalPendingBalanceDesc")}
               icon={CreditCard}
               theme="amber"
@@ -724,7 +724,7 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 <span className="block text-xs font-bold text-slate-400 uppercase tracking-widest">{t("itemsHeader")}</span>
                 <div className="border border-slate-100 rounded-xl overflow-hidden">
-                  <table className="w-full text-start text-sm">
+                  <div className="overflow-x-auto"><table className="w-full text-start text-sm">
                     <thead className="bg-slate-50 border-b border-slate-100">
                       <tr>
                         <th className="px-4 py-2 text-xs font-bold text-slate-500 uppercase text-start">{t("medName")}</th>
@@ -745,7 +745,7 @@ export default function DashboardPage() {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </table></div>
                 </div>
               </div>
 

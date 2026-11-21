@@ -72,7 +72,7 @@ export function ChequesInHand({ canReceive }: { canReceive: boolean }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+            <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
               <th className="text-start py-2 pe-3">Cheque</th>
               <th className="text-start py-2 pe-3">Customer</th>
               {canReceive && <th className="text-start py-2 pe-3">Salesperson</th>}
@@ -86,7 +86,7 @@ export function ChequesInHand({ canReceive }: { canReceive: boolean }) {
               <tr key={r.id}>
                 <td className="py-2 pe-3 font-bold text-slate-800">
                   #{r.chequeNumber || "-"}
-                  {r.bankName && <span className="block text-[11px] font-medium text-slate-400">{r.bankName}</span>}
+                  {r.bankName && <span className="block text-xs font-medium text-slate-400">{r.bankName}</span>}
                 </td>
                 <td className="py-2 pe-3 text-slate-700 font-semibold">{r.companyName}</td>
                 {canReceive && <td className="py-2 pe-3 text-slate-500">{r.createdByName || "-"}</td>}

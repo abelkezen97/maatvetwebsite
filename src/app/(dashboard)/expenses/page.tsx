@@ -16,9 +16,12 @@ import {
 } from "lucide-react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { useDialog } from "@/components/DialogProvider";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function ExpensesPage() {
   const { profile } = useAuth();
+  const dialog = useDialog();
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
 
   const [loading, setLoading] = useState(true);
@@ -84,7 +87,7 @@ export default function ExpensesPage() {
         setExpAttachment("");
       } else {
         const err = await res.json();
-        alert(err.error || "Failed to add expense");
+        dialog.toast(err.error || "Failed to add expense");
       }
     } catch (err) {
       console.error(err);
@@ -158,8 +161,8 @@ export default function ExpensesPage() {
                   </tr>
                 ) : filteredExpenses.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-slate-400">
-                      No expenses found.
+                    <td colSpan={5}>
+                      <EmptyState compact title="No expenses yet" description="Add an expense with the button above." />
                     </td>
                   </tr>
                 ) : (

@@ -22,6 +22,7 @@ import { Profile, UserRole, UserCountry } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { roleLabel, workCountries } from "@/lib/auth/permissions";
 import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 
 interface UserStats extends Profile {
   customersCount?: number;
@@ -146,7 +147,7 @@ export default function UsersManagementPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[11px] uppercase tracking-wider font-extrabold text-slate-500">
+              <tr className="border-b border-slate-200/80 bg-slate-50/80 text-xs uppercase tracking-wider font-extrabold text-slate-500">
                 <th className="py-4 px-5">Name</th>
                 <th className="py-4 px-4">Role</th>
                 <th className="py-4 px-4">Country</th>
@@ -172,8 +173,8 @@ export default function UsersManagementPage() {
                 </>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-slate-400">
-                    No users matching criteria found.
+                  <td colSpan={10}>
+                    <EmptyState compact title="No users found" description="Try a different search." />
                   </td>
                 </tr>
               ) : (
@@ -190,13 +191,13 @@ export default function UsersManagementPage() {
                         </div>
                         <div>
                           <div className="font-extrabold text-slate-900 group-hover:text-accent transition">{u.full_name}</div>
-                          <div className="text-[11px] text-slate-400 font-medium">{u.email}</div>
+                          <div className="text-xs text-slate-400 font-medium">{u.email}</div>
                         </div>
                       </div>
                     </td>
 
                     <td className="py-4 px-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold border ${
                         u.role === "super_admin"
                           ? "bg-purple-50 text-purple-700 border-purple-200"
                           : u.role === "accountant"
@@ -228,7 +229,7 @@ export default function UsersManagementPage() {
                     </td>
 
                     <td className="py-4 px-4 text-center">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
                         u.is_active !== false ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
                       }`}>
                         {u.is_active !== false ? "Active" : "Inactive"}

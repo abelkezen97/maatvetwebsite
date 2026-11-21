@@ -228,7 +228,7 @@ export default function StockPricesPage() {
         />
         {d !== 0 && (
           <div className="wiz-in space-y-1.5">
-            <div className={`text-[11px] text-right ${d < 0 && now < -d ? "text-rose-700 font-medium" : "text-slate-500"}`}>
+            <div className={`text-xs text-right ${d < 0 && now < -d ? "text-rose-700 font-medium" : "text-slate-500"}`}>
               {now} → {now + d}
             </div>
             <select value={reason} onChange={(e) => setDraft(p.id, { reason: e.target.value as Reason })} className="w-full h-8 px-1.5 text-xs border border-slate-200 rounded-md bg-white">
@@ -240,7 +240,7 @@ export default function StockPricesPage() {
             </select>
             {d > 0 && (
               <label className="block">
-                <span className="block text-[10px] text-slate-500">Expiry</span>
+                <span className="block text-xs text-slate-500">Expiry</span>
                 <input
                   type="date"
                   value={drafts[p.id]?.expiry || ""}
@@ -261,7 +261,7 @@ export default function StockPricesPage() {
     <div className="w-full">
       <PageHeader title="Stock & prices" breadcrumbs={[{ label: "Products", href: "/products" }, { label: "Stock & prices" }]} />
 
-      <div className="px-4 sm:px-6 lg:px-8 pt-6 max-w-7xl mx-auto text-start">
+      <div className="px-4 sm:px-6 lg:px-8 pt-6 max-w-[1600px] mx-auto text-start">
         <div className="wiz-in flex flex-col md:flex-row md:items-center gap-3 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -323,7 +323,7 @@ export default function StockPricesPage() {
           <div className="wiz-in bg-white border border-slate-200 rounded-lg shadow-sm overflow-x-auto">
             <table className="w-full text-sm min-w-[860px]">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+                <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                   <th className="text-left font-semibold px-4 py-2.5">Product</th>
                   <th className="text-right font-semibold px-2 py-2.5 w-20">In stock</th>
                   <th className="text-right font-semibold px-2 py-2.5 w-36">Add / remove</th>
@@ -387,35 +387,35 @@ export default function StockPricesPage() {
                       <div className="text-xs text-slate-500">{p.manufacturer}</div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="text-[11px] text-slate-500">In stock</div>
+                      <div className="text-xs text-slate-500">In stock</div>
                       <div className={`font-semibold tabular-nums ${now <= 0 ? "text-rose-700" : "text-slate-900"}`}>{now}</div>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 mt-3">
                     <div>
-                      <span className="block text-[11px] text-slate-500 mb-1">Add / remove</span>
+                      <span className="block text-xs text-slate-500 mb-1">Add / remove</span>
                       {stockEditor(p, row)}
                     </div>
                     <div>
-                      <span className="block text-[11px] text-slate-500 mb-1">List price</span>
+                      <span className="block text-xs text-slate-500 mb-1">List price</span>
                       {priceInput(p, "list", row)}
                     </div>
                     <div>
-                      <span className="block text-[11px] text-slate-500 mb-1">Cost</span>
+                      <span className="block text-xs text-slate-500 mb-1">Cost</span>
                       {priceInput(p, "cost", row)}
                     </div>
                     {showTiers && (
                       <>
                         <div>
-                          <span className="block text-[11px] text-slate-500 mb-1">10+</span>
+                          <span className="block text-xs text-slate-500 mb-1">10+</span>
                           {priceInput(p, "p10", row)}
                         </div>
                         <div>
-                          <span className="block text-[11px] text-slate-500 mb-1">50+</span>
+                          <span className="block text-xs text-slate-500 mb-1">50+</span>
                           {priceInput(p, "p50", row)}
                         </div>
                         <div>
-                          <span className="block text-[11px] text-slate-500 mb-1">100+</span>
+                          <span className="block text-xs text-slate-500 mb-1">100+</span>
                           {priceInput(p, "p100", row)}
                         </div>
                       </>

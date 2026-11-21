@@ -120,7 +120,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
                 <span className="font-extrabold text-base tracking-wider text-white leading-none">
                   {t("maatGroup")}
                 </span>
-                <span className="text-[9px] uppercase font-bold tracking-widest text-[#5294A5] mt-1.5 leading-none">
+                <span className="text-xs uppercase font-bold tracking-widest text-[#5294A5] mt-1.5 leading-none">
                   {t("vetMedicine")}
                 </span>
               </div>
@@ -162,14 +162,14 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
                 const r = await switchCountry(next);
                 if (!r.success) setSwitching(null);
               }}
-              className="flex h-11 w-11 flex-col items-center justify-center rounded-xl bg-white/5 text-[10px] font-extrabold text-teal-200 hover:bg-white/10 cursor-pointer"
+              className="flex h-11 w-11 flex-col items-center justify-center rounded-xl bg-white/5 text-xs font-extrabold text-teal-200 hover:bg-white/10 cursor-pointer"
             >
               <Globe2 className="h-4 w-4" />
               {profile.country}
             </button>
           ) : (
             <div>
-              <div className="px-1 pb-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[#5294A5]">Country</div>
+              <div className="px-1 pb-1.5 text-xs font-extrabold uppercase tracking-widest text-[#5294A5]">Country</div>
               <div className="grid grid-cols-2 gap-1 rounded-xl bg-white/5 p-1" role="group" aria-label="Country">
                 {countries.map((c) => {
                   const active = c === profile.country;
@@ -210,7 +210,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
           return (
             <div key={section.title} className="space-y-1.5">
               {!isCollapsed && (
-                <div className="px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-[#5294A5]">
+                <div className="px-3 py-1.5 text-xs font-extrabold uppercase tracking-widest text-[#5294A5]">
                   {section.title}
                 </div>
               )}

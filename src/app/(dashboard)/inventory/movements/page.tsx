@@ -6,6 +6,8 @@ import { History, ArrowLeft, RefreshCw, Filter, Search, ShieldCheck } from "luci
 import { useAuth } from "@/hooks/useAuth";
 import { InventoryMovement, UserCountry } from "@/types";
 import { PageHeader } from "@/components/PageHeader";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function StockMovementsPage() {
   const { profile } = useAuth();
@@ -137,21 +139,16 @@ export default function StockMovementsPage() {
       {/* Movements Table */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-slate-400 text-xs">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
-            Loading stock movement ledger...
-          </div>
+          <div className="p-4"><LoadingSkeleton type="table" /></div>
         ) : error ? (
           <div className="p-8 text-center text-rose-500 font-medium text-xs">{error}</div>
         ) : filteredMovements.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-xs">
-            No stock movements found matching filter criteria.
-          </div>
+          <EmptyState compact title="No stock movements" description="Nothing matches these filters." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <tr className="bg-slate-50/80 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-3.5 px-4">Date & Time</th>
                   <th className="py-3.5 px-4">Product</th>
                   <th className="py-3.5 px-4">Location</th>
@@ -169,13 +166,13 @@ export default function StockMovementsPage() {
 
                   return (
                     <tr key={m.id} className="hover:bg-slate-50/50 transition">
-                      <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
+                      <td className="py-3 px-4 text-slate-500 font-mono text-xs">
                         {m.createdAt ? new Date(m.createdAt).toLocaleString("en-GB") : "—"}
                       </td>
                       <td className="py-3 px-4 font-semibold text-slate-900">
                         {m.productName}
                         {m.productCode && (
-                          <span className="block text-[10px] font-mono text-slate-400 font-normal">
+                          <span className="block text-xs font-mono text-slate-400 font-normal">
                             {m.productCode}
                           </span>
                         )}
@@ -183,7 +180,7 @@ export default function StockMovementsPage() {
                       <td className="py-3 px-4 font-medium text-slate-700">{m.country}</td>
                       <td className="py-3 px-4">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold tracking-wide ${
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-extrabold tracking-wide ${
                             m.movementType === "OPENING_STOCK" || m.movementType === "STOCK_RECEIVED"
                               ? "bg-blue-50 text-blue-700 border border-blue-200"
                               : m.movementType === "SALE"
@@ -205,7 +202,7 @@ export default function StockMovementsPage() {
                       >
                         {qtyStr}
                       </td>
-                      <td className="py-3 px-4 font-mono text-slate-600 text-[11px]">
+                      <td className="py-3 px-4 font-mono text-slate-600 text-xs">
                         {m.referenceId || m.referenceType || "—"}
                       </td>
                       <td className="py-3 px-4 text-slate-600 max-w-xs truncate">

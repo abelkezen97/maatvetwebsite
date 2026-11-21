@@ -14,6 +14,7 @@ import { ActionDropdown } from "@/components/ActionDropdown";
 import { printReceiptThermalBill } from "@/lib/thermalPrintHelper";
 import { useAuth } from "@/hooks/useAuth";
 import { RenumberDialog } from "@/components/RenumberDialog";
+import { useDialog } from "@/components/DialogProvider";
 
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -21,6 +22,7 @@ export default function ReceiptsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const { t, translateBusinessText, formatCurrency, formatDate } = useLanguage();
   const { isSuperAdmin, isAccountant } = useAuth();
+  const dialog = useDialog();
   // Admins and accountants manage cheques (received / cleared / bounced).
   const canManageCheques = isSuperAdmin || isAccountant;
   const [chequeFilter, setChequeFilter] = useState<"all" | "pending" | "bounced">("all");
@@ -53,13 +55,17 @@ export default function ReceiptsPage() {
   const chequeAction = async (receipt: Receipt, action: "received" | "clear" | "bounce") => {
     let reason: string | undefined;
     if (action === "bounce") {
-      const input = window.prompt(
-        `Cheque ${receipt.chequeNumber || receipt.receiptNumber} bounced.\n\nIts invoices will reopen and ${receipt.companyName} will be set to cash only.\n\nReason (optional):`
-      );
+      const input = await dialog.prompt({
+        title: `Cheque ${receipt.chequeNumber || receipt.receiptNumber} bounced?`,
+        message: `Its invoices will reopen and ${receipt.companyName} will be set to cash only.`,
+        label: "Reason (optional)",
+        confirmText: "Mark as bounced",
+        tone: "danger",
+      });
       if (input === null) return;
       reason = input;
     } else if (action === "clear") {
-      if (!window.confirm(`Mark cheque ${receipt.chequeNumber || receipt.receiptNumber} as cleared?`)) return;
+      if (!(await dialog.confirm({ title: "Mark cheque as cleared?", message: `Cheque ${receipt.chequeNumber || receipt.receiptNumber} will count as collected.`, confirmText: "Mark cleared", tone: "success" }))) return;
     }
     setActionMessage(null);
     try {
@@ -156,12 +162,12 @@ export default function ReceiptsPage() {
           <span className="font-bold text-emerald-700">
             {row.receiptNumber}
             {row.billingSeries === "oman_reg" && (
-              <span className="ms-1.5 align-middle inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+              <span className="ms-1.5 align-middle inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
                 Oman-reg
               </span>
             )}
           </span>
-          <span className="text-[10px] text-slate-400 font-semibold">{row.country || "UAE"}</span>
+          <span className="text-xs text-slate-400 font-semibold">{row.country || "UAE"}</span>
         </div>
       ),
       className: "w-36",
@@ -196,7 +202,7 @@ export default function ReceiptsPage() {
           </span>
           {row.chequeStatus && (
             <span
-              className={`inline-block w-fit text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+              className={`inline-block w-fit text-xs font-bold px-1.5 py-0.5 rounded border ${
                 row.chequeStatus === "Cleared"
                   ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                   : row.chequeStatus === "Bounced"

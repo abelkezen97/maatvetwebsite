@@ -88,11 +88,11 @@ function CombinedReport({ reports, preparedBy, country }: { reports: ReportDef[]
           </div>
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">From</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">From</span>
               <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className={input} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">To</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">To</span>
               <input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} className={input} />
             </label>
             <button
@@ -135,14 +135,14 @@ export default function ReportsPage() {
             : `Reports for ${profile.country}. Pick a period and filters, then download as a PDF.`
         }
       />
-      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1200px] mx-auto space-y-6 text-start">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-6xl mx-auto space-y-6 text-start">
         <CombinedReport reports={reports} preparedBy={profile.full_name || ""} country={profile.country} />
         {GROUPS.map((group) => {
           const list = reports.filter((r) => r.group === group);
           if (list.length === 0) return null;
           return (
             <section key={group}>
-              <h2 className="mb-3 text-[11px] font-extrabold uppercase tracking-widest text-slate-500">{group}</h2>
+              <h2 className="mb-3 text-xs font-extrabold uppercase tracking-widest text-slate-500">{group}</h2>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {list.map((r) => (
                   <Link

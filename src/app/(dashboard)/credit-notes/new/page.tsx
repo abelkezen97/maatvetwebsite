@@ -139,7 +139,7 @@ function NewCreditNoteForm() {
         breadcrumbs={[{ label: "Credit Notes", href: "/credit-notes" }, { label: "New" }]}
       />
 
-      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1200px] mx-auto space-y-5 text-start">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-6xl mx-auto space-y-5 text-start">
         {error && (
           <div className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700">
             <span className="font-semibold">{error}</span>
@@ -164,7 +164,7 @@ function NewCreditNoteForm() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+                    <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
                       <th className="text-start py-2 pe-3">Product</th>
                       <th className="text-end py-2 pe-3">Invoiced</th>
                       <th className="text-end py-2 pe-3">Already credited</th>
@@ -196,7 +196,7 @@ function NewCreditNoteForm() {
                               onChange={(e) => setQty((prev) => ({ ...prev, [l.invoiceItemId]: e.target.value }))}
                               className={`w-24 px-3 py-2 text-end bg-white border rounded-lg font-bold focus:outline-none focus:ring-2 focus:ring-accent/15 ${over ? "border-rose-400 text-rose-600" : "border-slate-200 text-slate-800"}`}
                             />
-                            <div className="text-[10px] text-slate-400 font-semibold mt-0.5">max {l.returnableQuantity}</div>
+                            <div className="text-xs text-slate-400 font-semibold mt-0.5">max {l.returnableQuantity}</div>
                           </td>
                           <td className="py-2.5 pe-3 text-center">
                             <input

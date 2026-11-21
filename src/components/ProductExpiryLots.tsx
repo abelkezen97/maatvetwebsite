@@ -152,12 +152,12 @@ export function ProductExpiryLots({ productId, canEdit }: { productId: string; c
                 <li key={l.id} className={`py-3 ${l.qtyRemaining <= 0 ? "opacity-50" : ""}`}>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="font-medium text-slate-900 w-32">{fmt(l.expiryDate)}</span>
-                    <span className={`text-[11px] font-medium rounded-full px-2 py-0.5 ${s.cls}`}>
+                    <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${s.cls}`}>
                       {s.label}
                       {st !== "unknown" && l.daysToExpiry !== null && st !== "ok" ? ` · ${l.daysToExpiry < 0 ? `${-l.daysToExpiry} days ago` : `${l.daysToExpiry} days`}` : ""}
                     </span>
                     {l.needsCheck && (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5" title={l.notes}>
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5" title={l.notes}>
                         <AlertTriangle className="w-3 h-3" /> Date to confirm
                       </span>
                     )}

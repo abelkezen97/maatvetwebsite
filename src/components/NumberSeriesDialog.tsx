@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Hash, X, CheckCircle2, FileText, Receipt as ReceiptIcon } from "lucide-react";
 import { BillingSeries, DocumentSeries, SeriesDocType } from "@/types";
+import { useDialog } from "@/components/DialogProvider";
 
 interface Slot {
   docType: SeriesDocType;
@@ -49,6 +50,7 @@ export function NumberSeriesDialog({
   userName: string;
   onClose: () => void;
 }) {
+  const dialog = useDialog();
   const [rows, setRows] = useState<Row[]>([]);
   const [saved, setSaved] = useState<Row[]>([]);
   const [tab, setTab] = useState<SeriesDocType>("invoice");
@@ -121,9 +123,9 @@ export function NumberSeriesDialog({
     }
   };
 
-  const close = () => {
+  const close = async () => {
     if (saving) return;
-    if (dirty && !window.confirm("Close without saving your changes?")) return;
+    if (dirty && !(await dialog.confirm({ title: "Discard changes?", message: "Close without saving your changes?", confirmText: "Discard", tone: "danger" }))) return;
     onClose();
   };
 
@@ -170,7 +172,7 @@ export function NumberSeriesDialog({
                   {label}
                   {!loading && (
                     <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${
                         active ? "bg-[#1B2A4A] text-white" : "bg-slate-100 text-slate-500"
                       }`}
                     >
@@ -203,7 +205,7 @@ export function NumberSeriesDialog({
                     <div className="flex items-center justify-between gap-3 mb-3">
                       <div>
                         <div className="text-sm font-bold text-slate-800 leading-tight">{kind.title}</div>
-                        <div className="text-[11px] font-medium text-slate-400">{kind.hint}</div>
+                        <div className="text-xs font-medium text-slate-400">{kind.hint}</div>
                       </div>
                       {next ? (
                         <span className="text-xs font-semibold text-slate-500">
@@ -215,7 +217,7 @@ export function NumberSeriesDialog({
                     </div>
                     <div className="grid grid-cols-[1fr_7rem_5rem] gap-2">
                       <label className="block">
-                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Prefix</span>
+                        <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Prefix</span>
                         <input
                           type="text"
                           value={r.numbersOnly ? "" : r.prefix}
@@ -227,7 +229,7 @@ export function NumberSeriesDialog({
                         />
                       </label>
                       <label className="block">
-                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Next no.</span>
+                        <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Next no.</span>
                         <input
                           type="number"
                           min="1"
@@ -238,7 +240,7 @@ export function NumberSeriesDialog({
                         />
                       </label>
                       <label className="block">
-                        <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Digits</span>
+                        <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Digits</span>
                         <input
                           type="number"
                           min="1"
@@ -264,7 +266,7 @@ export function NumberSeriesDialog({
             )}
 
             {!loading && (
-              <p className="text-[11px] font-semibold text-slate-400 leading-relaxed">
+              <p className="text-xs font-semibold text-slate-400 leading-relaxed">
                 Numbers count up by themselves and skip any that already exist. Leave the prefix empty (and "Numbers only" unticked) if that series isn't used.
               </p>
             )}

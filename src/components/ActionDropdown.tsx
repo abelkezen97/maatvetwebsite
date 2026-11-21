@@ -84,7 +84,7 @@ export function ActionDropdown({ options, placeholder = "Actions" }: ActionDropd
         className="inline-flex items-center justify-between gap-2.5 min-h-[44px] px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs md:text-sm font-bold text-slate-700 shadow-2xs hover:border-slate-300 transition duration-150 cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20"
       >
         <span>{translatedPlaceholder}</span>
-        <span className="text-[10px] text-slate-400 font-bold">
+        <span className="text-xs text-slate-400 font-bold">
           {isOpen ? "▲" : "▼"}
         </span>
       </button>
