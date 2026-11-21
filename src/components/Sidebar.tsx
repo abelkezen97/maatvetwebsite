@@ -20,7 +20,8 @@ import {
   Percent,
   Globe2,
   BarChart3,
-  TrendingUp
+  TrendingUp,
+  ShieldAlert
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/context/LanguageContext";
@@ -64,6 +65,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onCollapseToggle }: Side
       title: t("navFinancialControl"),
       items: [
         { name: t("collectionLedger"), href: "/collection-ledger", icon: Wallet, visible: permissions ? permissions.canViewCollectionLedger : true },
+        { name: "Credit control", href: "/credit-control", icon: ShieldAlert, visible: isSuperAdmin || isAccountant },
         { name: "Credit Notes", href: "/credit-notes", icon: CreditCard, visible: permissions ? permissions.canViewInvoices : true },
         { name: "Commission", href: "/commission", icon: Percent, visible: profile?.country === "UAE" },
         { name: t("expenses"), href: "/expenses", icon: CreditCard, visible: permissions ? permissions.canViewExpenses : true },

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { WorkingWeekCard } from "@/components/WorkingWeekCard";
+import { CreditPolicyCard } from "@/components/CreditPolicyCard";
 import { User, Shield, Info, Users, Save, CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
 
 export default function SettingsPage() {
@@ -76,6 +77,7 @@ export default function SettingsPage() {
       )}
 
       {isSuperAdmin && <WorkingWeekCard country={user?.country || "UAE"} />}
+      {isSuperAdmin && <CreditPolicyCard />}
 
       {/* Structured Administration Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
