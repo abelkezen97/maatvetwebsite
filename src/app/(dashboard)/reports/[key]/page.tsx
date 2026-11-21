@@ -168,7 +168,7 @@ export default function ReportViewPage() {
           {has("period") && (
             <>
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Period</span>
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Period</span>
                 <select className={selectClass} value={preset} onChange={(e) => choosePreset(e.target.value as Preset)}>
                   {PRESETS.map((p) => (
                     <option key={p.key} value={p.key}>
@@ -178,7 +178,7 @@ export default function ReportViewPage() {
                 </select>
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">From</span>
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">From</span>
                 <input
                   type="date"
                   className={selectClass}
@@ -191,7 +191,7 @@ export default function ReportViewPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">To</span>
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">To</span>
                 <input
                   type="date"
                   className={selectClass}
@@ -208,7 +208,7 @@ export default function ReportViewPage() {
 
           {has("salesman") && isStaff && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Salesman</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Salesman</span>
               <select className={selectClass} value={salesman} onChange={(e) => setSalesman(e.target.value)}>
                 <option value="">Everyone</option>
                 {(report?.people || []).map((p) => (
@@ -222,7 +222,7 @@ export default function ReportViewPage() {
 
           {has("series") && profile.country === "UAE" && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Kind</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Kind</span>
               <select className={selectClass} value={series} onChange={(e) => setSeries(e.target.value)}>
                 <option value="">Both</option>
                 <option value="standard">UAE-registered</option>
@@ -233,7 +233,7 @@ export default function ReportViewPage() {
 
           {has("method") && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Method</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Method</span>
               <select className={selectClass} value={method} onChange={(e) => setMethod(e.target.value)}>
                 <option value="">All</option>
                 <option value="Cash">Cash</option>
@@ -245,7 +245,7 @@ export default function ReportViewPage() {
 
           {has("chequeStatus") && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Status</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Status</span>
               <select className={selectClass} value={chequeStatus} onChange={(e) => setChequeStatus(e.target.value)}>
                 <option value="">All</option>
                 <option value="Pending">Waiting</option>
@@ -257,7 +257,7 @@ export default function ReportViewPage() {
 
           {has("expenseStatus") && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Status</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Status</span>
               <select className={selectClass} value={expenseStatus} onChange={(e) => setExpenseStatus(e.target.value)}>
                 <option value="">Approved & pending</option>
                 <option value="Approved">Approved</option>
@@ -269,7 +269,7 @@ export default function ReportViewPage() {
 
           {has("within") && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Days left</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Days left</span>
               <select className={selectClass} value={within} onChange={(e) => setWithin(e.target.value)}>
                 <option value="7">7 days or less</option>
                 <option value="15">15 days or less</option>
@@ -282,7 +282,7 @@ export default function ReportViewPage() {
 
           {has("expiryWithin") && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Show</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Show</span>
               <select className={selectClass} value={expiryWithin} onChange={(e) => setExpiryWithin(e.target.value)}>
                 <option value="0">Expired only</option>
                 <option value="3">Expired or within 3 months</option>
@@ -295,7 +295,7 @@ export default function ReportViewPage() {
 
           {has("coverMonths") && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Order enough for</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Order enough for</span>
               <select className={selectClass} value={coverMonths} onChange={(e) => setCoverMonths(e.target.value)}>
                 <option value="2">2 months</option>
                 <option value="3">3 months</option>
@@ -307,7 +307,7 @@ export default function ReportViewPage() {
 
           {has("slowFor") && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Not sold for</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Not sold for</span>
               <select className={selectClass} value={slowFor} onChange={(e) => setSlowFor(e.target.value)}>
                 <option value="3">3 months or more</option>
                 <option value="6">6 months or more</option>
@@ -318,7 +318,7 @@ export default function ReportViewPage() {
 
           {has("overdueBy") && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Overdue by</span>
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Overdue by</span>
               <select className={selectClass} value={overdueBy} onChange={(e) => setOverdueBy(e.target.value)}>
                 <option value="1">Any</option>
                 <option value="31">More than 30 days</option>
@@ -351,7 +351,7 @@ export default function ReportViewPage() {
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {report.summary.map((s) => (
                 <div key={s.label} className="rounded-2xl border border-slate-200/80 bg-white p-4">
-                  <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{s.label}</div>
+                  <div className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{s.label}</div>
                   <div className="mt-1.5 text-lg font-extrabold tabular-nums text-slate-900">
                     {s.type === "money" ? `${currency} ` : ""}
                     {formatReportValue(s.value, s.type, report.country)}
@@ -365,7 +365,7 @@ export default function ReportViewPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-left text-sm">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50/80 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                    <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-extrabold uppercase tracking-wider text-slate-500">
                       {report.columns.map((c) => (
                         <th
                           key={c.key}

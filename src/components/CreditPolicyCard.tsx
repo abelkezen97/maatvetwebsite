@@ -53,7 +53,7 @@ export function CreditPolicyCard() {
         </div>
         <div>
           <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Credit control</h3>
-          <p className="text-[11px] text-slate-400 font-semibold">Block credit sales to customers who are far overdue</p>
+          <p className="text-xs text-slate-400 font-semibold">Block credit sales to customers who are far overdue</p>
         </div>
       </div>
       <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">

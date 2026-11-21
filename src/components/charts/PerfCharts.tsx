@@ -96,7 +96,7 @@ export function ShareBar({
               <span className="w-2.5 h-2.5 rounded-sm shrink-0 mt-1.5" style={{ background: palette[i % palette.length] }} />
               <span className="min-w-0">
                 <span className="block text-slate-800 leading-snug break-words">{p.label}</span>
-                {p.note && <span className="block text-[11px] text-slate-500">{p.note}</span>}
+                {p.note && <span className="block text-xs text-slate-500">{p.note}</span>}
               </span>
             </span>
             <span className="ml-auto flex items-baseline gap-3 whitespace-nowrap tabular-nums pl-5">
@@ -144,7 +144,7 @@ export function RankBars({
           <div className="mt-1 h-2 rounded-full bg-slate-100 overflow-hidden">
             <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(2, (r.value / top) * 100)}%`, background: color }} />
           </div>
-          {r.sub && <div className="text-[11px] text-slate-500 mt-0.5">{r.sub}</div>}
+          {r.sub && <div className="text-xs text-slate-500 mt-0.5">{r.sub}</div>}
         </li>
       ))}
     </ul>
@@ -271,7 +271,7 @@ export function Meter({ label, value, good, warn, invert = false, note }: { labe
       <div className="mt-1.5 h-2 rounded-full bg-slate-100 overflow-hidden">
         <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(100, v || 0)}%`, background: bar }} />
       </div>
-      {note && <div className="text-[11px] text-slate-500 mt-1">{note}</div>}
+      {note && <div className="text-xs text-slate-500 mt-1">{note}</div>}
     </div>
   );
 }

@@ -16,6 +16,7 @@ import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { currencyFor, decimalsFor } from "@/lib/currency";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { useDialog } from "@/components/DialogProvider";
 
 interface InvoiceItemWithManual extends QuoteItem {
   manualDiscount?: number | string;
@@ -35,6 +36,7 @@ function NewInvoiceForm() {
   const editInvoiceNumber = searchParams.get("edit");
   const fromQuoteNumber = searchParams.get("fromQuote");
   const { user, profile, isStaff } = useAuth();
+  const dialog = useDialog();
   const currencyCode = currencyFor(profile?.country);
   const dp = decimalsFor(profile?.country);
   const wide = useWide();
@@ -244,7 +246,7 @@ function NewInvoiceForm() {
     // Mode A: EDIT EXISTING INVOICE
     if (editInvoiceNumber) {
       if (profile && !Permissions.canEditInvoice(profile)) {
-        alert("Only an Admin or Accountant can edit existing invoices.");
+        dialog.toast("Only an Admin or Accountant can edit existing invoices.");
         router.push("/invoices");
         return;
       }
@@ -861,9 +863,9 @@ function NewInvoiceForm() {
                 );
               })}
             </select>
-            {state === "near" && <span className="text-[11px] font-medium text-amber-900 bg-amber-100 rounded-full px-2 py-0.5">Near expiry</span>}
+            {state === "near" && <span className="text-xs font-medium text-amber-900 bg-amber-100 rounded-full px-2 py-0.5">Near expiry</span>}
             {chosen && qty > chosen.qtyRemaining && (
-              <span className="text-[11px] text-rose-800 bg-rose-100 rounded-full px-2 py-0.5">Only {chosen.qtyRemaining} at this date</span>
+              <span className="text-xs text-rose-800 bg-rose-100 rounded-full px-2 py-0.5">Only {chosen.qtyRemaining} at this date</span>
             )}
           </div>
         )}
@@ -1263,15 +1265,15 @@ function NewInvoiceForm() {
                         </div>
                         <div className="grid grid-cols-3 gap-2 mt-2.5 items-end">
                           <label className="block">
-                            <span className="block text-[11px] text-slate-500 mb-1">Qty</span>
+                            <span className="block text-xs text-slate-500 mb-1">Qty</span>
                             {qtyInput(item, idx, "")}
                           </label>
                           <label className="block">
-                            <span className="block text-[11px] text-slate-500 mb-1">Rate</span>
+                            <span className="block text-xs text-slate-500 mb-1">Rate</span>
                             {rateInput(item, idx, "")}
                           </label>
                           <div className="text-right">
-                            <span className="block text-[11px] text-slate-500 mb-1">Amount</span>
+                            <span className="block text-xs text-slate-500 mb-1">Amount</span>
                             <span className="h-10 flex items-center justify-end text-sm font-semibold text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</span>
                           </div>
                         </div>

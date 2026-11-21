@@ -54,7 +54,7 @@ export default function CollectionDashboardPage() {
   return (
     <div className="w-full">
       <PageHeader title="Collection dashboard" description="What was collected, who collected it, how fast customers pay and what is expected next." />
-      <div className="px-6 py-5 md:py-6 max-w-[1400px] mx-auto space-y-5 text-start">
+      <div className="px-6 py-5 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
         <PeriodBar from={from} to={to} onChange={(f, t) => (setFrom(f), setTo(t))} />
         {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
         {busy && !data && <LoadingSkeleton type="dashboard" />}

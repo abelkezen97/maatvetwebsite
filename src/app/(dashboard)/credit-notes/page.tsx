@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { CreditNote, CreditNoteStatus } from "@/types";
 import { formatMoney } from "@/lib/currency";
+import { EmptyState } from "@/components/EmptyState";
 
 const FILTERS: Array<"All" | CreditNoteStatus> = ["All", "Pending", "Approved", "Rejected"];
 
@@ -93,7 +94,7 @@ export default function CreditNotesPage() {
         }
       />
 
-      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1400px] mx-auto space-y-5 text-start">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
         <p className="text-xs font-semibold text-slate-500">
           To create one, open Invoices → Actions → <span className="font-bold">Credit note / return</span>.
         </p>
@@ -129,7 +130,7 @@ export default function CreditNotesPage() {
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+              <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
                 <th className="text-start p-4">Number</th>
                 <th className="text-start p-4">Date</th>
                 <th className="text-start p-4">Invoice</th>
@@ -145,7 +146,7 @@ export default function CreditNotesPage() {
               {loading ? (
                 <>{[0, 1, 2, 3].map((i) => (<tr key={i} className="animate-pulse"><td colSpan={9} className="px-4 py-4"><div className="h-4 w-full bg-slate-100 rounded-lg" /></td></tr>))}</>
               ) : shown.length === 0 ? (
-                <tr><td colSpan={9} className="p-6 text-center text-slate-500 font-semibold">No credit notes.</td></tr>
+                <tr><td colSpan={9}><EmptyState compact title="No credit notes" description="Credit notes you create will appear here." /></td></tr>
               ) : (
                 shown.map((n) => (
                   <tr key={n.id} className="hover:bg-slate-50/60">
@@ -159,7 +160,7 @@ export default function CreditNotesPage() {
                     <td className="p-4 text-slate-600">{n.reason}</td>
                     <td className="p-4 text-end font-bold text-slate-800">{formatMoney(n.total, n.country)}</td>
                     <td className="p-4">
-                      <span className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border ${STATUS_STYLE[n.status as CreditNoteStatus]}`}>
+                      <span className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold border ${STATUS_STYLE[n.status as CreditNoteStatus]}`}>
                         {n.status}
                       </span>
                     </td>
@@ -195,7 +196,7 @@ export default function CreditNotesPage() {
 
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+                <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
                   <th className="text-start py-2">Product</th>
                   <th className="text-end py-2">Qty</th>
                   <th className="text-end py-2">Unit</th>

@@ -41,6 +41,8 @@ import { buildInvoicePDF } from "@/lib/pdfHelper";
 import { buildReceiptPDF } from "@/lib/pdfReceiptHelper";
 import { printInvoiceThermalBill } from "@/lib/thermalPrintHelper";
 import { buildCustomerLedgerPDF, buildPendingInvoicesPDF } from "@/lib/pdfLedgerHelper";
+import { useDialog } from "@/components/DialogProvider";
+import { EmptyState } from "@/components/EmptyState";
 
 function formatDisplayDate(dateStr?: string): string {
   if (!dateStr) return "N/A";
@@ -135,6 +137,7 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const customerId = params?.id as string;
   const { profile, permissions, isSuperAdmin, isAccountant, isSalesperson, isStaff } = useAuth();
+  const dialog = useDialog();
 
   const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -388,7 +391,7 @@ export default function CustomerDetailPage() {
               <button
                 type="button"
                 onClick={async () => {
-                  if (!window.confirm(`Allow credit and cheques again for ${customer.company || customer.companyName}?`)) return;
+                  if (!(await dialog.confirm({ title: "Remove cash-only flag?", message: `Allow credit and cheques again for ${customer.company || customer.companyName}?`, confirmText: "Allow credit", tone: "info" }))) return;
                   const res = await fetch(`/api/customers/${customer.id}/cash-only`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -396,7 +399,7 @@ export default function CustomerDetailPage() {
                   });
                   const data = await res.json().catch(() => ({}));
                   if (!res.ok) {
-                    alert(data.error || "Could not remove the flag");
+                    dialog.toast(data.error || "Could not remove the flag");
                     return;
                   }
                   loadCustomerWorkspace();
@@ -534,7 +537,7 @@ export default function CustomerDetailPage() {
             <div className="text-2xl font-black tracking-tight text-slate-900">
               {currencySymbol} {(financialSummary.openingBalance ?? customer.openingBalance ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-[11px] font-semibold text-slate-500">
+            <p className="text-xs font-semibold text-slate-500">
               Historical statement balance (15-Aug-2026)
             </p>
           </div>
@@ -545,7 +548,7 @@ export default function CustomerDetailPage() {
             <div className="text-2xl font-black tracking-tight text-slate-900">
               {currencySymbol} {(financialSummary.creditInvoicesSum ?? financialSummary.totalInvoiced ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-[11px] font-semibold text-slate-500">
+            <p className="text-xs font-semibold text-slate-500">
               Billed since MAATWEB tracking
             </p>
           </div>
@@ -556,7 +559,7 @@ export default function CustomerDetailPage() {
             <div className="text-2xl font-black tracking-tight text-emerald-600">
               {currencySymbol} {(financialSummary.totalPaid ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-[11px] font-semibold text-slate-500">
+            <p className="text-xs font-semibold text-slate-500">
               Receipts recorded ({financialSummary.receiptCount} receipts)
             </p>
           </div>
@@ -569,7 +572,7 @@ export default function CustomerDetailPage() {
                 {currencySymbol} {financialSummary.pendingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
-            <p className="text-[11px] font-semibold text-slate-500">
+            <p className="text-xs font-semibold text-slate-500">
               {financialSummary.pendingBalance > 0 ? "Opening + New Invoices - Collections" : "Account in good standing"}
             </p>
           </div>
@@ -674,7 +677,7 @@ export default function CustomerDetailPage() {
                           {inv.invoiceNumber}
                         </button>
                         {inv.billingSeries === "oman_reg" && (
-                          <span className="ms-1.5 inline-flex text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                          <span className="ms-1.5 inline-flex text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
                             Oman-reg
                           </span>
                         )}
@@ -816,7 +819,7 @@ export default function CustomerDetailPage() {
                         ) : (
                           <span>{act.refNumber}</span>
                         )}
-                        {act.details && <span className="block text-[10px] text-slate-400 font-normal">{act.details}</span>}
+                        {act.details && <span className="block text-xs text-slate-400 font-normal">{act.details}</span>}
                       </td>
                       <td className="px-4 py-3 text-right font-extrabold text-slate-900 whitespace-nowrap">
                         {currencySymbol} {act.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -952,9 +955,7 @@ export default function CustomerDetailPage() {
 
         {activeTab === "invoices" ? (
           allInvoices.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 font-semibold text-sm bg-slate-50 rounded-xl border border-dashed border-slate-200">
-              No invoices found for this customer.
-            </div>
+            <EmptyState compact title="No invoices yet" description="Invoices for this customer will show here." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -1068,9 +1069,7 @@ export default function CustomerDetailPage() {
             </div>
           )
         ) : allQuotations.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 font-semibold text-sm bg-slate-50 rounded-xl border border-dashed border-slate-200">
-            No quotations found for this customer.
-          </div>
+          <EmptyState compact title="No quotations yet" description="Quotations for this customer will show here." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -1109,12 +1108,12 @@ export default function CustomerDetailPage() {
       <footer className="pt-6 border-t border-slate-200/80 mt-8 space-y-4 text-xs">
         {customer.notes && (
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60">
-            <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Customer Notes</span>
+            <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Customer Notes</span>
             <p className="text-slate-700 font-medium italic">"{customer.notes}"</p>
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-4 text-slate-400 text-[11px] font-medium">
+        <div className="flex flex-wrap items-center justify-between gap-4 text-slate-400 text-xs font-medium">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>Customer Code: <strong className="text-slate-700 font-semibold">{customer.customerCode}</strong></span>
             {salespersonAssignmentText && (

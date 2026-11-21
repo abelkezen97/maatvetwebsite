@@ -90,7 +90,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Organization</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">Legal entity & business profile</p>
+              <p className="text-xs text-slate-400 font-semibold">Legal entity & business profile</p>
             </div>
           </div>
           <div className="space-y-2 text-xs font-semibold text-slate-600">
@@ -117,7 +117,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Users & Roles</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">User accounts & permissions</p>
+              <p className="text-xs text-slate-400 font-semibold">User accounts & permissions</p>
             </div>
           </div>
           <p className="text-xs text-slate-500 font-medium">
@@ -132,7 +132,7 @@ export default function SettingsPage() {
               <ArrowRight className="w-4 h-4" />
             </Link>
           ) : (
-            <span className="text-[11px] font-bold text-slate-400 italic">Admin Only</span>
+            <span className="text-xs font-bold text-slate-400 italic">Admin Only</span>
           )}
         </div>
 
@@ -144,17 +144,17 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Countries</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">Territory governance</p>
+              <p className="text-xs text-slate-400 font-semibold">Territory governance</p>
             </div>
           </div>
           <div className="space-y-2 text-xs font-semibold">
             <div className="flex justify-between items-center py-1.5 border-b border-slate-50">
               <span className="text-slate-700">🇦🇪 United Arab Emirates</span>
-              <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Active (AED)</span>
+              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Active (AED)</span>
             </div>
             <div className="flex justify-between items-center py-1.5">
               <span className="text-slate-700">🇴🇲 Sultanate of Oman</span>
-              <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Active (OMR)</span>
+              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Active (OMR)</span>
             </div>
           </div>
         </div>
@@ -167,7 +167,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Financial Settings</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">VAT & credit rules</p>
+              <p className="text-xs text-slate-400 font-semibold">VAT & credit rules</p>
             </div>
           </div>
           <div className="space-y-2 text-xs font-semibold text-slate-600">
@@ -190,7 +190,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Invoice Settings</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">Sequencing & layouts</p>
+              <p className="text-xs text-slate-400 font-semibold">Sequencing & layouts</p>
             </div>
           </div>
           <div className="space-y-2 text-xs font-semibold text-slate-600">
@@ -213,7 +213,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Quotation Settings</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">Proposals & pricing validity</p>
+              <p className="text-xs text-slate-400 font-semibold">Proposals & pricing validity</p>
             </div>
           </div>
           <div className="space-y-2 text-xs font-semibold text-slate-600">
@@ -236,7 +236,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Receipt Settings</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">Collection receipts</p>
+              <p className="text-xs text-slate-400 font-semibold">Collection receipts</p>
             </div>
           </div>
           <div className="space-y-2 text-xs font-semibold text-slate-600">
@@ -259,7 +259,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">Product Catalog</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">Medicine master data</p>
+              <p className="text-xs text-slate-400 font-semibold">Medicine master data</p>
             </div>
           </div>
           <p className="text-xs text-slate-500 font-medium">
@@ -282,7 +282,7 @@ export default function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-extrabold text-[#1B2A4A] uppercase tracking-wider">System</h3>
-              <p className="text-[11px] text-slate-400 font-semibold">Engine parameters</p>
+              <p className="text-xs text-slate-400 font-semibold">Engine parameters</p>
             </div>
           </div>
           <div className="space-y-2 text-xs font-semibold text-slate-600">

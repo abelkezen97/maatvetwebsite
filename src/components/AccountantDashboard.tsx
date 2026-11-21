@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import type { AccountantOverview } from "@/lib/db/accountantOverview";
+import { useDialog } from "@/components/DialogProvider";
 
 type TabKey = "overview" | "receivables" | "cash" | "approvals";
 
@@ -148,7 +149,7 @@ export function AccountantDashboard({ country, name }: { country: string; name: 
               <Icon className="h-4 w-4" />
               {t.label}
               {badge !== null && (
-                <span className={`rounded-full px-1.5 text-[11px] font-extrabold ${active ? "bg-white/20" : "bg-rose-100 text-rose-700"}`}>
+                <span className={`rounded-full px-1.5 text-xs font-extrabold ${active ? "bg-white/20" : "bg-rose-100 text-rose-700"}`}>
                   {badge}
                 </span>
               )}
@@ -218,7 +219,7 @@ function Stat({
       }`}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">{label}</span>
+        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{label}</span>
         <span className={`rounded-lg p-1.5 ${tones[tone]}`}>
           <Icon className="h-4 w-4" />
         </span>
@@ -433,7 +434,7 @@ function ReceivablesTab({ data, money }: { data: AccountantOverview; money: (n: 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                <tr className="border-b border-slate-100 text-xs font-extrabold uppercase tracking-wider text-slate-500">
                   <th className="py-2 pr-3">Customer</th>
                   <th className="py-2 pr-3">Salesman</th>
                   <th className="py-2 pr-3 text-right">Overdue</th>
@@ -475,7 +476,7 @@ function CashTab({ data, money }: { data: AccountantOverview; money: (n: number)
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                <tr className="border-b border-slate-100 text-xs font-extrabold uppercase tracking-wider text-slate-500">
                   <th className="py-2 pr-3">Person</th>
                   <th className="py-2 pr-3 text-right">Collected</th>
                   <th className="py-2 pr-3 text-right">Received</th>
@@ -522,7 +523,7 @@ function CashTab({ data, money }: { data: AccountantOverview; money: (n: number)
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-100 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                <tr className="border-b border-slate-100 text-xs font-extrabold uppercase tracking-wider text-slate-500">
                   <th className="py-2 pr-3">Cheque date</th>
                   <th className="py-2 pr-3">Customer</th>
                   <th className="py-2 pr-3">Cheque / bank</th>
@@ -564,8 +565,9 @@ function ApprovalsTab({
   act: (key: string, url: string, okText: string, body?: any) => Promise<void>;
 }) {
   const a = data.approvals;
-  const reject = (key: string, url: string, label: string) => {
-    const reason = window.prompt(`Reason for rejecting ${label} (optional):`);
+  const dialog = useDialog();
+  const reject = async (key: string, url: string, label: string) => {
+    const reason = await dialog.prompt({ title: `Reject ${label}?`, message: "The submitter will see this.", label: "Reason (optional)", confirmText: "Reject", tone: "danger" });
     if (reason === null) return;
     act(key, url, `${label} rejected.`, { reason });
   };

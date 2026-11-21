@@ -7,6 +7,7 @@ import { SidebarProvider } from "@/components/SidebarContext";
 import { useAuth, COUNTRY_CHOSEN_KEY } from "@/hooks/useAuth";
 import { CountryPicker } from "@/components/CountryPicker";
 import { useLanguage } from "@/context/LanguageContext";
+import { DialogProvider } from "@/components/DialogProvider";
 
 export default function DashboardLayout({
   children,
@@ -77,9 +78,11 @@ export default function DashboardLayout({
         {/* Main Content Area starting directly at y=0 */}
         <div className="flex flex-1 flex-col min-w-0 overflow-x-clip">
           <main className="flex-1 min-w-0 bg-[#F8FAFC]">
-            <PageGuard>
-              {children}
-            </PageGuard>
+            <DialogProvider>
+              <PageGuard>
+                {children}
+              </PageGuard>
+            </DialogProvider>
           </main>
         </div>
       </div>

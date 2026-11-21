@@ -772,7 +772,7 @@ function NewQuoteForm() {
                         </div>
                         <div className="grid grid-cols-3 gap-2 mt-2.5 items-end">
                           <label className="block">
-                            <span className="block text-[11px] text-slate-500 mb-1">Qty</span>
+                            <span className="block text-xs text-slate-500 mb-1">Qty</span>
                             <input
                               ref={(el) => {
                                 if (el) qtyRefs.current.set(String(item.productId), el);
@@ -789,7 +789,7 @@ function NewQuoteForm() {
                             />
                           </label>
                           <label className="block">
-                            <span className="block text-[11px] text-slate-500 mb-1">Rate</span>
+                            <span className="block text-xs text-slate-500 mb-1">Rate</span>
                             <input
                               type="number"
                               min="0"
@@ -804,7 +804,7 @@ function NewQuoteForm() {
                             />
                           </label>
                           <div className="text-right">
-                            <span className="block text-[11px] text-slate-500 mb-1">Amount</span>
+                            <span className="block text-xs text-slate-500 mb-1">Amount</span>
                             <span className="h-10 flex items-center justify-end text-sm font-semibold text-slate-900">{(Number(item.total) || 0).toFixed(dp)}</span>
                           </div>
                         </div>

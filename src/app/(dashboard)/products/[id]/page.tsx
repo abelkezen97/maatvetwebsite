@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { ProductInsights } from "@/components/ProductInsights";
 import { ProductExpiryLots } from "@/components/ProductExpiryLots";
 import { currencyFor, decimalsFor } from "@/lib/currency";
+import { useDialog } from "@/components/DialogProvider";
 
 interface ProductDetailData {
   product: {
@@ -144,6 +145,7 @@ export default function ProductDetailPage() {
   const router = useRouter();
   const productId = params?.id as string;
   const { isSuperAdmin, isAccountant, isSalesperson, profile } = useAuth();
+  const dialog = useDialog();
   // There is no global role: stock is managed per country, in the user's own country only.
   const ownCountry: UserCountry = profile?.country === "Oman" ? "Oman" : "UAE";
   const currencyCode = currencyFor(profile?.country);
@@ -193,7 +195,7 @@ export default function ProductDetailPage() {
   const handleStockAdjustmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjQty || isNaN(Number(adjQty)) || Number(adjQty) <= 0) {
-      alert("Please enter a valid positive quantity.");
+      dialog.toast("Please enter a valid positive quantity.");
       return;
     }
 
@@ -220,11 +222,11 @@ export default function ProductDetailPage() {
         fetchAnalytics();
       } else {
         const errData = await res.json();
-        alert(errData.error || "Failed to process stock adjustment.");
+        dialog.toast(errData.error || "Failed to process stock adjustment.");
       }
     } catch (err: any) {
       console.error("Error submitting stock adjustment:", err);
-      alert(err.message || "Failed to submit stock adjustment.");
+      dialog.toast(err.message || "Failed to submit stock adjustment.");
     } finally {
       setIsSubmittingAdj(false);
     }
@@ -232,7 +234,7 @@ export default function ProductDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
         <LoadingSkeleton type="card" count={3} />
         <LoadingSkeleton type="table" count={5} />
       </div>
@@ -321,7 +323,7 @@ export default function ProductDetailPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] uppercase tracking-wider font-bold text-slate-500">
+                <tr className="bg-slate-50/80 border-b border-slate-200/80 text-xs uppercase tracking-wider font-bold text-slate-500">
                   <th className="py-3 px-5">Date</th>
                   <th className="py-3 px-5">Movement</th>
                   <th className="py-3 px-5 text-right">Quantity</th>
@@ -340,7 +342,7 @@ export default function ProductDetailPage() {
                         {formatDate(m.date)}
                       </td>
                       <td className="py-3 px-5">
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold tracking-wider">
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-xs font-bold tracking-wider">
                           {m.movementType}
                         </span>
                       </td>

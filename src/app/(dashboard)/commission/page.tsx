@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight, ChevronDown, X } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { formatMoney } from "@/lib/currency";
 import type { CommissionReport, SalesmanCommission, CommissionBand } from "@/lib/db/commission";
+import { useDialog } from "@/components/DialogProvider";
+import { EmptyState } from "@/components/EmptyState";
 
 type Report = CommissionReport & { enabled: boolean; canMarkPaid?: boolean };
 
@@ -48,13 +50,13 @@ function SalesmanDetail({ s, showName }: { s: SalesmanCommission; showName?: boo
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="text-xs font-semibold text-slate-500">Collected after 100 days</div>
           <div className="text-xl font-black text-slate-500 mt-1">{money(s.lateTotal)}</div>
-          <div className="text-[11px] font-medium text-slate-400 mt-0.5">No commission</div>
+          <div className="text-xs font-medium text-slate-400 mt-0.5">No commission</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="text-xs font-semibold text-slate-500">Commission</div>
           <div className="text-xl font-black text-emerald-700 mt-1">{money(s.commission)}</div>
           {s.payout && (
-            <div className="text-[11px] font-medium text-slate-500 mt-0.5">
+            <div className="text-xs font-medium text-slate-500 mt-0.5">
               Paid {shortDate(s.payout.paidAt.slice(0, 10))}
               {s.payout.paidByName ? ` by ${s.payout.paidByName}` : ""}
             </div>
@@ -71,7 +73,7 @@ function SalesmanDetail({ s, showName }: { s: SalesmanCommission; showName?: boo
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+            <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
               <th className="text-start py-2 pe-3">Band</th>
               <th className="text-end py-2 pe-3">Amount in band</th>
               <th className="text-end py-2 pe-3">Rate</th>
@@ -101,7 +103,7 @@ function SalesmanDetail({ s, showName }: { s: SalesmanCommission; showName?: boo
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+                <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
                   <th className="text-start py-2 pe-3">Collected</th>
                   <th className="text-start py-2 pe-3">Receipt</th>
                   <th className="text-start py-2 pe-3">Invoice</th>
@@ -133,6 +135,7 @@ function SalesmanDetail({ s, showName }: { s: SalesmanCommission; showName?: boo
 }
 
 export default function CommissionPage() {
+  const dialog = useDialog();
   const [{ year, quarter }, setPeriod] = useState(currentQuarter);
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
@@ -175,7 +178,7 @@ export default function CommissionPage() {
   }, [year, quarter]);
 
   const markPaid = async (s: SalesmanCommission) => {
-    if (!window.confirm(`Record ${money(s.commission)} commission for ${s.salesmanName} (${quarterLabel(year, quarter)}) as paid?`)) return;
+    if (!(await dialog.confirm({ title: "Record commission as paid?", message: `${money(s.commission)} for ${s.salesmanName} (${quarterLabel(year, quarter)}).`, confirmText: "Record as paid", tone: "success" }))) return;
     setBusy(s.salesmanId);
     setError(null);
     try {
@@ -196,7 +199,7 @@ export default function CommissionPage() {
   };
 
   const undoPaid = async (s: SalesmanCommission) => {
-    if (!window.confirm(`Undo the payment record for ${s.salesmanName}?`)) return;
+    if (!(await dialog.confirm({ title: "Undo payment record?", message: `Undo the payment record for ${s.salesmanName}?`, confirmText: "Undo", tone: "danger" }))) return;
     setBusy(s.salesmanId);
     try {
       const res = await fetch("/api/commission/payouts", {
@@ -221,7 +224,7 @@ export default function CommissionPage() {
     <div className="w-full">
       <PageHeader title="Commission" description="Earned on money collected within 100 days of the invoice date" />
 
-      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1400px] mx-auto space-y-6 text-start">
+      <div className="px-6 py-5 md:px-6 md:py-6 max-w-[1600px] mx-auto space-y-6 text-start">
         {error && (
           <div className="flex items-center justify-between gap-3 rounded-xl bg-rose-50 border border-rose-200 p-4 text-sm text-rose-700">
             <span className="font-semibold">{error}</span>
@@ -269,7 +272,7 @@ export default function CommissionPage() {
               <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+                    <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
                       <th className="text-start p-4">Salesman</th>
                       <th className="text-end p-4">Collected in time</th>
                       <th className="text-end p-4">After 100 days</th>
@@ -279,7 +282,7 @@ export default function CommissionPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {report.salesmen.length === 0 && (
-                      <tr><td colSpan={5} className="p-6 text-center text-slate-500">No salesmen.</td></tr>
+                      <tr><td colSpan={5}><EmptyState compact title="No salesmen" description="Nobody has sales in this quarter yet." /></td></tr>
                     )}
                     {report.salesmen.map((s) => (
                       <React.Fragment key={s.salesmanId}>
@@ -360,7 +363,7 @@ export default function CommissionPage() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-[11px] uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
+                        <tr className="text-xs uppercase tracking-wider text-slate-400 font-bold border-b border-slate-100">
                           <th className="text-start py-2 pe-3">Invoice</th>
                           <th className="text-start py-2 pe-3">Customer</th>
                           {isStaff && <th className="text-start py-2 pe-3">Salesman</th>}

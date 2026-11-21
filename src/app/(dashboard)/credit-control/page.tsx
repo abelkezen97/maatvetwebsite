@@ -6,6 +6,8 @@ import { ShieldAlert, ShieldCheck, Eye, Unlock, Lock } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { useAuth } from "@/hooks/useAuth";
 import { currencyFor, decimalsFor } from "@/lib/currency";
+import { useDialog } from "@/components/DialogProvider";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Row {
   id: string;
@@ -42,6 +44,7 @@ const STATE: Record<Row["state"], { label: string; cls: string }> = {
 
 export default function CreditControlPage() {
   const { profile, isStaff, loading } = useAuth();
+  const dialog = useDialog();
   const [rows, setRows] = useState<Row[]>([]);
   const [policy, setPolicy] = useState<Policy | null>(null);
   const [filter, setFilter] = useState<"all" | "blocked" | "watch" | "over">("all");
@@ -74,7 +77,7 @@ export default function CreditControlPage() {
   const release = async (r: Row, released: boolean) => {
     let reason = "";
     if (released) {
-      const v = window.prompt(`Release ${r.company} so salesmen can sell on credit again? Add a reason (optional):`, "");
+      const v = await dialog.prompt({ title: `Release ${r.company}?`, message: "Salesmen will be able to sell to this customer on credit again.", label: "Reason (optional)", confirmText: "Release", tone: "success" });
       if (v === null) return;
       reason = v;
     }
@@ -135,7 +138,7 @@ export default function CreditControlPage() {
         title="Credit control"
         description={policy ? `Customers are blocked for credit after ${policy.blockAfterDays} days overdue. Invoices without credit days count as ${policy.defaultCreditDays} days.` : undefined}
       />
-      <div className="px-6 py-5 md:py-6 max-w-[1400px] mx-auto space-y-5 text-start">
+      <div className="px-6 py-5 md:py-6 max-w-[1600px] mx-auto space-y-5 text-start">
         {error && <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</p>}
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -146,7 +149,7 @@ export default function CreditControlPage() {
             { l: "Customers with open balance", v: String(rows.length), c: "text-slate-900" },
           ].map((k) => (
             <div key={k.l} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
-              <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">{k.l}</div>
+              <div className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{k.l}</div>
               <div className={`mt-1 text-xl font-extrabold ${k.c}`}>{k.v}</div>
             </div>
           ))}
@@ -166,7 +169,7 @@ export default function CreditControlPage() {
                 <div>
                   <div className="text-xs font-semibold text-slate-500">{b.label}</div>
                   <div className="text-sm font-bold text-slate-900">{money(b.v)}</div>
-                  <div className="text-[11px] font-semibold text-slate-400">{((b.v / totalB) * 100).toFixed(0)}%</div>
+                  <div className="text-xs font-semibold text-slate-400">{((b.v / totalB) * 100).toFixed(0)}%</div>
                 </div>
               </div>
             ))}
@@ -189,7 +192,7 @@ export default function CreditControlPage() {
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-2xs">
           <table className="w-full min-w-[980px] text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-4 py-2.5 text-left font-bold">Customer</th>
                 <th className="px-3 py-2.5 text-right font-bold">Open</th>
                 <th className="px-3 py-2.5 text-right font-bold">Not due</th>
@@ -217,7 +220,7 @@ export default function CreditControlPage() {
               )}
               {!fetching && shown.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-slate-500">No customers here.</td>
+                  <td colSpan={11}><EmptyState compact title="No customers here" description="Nothing matches this filter." /></td>
                 </tr>
               )}
               {shown.map((r) => {
@@ -238,11 +241,11 @@ export default function CreditControlPage() {
                     <td className={`px-3 py-3 text-right tabular-nums ${r.maxDaysOverdue >= (policy?.blockAfterDays || 100) ? "font-bold text-rose-700" : "text-slate-700"}`}>{r.maxDaysOverdue > 0 ? `${r.maxDaysOverdue} d` : "–"}</td>
                     <td className={`px-3 py-3 text-right tabular-nums ${r.overLimit ? "font-bold text-rose-700" : "text-slate-600"}`}>{r.creditLimit > 0 ? money(r.creditLimit) : "–"}</td>
                     <td className="px-3 py-3">
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${st.cls}`}>
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-bold ${st.cls}`}>
                         {r.state === "blocked" ? <ShieldAlert className="h-3 w-3" /> : r.state === "watch" ? <Eye className="h-3 w-3" /> : <ShieldCheck className="h-3 w-3" />}
                         {st.label}
                       </span>
-                      {r.cashOnly && <span className="ml-1 text-[11px] font-semibold text-amber-700">Cash only</span>}
+                      {r.cashOnly && <span className="ml-1 text-xs font-semibold text-amber-700">Cash only</span>}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {r.state === "blocked" && (

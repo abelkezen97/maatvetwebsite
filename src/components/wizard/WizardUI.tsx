@@ -77,7 +77,7 @@ export function WizardStepper({
                   {done ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
                 </span>
                 <span className="text-left">
-                  <span className="block text-[11px] uppercase tracking-wide text-slate-400">Step {i + 1}</span>
+                  <span className="block text-xs uppercase tracking-wide text-slate-400">Step {i + 1}</span>
                   <span className={`block text-sm ${current ? "font-semibold text-slate-900" : done ? "font-medium text-slate-700" : "text-slate-400"}`}>{s.label}</span>
                 </span>
               </button>

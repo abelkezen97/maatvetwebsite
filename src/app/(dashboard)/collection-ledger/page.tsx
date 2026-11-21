@@ -32,6 +32,7 @@ import { buildCollectionLedgerPDF } from "@/lib/pdfCollectionLedgerHelper";
 import { getNormalizedDateRange, PeriodType, formatDateToISOString } from "@/lib/dateUtils";
 import { PageHeader } from "@/components/PageHeader";
 import { ChequesInHand } from "@/components/ChequesInHand";
+import { useDialog } from "@/components/DialogProvider";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -43,6 +44,7 @@ type SortOrder = "asc" | "desc";
 
 export default function CollectionLedgerPage() {
   const { profile } = useAuth();
+  const dialog = useDialog();
   const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -379,11 +381,11 @@ export default function CollectionLedgerPage() {
         await loadLedger();
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to create expense");
+        dialog.toast(data.error || "Failed to create expense");
       }
     } catch (err) {
       console.error(err);
-      alert("Error submitting expense request");
+      dialog.toast("Error submitting expense request");
     } finally {
       setSubmitting(false);
     }
@@ -415,11 +417,11 @@ export default function CollectionLedgerPage() {
         await loadLedger();
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to submit cash handover");
+        dialog.toast(data.error || "Failed to submit cash handover");
       }
     } catch (err) {
       console.error(err);
-      alert("Error submitting cash handover");
+      dialog.toast("Error submitting cash handover");
     } finally {
       setSubmitting(false);
     }
@@ -429,12 +431,12 @@ export default function CollectionLedgerPage() {
   const handleSaveOpeningBalance = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!obAmount || Number(obAmount) < 0) {
-      alert("Please enter a valid non-negative opening balance amount");
+      dialog.toast("Please enter a valid non-negative opening balance amount");
       return;
     }
     const targetSp = obSalespersonId || (selectedSalespersonId !== "all" ? selectedSalespersonId : profile?.id);
     if (!targetSp || targetSp === "all") {
-      alert("Please select a specific salesperson to set opening balance");
+      dialog.toast("Please select a specific salesperson to set opening balance");
       return;
     }
     setObSubmitting(true);
@@ -458,11 +460,11 @@ export default function CollectionLedgerPage() {
         await loadLedger();
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to save opening balance");
+        dialog.toast(data.error || "Failed to save opening balance");
       }
     } catch (err) {
       console.error(err);
-      alert("Error saving opening balance");
+      dialog.toast("Error saving opening balance");
     } finally {
       setObSubmitting(false);
     }
@@ -471,7 +473,7 @@ export default function CollectionLedgerPage() {
   // Download PDF
   const handleDownloadPDF = () => {
     if (!summary) {
-      alert("Ledger summary is loading or unavailable.");
+      dialog.toast("Ledger summary is loading or unavailable.");
       return;
     }
     const range = getNormalizedDateRange({
@@ -667,13 +669,13 @@ export default function CollectionLedgerPage() {
           </div>
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-100">Cash in Hand</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-emerald-100">Cash in Hand</span>
             </div>
             <div className="text-2xl font-extrabold tracking-tight">
               {currencySymbol} {(summary?.currentCashInHand || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
             </div>
           </div>
-          <p className="text-[11px] text-emerald-100/90 mt-2 font-medium">
+          <p className="text-xs text-emerald-100/90 mt-2 font-medium">
             Net cash held at period end
           </p>
         </div>
@@ -681,7 +683,7 @@ export default function CollectionLedgerPage() {
         {/* Opening Cash */}
         <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Opening Cash</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Opening Cash</span>
             <div className="flex items-center gap-1.5">
               {canViewAll && (
                 <button
@@ -692,7 +694,7 @@ export default function CollectionLedgerPage() {
                     setObDate(customStart || new Date().toISOString().split("T")[0]);
                     setShowOpeningBalanceModal(true);
                   }}
-                  className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer border border-slate-200"
+                  className="text-xs font-extrabold px-2 py-0.5 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 transition cursor-pointer border border-slate-200"
                 >
                   {summary?.openingCash ? "Edit" : "Set"}
                 </button>
@@ -705,13 +707,13 @@ export default function CollectionLedgerPage() {
           <div className="text-xl font-bold text-slate-900 mt-2">
             {currencySymbol} {(summary?.openingCash || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </div>
-          <span className="text-[10px] text-slate-500 mt-1">Cash balance at period start</span>
+          <span className="text-xs text-slate-500 mt-1">Cash balance at period start</span>
         </div>
 
         {/* Cash Collections */}
         <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Cash Collections</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Cash Collections</span>
             <div className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
               <ArrowDownLeft className="w-4 h-4" />
             </div>
@@ -720,7 +722,7 @@ export default function CollectionLedgerPage() {
             +{currencySymbol} {(summary?.totalCashCollected || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </div>
           {(summary?.totalCashReceived || 0) > 0 ? (
-            <span className="text-[10px] text-slate-500 mt-1">
+            <span className="text-xs text-slate-500 mt-1">
               Cash receipts, plus{" "}
               <span className="font-bold text-emerald-700">
                 +{currencySymbol} {(summary?.totalCashReceived || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
@@ -728,14 +730,14 @@ export default function CollectionLedgerPage() {
               received in handovers
             </span>
           ) : (
-            <span className="text-[10px] text-slate-500 mt-1">From active cash receipts</span>
+            <span className="text-xs text-slate-500 mt-1">From active cash receipts</span>
           )}
         </div>
 
         {/* Approved Cash Expenses */}
         <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Approved Expenses</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Approved Expenses</span>
             <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg">
               <ArrowUpRight className="w-4 h-4" />
             </div>
@@ -743,13 +745,13 @@ export default function CollectionLedgerPage() {
           <div className="text-xl font-bold text-rose-600 mt-2">
             - {currencySymbol} {(summary?.totalCashExpenses || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </div>
-          <span className="text-[10px] text-slate-500 mt-1">Approved cash expenses</span>
+          <span className="text-xs text-slate-500 mt-1">Approved cash expenses</span>
         </div>
 
         {/* Cash Handed Over */}
         <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Cash Handed Over</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Cash Handed Over</span>
             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
               <Send className="w-4 h-4" />
             </div>
@@ -757,7 +759,7 @@ export default function CollectionLedgerPage() {
           <div className="text-xl font-bold text-blue-600 mt-2">
             - {currencySymbol} {(summary?.totalCashHandedOver || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
           </div>
-          <span className="text-[10px] text-slate-500 mt-1">Confirmed handovers</span>
+          <span className="text-xs text-slate-500 mt-1">Confirmed handovers</span>
         </div>
       </div>
 
@@ -787,7 +789,7 @@ export default function CollectionLedgerPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/80 text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100">
+              <tr className="bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100">
                 <th
                   onClick={() => handleSort("date")}
                   className="px-6 py-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
@@ -849,9 +851,8 @@ export default function CollectionLedgerPage() {
               {loading ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <RefreshCw className="w-6 h-6 animate-spin text-emerald-600" />
-                      <span>Loading collection ledger transactions...</span>
+                    <div className="space-y-2 animate-pulse">
+                      {[0, 1, 2, 3].map((i) => <div key={i} className="h-9 rounded-lg bg-slate-100" />)}
                     </div>
                   </td>
                 </tr>
@@ -874,7 +875,7 @@ export default function CollectionLedgerPage() {
                         <div className="flex items-center gap-2">
                           <CalendarRange className="w-3.5 h-3.5 text-slate-500" />
                           <span>{group.label}</span>
-                          <span className="text-[10px] font-normal text-slate-500">
+                          <span className="text-xs font-normal text-slate-500">
                             ({group.items.length} {group.items.length === 1 ? "transaction" : "transactions"})
                           </span>
                         </div>
@@ -1031,7 +1032,7 @@ export default function CollectionLedgerPage() {
                     <button
                       type="button"
                       onClick={() => setExpAttachment("")}
-                      className="absolute top-1 right-1 bg-slate-900/80 text-white rounded-full p-0.5 text-[10px]"
+                      className="absolute top-1 right-1 bg-slate-900/80 text-white rounded-full p-0.5 text-xs"
                     >
                       ✕
                     </button>
@@ -1090,7 +1091,7 @@ export default function CollectionLedgerPage() {
                     <Send className={`w-4 h-4 ${handoverMode === "admin_handover" ? "text-[#1B2A4A]" : "text-slate-400"}`} />
                     <span className="text-xs font-bold text-slate-900">Hand Over to Admin</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-snug">
+                  <p className="text-xs text-slate-500 leading-snug">
                     Deduct cash from your balance and transfer physical cash to Admin Ledger.
                   </p>
                 </button>
@@ -1108,7 +1109,7 @@ export default function CollectionLedgerPage() {
                     <Wallet className={`w-4 h-4 ${handoverMode === "carry_forward" ? "text-emerald-600" : "text-slate-400"}`} />
                     <span className="text-xs font-bold text-slate-900">Keep Cash / Carry Forward</span>
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-snug">
+                  <p className="text-xs text-slate-500 leading-snug">
                     Retain cash under your balance and carry it forward into next period's Opening Cash.
                   </p>
                 </button>

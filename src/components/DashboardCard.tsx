@@ -97,7 +97,7 @@ export function DashboardCard({
       <div>
         {/* Header: Title & Icon Badge */}
         <div className="flex items-center justify-between gap-3 mb-4">
-          <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 group-hover:text-slate-700 transition-colors">
+          <span className="text-xs font-black uppercase tracking-wider text-slate-400 group-hover:text-slate-700 transition-colors">
             {translatedTitle}
           </span>
           <div className={`p-2.5 rounded-2xl border ${selectedTheme.badgeBg} shadow-2xs group-hover:scale-110 transition-transform duration-300 shrink-0`}>
@@ -109,7 +109,7 @@ export function DashboardCard({
         <div className="my-1 space-y-1">
           {isAED && (
             <div>
-              <span className={`inline-block text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${selectedTheme.tagBg} shadow-2xs tracking-wider`}>
+              <span className={`inline-block text-xs font-black uppercase px-2 py-0.5 rounded-md border ${selectedTheme.tagBg} shadow-2xs tracking-wider`}>
                 {currencyLabel}
               </span>
             </div>
@@ -124,7 +124,7 @@ export function DashboardCard({
       {(translatedDesc || trend) && (
         <div className="flex items-center gap-2 pt-3.5 mt-3.5 border-t border-slate-100 text-xs font-semibold">
           {trend && (
-            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-[11px] font-extrabold shrink-0 ${trend.isPositive ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60" : "bg-rose-50 text-rose-700 border border-rose-200/60"}`}>
+            <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-extrabold shrink-0 ${trend.isPositive ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60" : "bg-rose-50 text-rose-700 border border-rose-200/60"}`}>
               {trend.isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
               {trend.value}
             </span>

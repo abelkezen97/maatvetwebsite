@@ -22,6 +22,7 @@ import { Profile, Customer, Quote, Invoice, Receipt } from "@/types";
 import { useAuth } from "@/hooks/useAuth";
 import { DataTable } from "@/components/DataTable";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function SalespersonProfilePage() {
   const params = useParams();
@@ -151,7 +152,7 @@ export default function SalespersonProfilePage() {
 
   if (authLoading || loading) {
     return (
-      <div className="p-6 max-w-5xl mx-auto">
+      <div className="px-6 py-6 max-w-[1600px] mx-auto">
         <LoadingSkeleton type="card" count={4} />
       </div>
     );
@@ -169,7 +170,13 @@ export default function SalespersonProfilePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full">
+      <PageHeader
+        title={profile.full_name}
+        description={`Salesperson · ${profile.country}`}
+        breadcrumbs={[{ label: "Salespersons", href: "/users" }, { label: profile.full_name }]}
+      />
+      <div className="px-6 py-5 md:py-6 max-w-[1600px] mx-auto space-y-6 text-start">
       {/* Header Profile Banner */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -206,27 +213,27 @@ export default function SalespersonProfilePage() {
       {/* 5-Metric Operational Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">TOTAL CUSTOMERS</span>
+          <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL CUSTOMERS</span>
           <span className="text-2xl font-black text-[#1B2A4A] mt-1 block">{customers.length}</span>
           <span className="text-xs text-slate-400 font-semibold mt-0.5 block">Assigned accounts</span>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">TOTAL QUOTATIONS</span>
+          <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL QUOTATIONS</span>
           <span className="text-2xl font-black text-[#1B2A4A] mt-1 block">{quotes.length}</span>
           <span className="text-xs text-slate-400 font-semibold mt-0.5 block">Proposals issued</span>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">TOTAL INVOICES</span>
+          <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL INVOICES</span>
           <span className="text-2xl font-black text-[#1B2A4A] mt-1 block">{invoices.length}</span>
           <span className="text-xs text-slate-400 font-semibold mt-0.5 block">Billed tax invoices</span>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">TOTAL RECEIPTS</span>
+          <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">TOTAL RECEIPTS</span>
           <span className="text-2xl font-black text-[#1B2A4A] mt-1 block">{receipts.length}</span>
           <span className="text-xs text-slate-400 font-semibold mt-0.5 block">Collections logged</span>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">OUTSTANDING MANAGED</span>
+          <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">OUTSTANDING MANAGED</span>
           <span className="text-2xl font-black text-rose-600 mt-1 block">
             {profile.country === "Oman" ? "OMR" : "AED"} {totalOutstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </span>
@@ -318,6 +325,7 @@ export default function SalespersonProfilePage() {
           <div className="text-xs text-slate-500 font-medium">Showing {receipts.length} payment receipts logged by {profile.full_name}.</div>
         </div>
       )}
+      </div>
     </div>
   );
 }

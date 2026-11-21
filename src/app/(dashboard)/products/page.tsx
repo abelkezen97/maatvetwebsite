@@ -29,11 +29,13 @@ import { currencyFor } from "@/lib/currency";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { generateProductsPdf } from "@/lib/utils/exportProductsPdf";
+import { useDialog } from "@/components/DialogProvider";
 
 export default function ProductsPage() {
   const router = useRouter();
   const { t, translateBusinessText, formatCurrency } = useLanguage();
   const { profile, isSuperAdmin, isAccountant, isSalesperson } = useAuth();
+  const dialog = useDialog();
 
   // Primary data states
   const [products, setProducts] = useState<Product[]>([]);
@@ -272,25 +274,25 @@ export default function ProductsPage() {
         await loadData();
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to save product");
+        dialog.toast(data.error || "Failed to save product");
       }
     } catch (err: any) {
       console.error("Error saving product:", err);
-      alert(err.message || "Failed to save product");
+      dialog.toast(err.message || "Failed to save product");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    if (!confirm("Are you sure you want to delete this product?")) return;
+    if (!(await dialog.confirm({ title: "Delete this product?", message: "This cannot be undone.", confirmText: "Delete", tone: "danger" }))) return;
     try {
       const res = await fetch(`/api/products/${productId}`, { method: "DELETE" });
       if (res.ok) {
         await loadData();
       } else {
         const data = await res.json();
-        alert(data.error || "Failed to delete product");
+        dialog.toast(data.error || "Failed to delete product");
       }
     } catch (err: any) {
       console.error("Failed to delete product:", err);
@@ -329,7 +331,7 @@ export default function ProductsPage() {
             {translateBusinessText(row.category)}
           </span>
           {profile?.country === "UAE" && row.registeredIn === "Oman" && (
-            <span className="ms-1.5 inline-flex items-center text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+            <span className="ms-1.5 inline-flex items-center text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full whitespace-nowrap">
               Oman-reg
             </span>
           )}
@@ -619,7 +621,7 @@ export default function ProductsPage() {
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">
                         10+ Qty Price
                       </label>
                       <input
@@ -632,7 +634,7 @@ export default function ProductsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">
                         50+ Qty Price
                       </label>
                       <input
@@ -645,7 +647,7 @@ export default function ProductsPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">
                         100+ Qty Price
                       </label>
                       <input
