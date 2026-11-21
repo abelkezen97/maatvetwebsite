@@ -37,7 +37,7 @@ const round = (n: number) => Math.round(n * 1000) / 1000;
 const KIND_LABEL: Record<string, string> = { standard: "UAE-reg", oman_reg: "Oman-reg" };
 
 /** Supabase returns at most 1000 rows per request; read every page. */
-async function fetchAll<T = any>(build: () => any, pageSize = 1000): Promise<T[]> {
+export async function fetchAll<T = any>(build: () => any, pageSize = 1000): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await build().range(from, from + pageSize - 1);
@@ -48,7 +48,7 @@ async function fetchAll<T = any>(build: () => any, pageSize = 1000): Promise<T[]
   return out;
 }
 
-interface SaleLine {
+export interface SaleLine {
   productId: string;
   name: string;
   company: string;
@@ -61,7 +61,7 @@ interface SaleLine {
 }
 
 /** Every sold line in a date range (deleted invoices left out), with the product's list and cost price. */
-async function loadSaleLines(
+export async function loadSaleLines(
   client: SupabaseClient,
   country: string,
   range: { from: string; to: string },
